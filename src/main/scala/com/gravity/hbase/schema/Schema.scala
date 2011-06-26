@@ -2,28 +2,27 @@ package com.gravity.hbase.schema
 
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util._
-import collection.mutable.ListBuffer
 import scala.collection.JavaConversions._
 import org.apache.hadoop.hbase.{TableNotFoundException, HBaseConfiguration}
 import org.joda.time.DateTime
 import org.apache.hadoop.conf.Configuration
+import scala.collection._
+import mutable.Buffer
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
 
+/**
+* Class to be implemented by custom converters
+*/
 abstract class ByteConverter[T] {
   def toBytes(t: T): Array[Byte]
 
   def fromBytes(bytes: Array[Byte]): T
 }
 
-
-
-class ColumnFamily[F, K, V](val familyName: F)(implicit c: ByteConverter[F]) {
-  val familyBytes = c.toBytes(familyName)
-}
 
 class QueryResult(val result: Result, table: HbaseTable) {
   def column[F, K, V](column: Column[F, K, V])(implicit c: ByteConverter[V]): V = c.fromBytes(result.getColumnLatest(column.familyBytes, column.columnBytes).getValue)
@@ -50,9 +49,9 @@ class ScanQuery(table: HbaseTable) {
 
 class Query(table: HbaseTable) {
 
-  val keys = ListBuffer[Array[Byte]]()
-  val families = ListBuffer[Array[Byte]]()
-  val columns = ListBuffer[(Array[Byte], Array[Byte])]()
+  val keys = Buffer[Array[Byte]]()
+  val families = Buffer[Array[Byte]]()
+  val columns = Buffer[(Array[Byte], Array[Byte])]()
 
 
   def withKey[K](key: K)(implicit c: ByteConverter[K]) = {
@@ -114,17 +113,58 @@ class Query(table: HbaseTable) {
 
 }
 
+class ColumnFamily[F, K, V](val familyName: F)(implicit c: ByteConverter[F]) {
+  val familyBytes = c.toBytes(familyName)
+}
+
 class Column[F, K, V](columnFamily: F, columnName: K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) {
   val columnBytes = kc.toBytes(columnName)
   val familyBytes = fc.toBytes(columnFamily)
+
+
 
   def getValue(res: QueryResult) = {
     kv.fromBytes(res.result.getColumnLatest(familyBytes, columnBytes).getValue)
   }
 }
 
+
 class HbaseTable(tableName: String)(implicit conf:Configuration) {
+  /*
+  WARNING - Currently assumes the family names are strings (which is probably a best practice, but we support byte families)
+   */
+  def createScript() = {
+    /*
+   * create 'articles', {NAME => 'meta', VERSIONS => 1}, {NAME=> 'counts', VERSIONS => 1}, {NAME => 'text', VERSIONS => 1, COMPRESSION=>'lzo'}, {NAME => 'attributes', VERSIONS => 1}
+   * create 'daily_2011_180', {NAME => 'rollups', VERSIONS => 1}, {NAME=>'topicViews', VERSIONS=>1},{NAME=>'topicArticles',VERSIONS=>1},{NAME=>'topicSocialReferrerCounts',VERSIONS=>1},{NAME=>'topicSearchReferrerCounts',VERSIONS=>1}
+   * alter 'articles', NAME => 'html', VERSIONS =>1, COMPRESSION=>'lzo'
+   * alter 'articles', NAME => 'topics', VERSIONS =>1
+     */
+    val create = "create '"+tableName+"', "
+
+    val familyNameSet = (families.map(fam=>Bytes.toString(fam.familyBytes)) ++ columns.map(fam=>Bytes.toString(fam.familyBytes))).toSet
+
+    create + (for(family <- familyNameSet) yield {
+      "{NAME => '" + family + "', VERSIONS => 1}"
+    }).mkString(",")
+  }
+
+  private val columns = Buffer[Column[_,_,_]]()
+  private val families = Buffer[ColumnFamily[_,_,_]]()
+
   def getTable(name: String) = new HTable(conf, name)
+
+  def column[F,K,V](columnFamily: F, columnName : K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) = {
+    val c = new Column[F,K,V](columnFamily,columnName)
+    columns += c
+    c
+  }
+
+  def family[F,K,V](familyName:F)(implicit c:ByteConverter[F]) = {
+    val family = new ColumnFamily[F,K,V](familyName)
+    families += family
+    family
+  }
 
   def getTableOption(name: String) = {
     try {
