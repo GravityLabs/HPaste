@@ -15,12 +15,16 @@
     <scala.version>2.9.0-1</scala.version>
   </properties>
 
-<!--
   <repositories>
     <repository>
       <id>scala-tools.org</id>
       <name>Scala-Tools Maven2 Repository</name>
       <url>http://scala-tools.org/repo-releases</url>
+    </repository>
+    <repository>
+      <id>cloudera-hadoop-repo</id>
+      <name>Cloudera Hadoop Repo</name>
+      <url>https://repository.cloudera.com/content/repositories/releases</url>
     </repository>
   </repositories>
 
@@ -31,7 +35,6 @@
       <url>http://scala-tools.org/repo-releases</url>
     </pluginRepository>
   </pluginRepositories>
--->
   <dependencies>
     <dependency>
       <groupId>joda-time</groupId>

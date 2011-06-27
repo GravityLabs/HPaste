@@ -113,7 +113,7 @@ class Query(table: HbaseTable) {
 
 }
 
-class ColumnFamily[F, K, V](val familyName: F)(implicit c: ByteConverter[F]) {
+class ColumnFamily[F, K, V](val familyName: F, val compressed:Boolean=false, val versions:Int=1)(implicit c: ByteConverter[F]) {
   val familyBytes = c.toBytes(familyName)
 }
 
@@ -142,10 +142,11 @@ class HbaseTable(tableName: String)(implicit conf:Configuration) {
      */
     val create = "create '"+tableName+"', "
 
-    val familyNameSet = (families.map(fam=>Bytes.toString(fam.familyBytes)) ++ columns.map(fam=>Bytes.toString(fam.familyBytes))).toSet
 
-    create + (for(family <- familyNameSet) yield {
-      "{NAME => '" + family + "', VERSIONS => 1}"
+    create + (for(family <- families) yield {
+      "{NAME => '" + Bytes.toString(family.familyBytes) + "', VERSIONS => "+family.versions +
+      (if(family.compressed) ", COMPRESSION=>'lzo'" else "") +
+      "}"
     }).mkString(",")
   }
 
@@ -154,14 +155,14 @@ class HbaseTable(tableName: String)(implicit conf:Configuration) {
 
   def getTable(name: String) = new HTable(conf, name)
 
-  def column[F,K,V](columnFamily: F, columnName : K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) = {
-    val c = new Column[F,K,V](columnFamily,columnName)
+  def column[F,K,V](columnFamily: ColumnFamily[F,K,_], columnName : K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) = {
+    val c = new Column[F,K,V](columnFamily.familyName,columnName)
     columns += c
     c
   }
 
-  def family[F,K,V](familyName:F)(implicit c:ByteConverter[F]) = {
-    val family = new ColumnFamily[F,K,V](familyName)
+  def family[F,K,V](familyName:F, compressed:Boolean=false, versions:Int=1)(implicit c:ByteConverter[F]) = {
+    val family = new ColumnFamily[F,K,V](familyName, compressed,versions)
     families += family
     family
   }
