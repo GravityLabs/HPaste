@@ -25,7 +25,25 @@ abstract class ByteConverter[T] {
 
 
 class QueryResult(val result: Result, table: HbaseTable) {
-  def column[F, K, V](column: Column[F, K, V])(implicit c: ByteConverter[V]): V = c.fromBytes(result.getColumnLatest(column.familyBytes, column.columnBytes).getValue)
+  def column[F, K, V](column: Column[F, K, V])(implicit c: ByteConverter[V]): Option[V] = {
+    val col = result.getColumnLatest(column.familyBytes, column.columnBytes)
+    if(col != null) {
+      Some(c.fromBytes(col.getValue))
+    }else {
+      None
+    }
+  }
+
+  def family[F, K, V](family: ColumnFamily[F, K, V])(implicit c:ByteConverter[F], d:ByteConverter[K], e:ByteConverter[V]) = {
+    val familyMap = result.getFamilyMap(family.familyBytes)
+    if(familyMap != null) {
+      familyMap.map{case (column: Array[Byte], value: Array[Byte]) =>
+        d.fromBytes(column) -> e.fromBytes(value)
+      }
+    }else {
+      Map[K,V]()
+    }
+  }
 
   //  def familySet[F,K,V](family:ColumnFamily[F,K,V])
 }
@@ -101,6 +119,13 @@ class IncrementOp(table:HbaseTable, key:Array[Byte], previous: Buffer[OpBase] = 
     increment.addColumn(column.familyBytes, column.columnBytes, value)
     this
   }
+
+  def valueMap[F, K, Long](family: ColumnFamily[F, K, Long], values: Map[K,Long])(implicit c: ByteConverter[F], d:ByteConverter[K]) = {
+    for((key,value) <- values) {
+      increment.addColumn(family.familyBytes, d.toBytes(key),value.asInstanceOf[java.lang.Long])
+    }
+    this
+  }
 }
 
 class PutOp(table:HbaseTable, key:Array[Byte], previous: Buffer[OpBase] = Buffer()) extends OpBase(table,key,previous) {
@@ -108,6 +133,13 @@ class PutOp(table:HbaseTable, key:Array[Byte], previous: Buffer[OpBase] = Buffer
 
   def value[F, K, V](column: Column[F, K, V], value: V)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) = {
     put.add(column.familyBytes, column.columnBytes, e.toBytes(value))
+    this
+  }
+
+  def valueMap[F,K,V](family: ColumnFamily[F,K,V], values: Map[K,V])(implicit c: ByteConverter[K], d: ByteConverter[V]) = {
+    for((key,value) <- values) {
+      put.add(family.familyBytes, c.toBytes(key), d.toBytes(value))
+    }
     this
   }
 }
