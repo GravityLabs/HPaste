@@ -23,7 +23,9 @@ abstract class ByteConverter[T] {
 }
 
 
-
+/**
+* When a query comes back, there are a bucket of column families and columns to retrieve.  This class retrieves them.
+*/
 class QueryResult[T](val result: Result, table: HbaseTable[T]) {
   def column[F, K, V](column: (T) => Column[T, F, K, V])(implicit c: ByteConverter[V]): Option[V] = {
     val co = column(table.pops)
@@ -47,9 +49,12 @@ class QueryResult[T](val result: Result, table: HbaseTable[T]) {
     }
   }
 
-  //  def familySet[F,K,V](family:ColumnFamily[F,K,V])
 }
 
+/**
+* A query for setting up a scanner across the whole table or key subsets.
+* There is a lot of room for expansion in this class -- caching parameters, scanner specs, key-only, etc.
+*/
 class ScanQuery[T](table: HbaseTable[T]) {
   val scan = new Scan()
 
@@ -69,6 +74,10 @@ class ScanQuery[T](table: HbaseTable[T]) {
 
 }
 
+/**
+* An individual data modification operation (put, increment, or delete usually)
+* These operations are chained together by the client, and then executed in bulk.
+*/
 class OpBase[T](table:HbaseTable[T], key:Array[Byte], previous: Buffer[OpBase[T]] = Buffer[OpBase[T]]()) {
 
   previous += this
@@ -114,6 +123,9 @@ class OpBase[T](table:HbaseTable[T], key:Array[Byte], previous: Buffer[OpBase[T]
   }
 }
 
+/**
+* An increment operation -- can increment multiple columns in a single go.
+*/
 class IncrementOp[T](table:HbaseTable[T], key:Array[Byte], previous: Buffer[OpBase[T]] = Buffer[OpBase[T]]()) extends OpBase[T](table,key,previous) {
   val increment = new Increment(key)
 
@@ -132,6 +144,9 @@ class IncrementOp[T](table:HbaseTable[T], key:Array[Byte], previous: Buffer[OpBa
   }
 }
 
+/**
+* A Put operation.  Can work across multiple columns or entire column families treated as Maps.
+*/
 class PutOp[T](table:HbaseTable[T], key:Array[Byte], previous: Buffer[OpBase[T]] = Buffer[OpBase[T]]()) extends OpBase[T](table,key,previous) {
   val put = new Put(key)
 
@@ -150,6 +165,10 @@ class PutOp[T](table:HbaseTable[T], key:Array[Byte], previous: Buffer[OpBase[T]]
   }
 }
 
+/**
+* A deletion operation.  If nothing is specified but a key, will delete the whole row.  If a family is specified, will just delete the values in
+* that family.
+*/
 class DeleteOp[T](table:HbaseTable[T], key:Array[Byte], previous: Buffer[OpBase[T]] = Buffer[OpBase[T]]()) extends OpBase[T](table,key,previous) {
   val delete = new Delete(key)
 
@@ -160,8 +179,14 @@ class DeleteOp[T](table:HbaseTable[T], key:Array[Byte], previous: Buffer[OpBase[
   }
 }
 
-
-
+/**
+* A query for retrieving values.  It works somewhat differently than the data modification operations, in that you do the following:
+* 1. Specify one or more keys
+* 2. Specify columns and families to scan in for ALL the specified keys
+*
+* In other words there's no concept of having multiple rows fetched with different columns for each row (that seems to be a rare use-case and
+* would make the API very complex).
+*/
 class Query[T](table: HbaseTable[T]) {
 
   val keys = Buffer[Array[Byte]]()
@@ -227,10 +252,16 @@ class Query[T](table: HbaseTable[T]) {
 
 }
 
+/**
+* Represents the specification of a Column Family
+*/
 class ColumnFamily[T, F, K, V](val table: HbaseTable[T], val familyName: F, val compressed: Boolean = false, val versions: Int = 1)(implicit c: ByteConverter[F]) {
   val familyBytes = c.toBytes(familyName)
 }
 
+/**
+* Represents the specification of a Column.
+*/
 class Column[T, F, K, V](table:HbaseTable[T], columnFamily: F, columnName: K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) {
   val columnBytes = kc.toBytes(columnName)
   val familyBytes = fc.toBytes(columnFamily)
@@ -244,6 +275,9 @@ trait Schema {
 
 }
 
+/**
+* Represents a Table.  Expects an instance of HBaseConfiguration to be present.
+*/
 class HbaseTable[T](tableName: String)(implicit conf: Configuration) {
 
   def pops = this.asInstanceOf[T]
@@ -252,12 +286,6 @@ class HbaseTable[T](tableName: String)(implicit conf: Configuration) {
   WARNING - Currently assumes the family names are strings (which is probably a best practice, but we support byte families)
    */
   def createScript() = {
-    /*
-   * create 'articles', {NAME => 'meta', VERSIONS => 1}, {NAME=> 'counts', VERSIONS => 1}, {NAME => 'text', VERSIONS => 1, COMPRESSION=>'lzo'}, {NAME => 'attributes', VERSIONS => 1}
-   * create 'daily_2011_180', {NAME => 'rollups', VERSIONS => 1}, {NAME=>'topicViews', VERSIONS=>1},{NAME=>'topicArticles',VERSIONS=>1},{NAME=>'topicSocialReferrerCounts',VERSIONS=>1},{NAME=>'topicSearchReferrerCounts',VERSIONS=>1}
-   * alter 'articles', NAME => 'html', VERSIONS =>1, COMPRESSION=>'lzo'
-   * alter 'articles', NAME => 'topics', VERSIONS =>1
-     */
     val create = "create '" + tableName + "', "
 
 
