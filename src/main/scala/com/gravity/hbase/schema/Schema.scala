@@ -3,8 +3,7 @@ package com.gravity.hbase.schema
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util._
 import scala.collection.JavaConversions._
-import org.apache.hadoop.hbase.{TableNotFoundException, HBaseConfiguration}
-import org.joda.time.DateTime
+import org.apache.hadoop.hbase.TableNotFoundException
 import org.apache.hadoop.conf.Configuration
 import scala.collection._
 import mutable.Buffer
@@ -24,6 +23,7 @@ abstract class ByteConverter[T] {
 }
 
 
+
 class QueryResult(val result: Result, table: HbaseTable) {
   def column[F, K, V](column: Column[F, K, V])(implicit c: ByteConverter[V]): V = c.fromBytes(result.getColumnLatest(column.familyBytes, column.columnBytes).getValue)
 
@@ -33,19 +33,95 @@ class QueryResult(val result: Result, table: HbaseTable) {
 class ScanQuery(table: HbaseTable) {
   val scan = new Scan()
 
-  def execute[T](handler:(QueryResult)=>T) {
-    table.withTable{htable=>
-      val scanner = htable.getScanner(scan)
-      for(result <- scanner) {
-        handler(new QueryResult(result,table))
-      }
+  def execute[T](handler: (QueryResult) => T) {
+    table.withTable {
+      htable =>
+        val scanner = htable.getScanner(scan)
+        for (result <- scanner) {
+          handler(new QueryResult(result, table))
+        }
     }
   }
 
-  def withStartKey[K](key:K)(implicit c:ByteConverter[K]) = {scan.setStartRow(c.toBytes(key));this}
-  def withEndKey[K](key:K)(implicit c:ByteConverter[K]) = {scan.setStopRow(c.toBytes(key));this}
+  def withStartKey[K](key: K)(implicit c: ByteConverter[K]) = {scan.setStartRow(c.toBytes(key)); this}
+
+  def withEndKey[K](key: K)(implicit c: ByteConverter[K]) = {scan.setStopRow(c.toBytes(key)); this}
 
 }
+
+class OpBase(table:HbaseTable, key:Array[Byte], previous: Buffer[OpBase] = Buffer()) {
+
+  previous += this
+
+  def put[T](key:T)(implicit c:ByteConverter[T]) = {
+    val po = new PutOp(table,c.toBytes(key),previous)
+    po
+  }
+
+  def increment[T](key:T)(implicit c:ByteConverter[T]) = {
+    val inc = new IncrementOp(table,c.toBytes(key),previous)
+    inc
+  }
+
+  def delete[T](key:T)(implicit c:ByteConverter[T]) = {
+    val del = new DeleteOp(table,c.toBytes(key),previous)
+    del
+  }
+
+  def execute() {
+    val rows = Buffer[Row]()
+    val increments = Buffer[Increment]()
+    table.withTable{table=>
+      previous.foreach{
+        case put:PutOp => {
+          rows += put.put
+        }
+        case delete:DeleteOp => {
+          rows += delete.delete
+        }
+        case increment:IncrementOp => {
+          increments += increment.increment
+        }
+      }
+
+      if(rows.size > 0) {
+        table.batch(rows)
+      }
+      if(increments.size > 0) {
+        increments.foreach(increment=>table.increment(increment))
+      }
+    }
+  }
+}
+
+class IncrementOp(table:HbaseTable, key:Array[Byte], previous: Buffer[OpBase] = Buffer()) extends OpBase(table,key,previous) {
+  val increment = new Increment(key)
+
+  def value[F, K, Long](column: Column[F, K, Long], value: java.lang.Long)(implicit c: ByteConverter[F], d: ByteConverter[K]) = {
+    increment.addColumn(column.familyBytes, column.columnBytes, value)
+    this
+  }
+}
+
+class PutOp(table:HbaseTable, key:Array[Byte], previous: Buffer[OpBase] = Buffer()) extends OpBase(table,key,previous) {
+  val put = new Put(key)
+
+  def value[F, K, V](column: Column[F, K, V], value: V)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) = {
+    put.add(column.familyBytes, column.columnBytes, e.toBytes(value))
+    this
+  }
+}
+
+class DeleteOp(table:HbaseTable, key:Array[Byte], previous: Buffer[OpBase] = Buffer()) extends OpBase(table,key,previous) {
+  val delete = new Delete(key)
+
+  def family[F, K, V](family : ColumnFamily[F,K,V]) = {
+    delete.deleteFamily(family.familyBytes)
+    this
+  }
+}
+
+
 
 class Query(table: HbaseTable) {
 
@@ -105,15 +181,16 @@ class Query(table: HbaseTable) {
       get.addColumn(columnFamily, column)
     }
 
-    table.withTable {htable =>
-      val results = htable.get(gets)
-      results.map(res=> new QueryResult(res,table))
+    table.withTable {
+      htable =>
+        val results = htable.get(gets)
+        results.map(res => new QueryResult(res, table))
     }
   }
 
 }
 
-class ColumnFamily[F, K, V](val familyName: F, val compressed:Boolean=false, val versions:Int=1)(implicit c: ByteConverter[F]) {
+class ColumnFamily[F, K, V](val familyName: F, val compressed: Boolean = false, val versions: Int = 1)(implicit c: ByteConverter[F]) {
   val familyBytes = c.toBytes(familyName)
 }
 
@@ -122,14 +199,20 @@ class Column[F, K, V](columnFamily: F, columnName: K)(implicit fc: ByteConverter
   val familyBytes = fc.toBytes(columnFamily)
 
 
-
   def getValue(res: QueryResult) = {
     kv.fromBytes(res.result.getColumnLatest(familyBytes, columnBytes).getValue)
   }
 }
 
+trait Schema {
+  val tables = Buffer[HbaseTable]()
 
-class HbaseTable(tableName: String)(implicit conf:Configuration) {
+  def table(tableName: String)(implicit conf: Configuration) {
+    tables += new HbaseTable(tableName)
+  }
+}
+
+class HbaseTable(tableName: String)(implicit conf: Configuration) {
   /*
   WARNING - Currently assumes the family names are strings (which is probably a best practice, but we support byte families)
    */
@@ -140,29 +223,29 @@ class HbaseTable(tableName: String)(implicit conf:Configuration) {
    * alter 'articles', NAME => 'html', VERSIONS =>1, COMPRESSION=>'lzo'
    * alter 'articles', NAME => 'topics', VERSIONS =>1
      */
-    val create = "create '"+tableName+"', "
+    val create = "create '" + tableName + "', "
 
 
-    create + (for(family <- families) yield {
-      "{NAME => '" + Bytes.toString(family.familyBytes) + "', VERSIONS => "+family.versions +
-      (if(family.compressed) ", COMPRESSION=>'lzo'" else "") +
-      "}"
+    create + (for (family <- families) yield {
+      "{NAME => '" + Bytes.toString(family.familyBytes) + "', VERSIONS => " + family.versions +
+              (if (family.compressed) ", COMPRESSION=>'lzo'" else "") +
+              "}"
     }).mkString(",")
   }
 
-  private val columns = Buffer[Column[_,_,_]]()
-  private val families = Buffer[ColumnFamily[_,_,_]]()
+  private val columns = Buffer[Column[_, _, _]]()
+  private val families = Buffer[ColumnFamily[_, _, _]]()
 
   def getTable(name: String) = new HTable(conf, name)
 
-  def column[F,K,V](columnFamily: ColumnFamily[F,K,_], columnName : K, valueClass: Class[V])(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) = {
-    val c = new Column[F,K,V](columnFamily.familyName,columnName)
+  def column[F, K, V](columnFamily: ColumnFamily[F, K, _], columnName: K, valueClass: Class[V])(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) = {
+    val c = new Column[F, K, V](columnFamily.familyName, columnName)
     columns += c
     c
   }
 
-  def family[F,K,V](familyName:F, compressed:Boolean=false, versions:Int=1)(implicit c:ByteConverter[F]) = {
-    val family = new ColumnFamily[F,K,V](familyName, compressed,versions)
+  def family[F, K, V](familyName: F, compressed: Boolean = false, versions: Int = 1)(implicit c: ByteConverter[F]) = {
+    val family = new ColumnFamily[F, K, V](familyName, compressed, versions)
     families += family
     family
   }
@@ -199,10 +282,13 @@ class HbaseTable(tableName: String)(implicit conf:Configuration) {
 
   def query = new Query(this)
 
+  def put[T](key:T)(implicit c:ByteConverter[T]) = new PutOp(this,c.toBytes(key))
+  def delete[T](key:T)(implicit c:ByteConverter[T]) = new DeleteOp(this, c.toBytes(key))
+  def increment[T](key:T)(implicit c:ByteConverter[T]) = new IncrementOp(this, c.toBytes(key))
 }
 
-case class YearDay(year:Int, day:Int)
+case class YearDay(year: Int, day: Int)
 
-case class CommaSet(items:Set[String])
+case class CommaSet(items: Set[String])
 
 
