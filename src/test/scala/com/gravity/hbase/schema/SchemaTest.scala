@@ -11,11 +11,10 @@ object ExampleSchema {
   implicit val conf = HBaseConfiguration.create
 
   object ExampleTable extends HbaseTable(tableName="schema_example") {
+
     val meta = family[String,String,Any]("meta")
-    val title = column[String,String,String](meta,"title")
-    val url = column[String,String,String](meta,"url")
-
-
+    val title = column(meta,"title", classOf[String])
+    val url = column(meta,"url", classOf[String])
   }
 
 }

@@ -155,7 +155,7 @@ class HbaseTable(tableName: String)(implicit conf:Configuration) {
 
   def getTable(name: String) = new HTable(conf, name)
 
-  def column[F,K,V](columnFamily: ColumnFamily[F,K,_], columnName : K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) = {
+  def column[F,K,V](columnFamily: ColumnFamily[F,K,_], columnName : K, valueClass: Class[V])(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) = {
     val c = new Column[F,K,V](columnFamily.familyName,columnName)
     columns += c
     c
