@@ -1,16 +1,16 @@
 package com.gravity.hbase.schema
 
-import org.junit.Test
 import org.apache.hadoop.hbase.HBaseTestingUtility
 import org.apache.hadoop.hbase.util.Bytes
 import collection.mutable.ArrayBuffer
+import org.junit._
+import junit.framework.TestCase
 
 /*             )\._.,--....,'``.
- .b--.        /;   _.. \   _\  (`._ ,.
+.b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
-
-class ClusterTest {
+object ClusterTest {
   val htest = new HBaseTestingUtility()
   htest.startMiniCluster()
   val fams = ArrayBuffer[Array[Byte]]()
@@ -19,9 +19,12 @@ class ClusterTest {
   fams += Bytes.toBytes("viewsByDay")
 
   val table = htest.createTable(Bytes.toBytes("schema_example"), fams.toArray)
-  implicit val conf = htest.getConfiguration
+}
+
+class ClusterTest extends TestCase {
 
   object ExampleSchema extends Schema {
+    implicit val conf = ClusterTest.htest.getConfiguration
 
     class ExampleTable extends HbaseTable[ExampleTable](tableName = "schema_example") {
       val meta = family[String, String, Any]("meta")
@@ -38,7 +41,7 @@ class ClusterTest {
 
   }
 
-  @Test def createAndDelete() {
+  @Test def testCreateAndDelete() {
     val create = ExampleSchema.ExampleTable.createScript()
     println(create)
   }
