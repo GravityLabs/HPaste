@@ -356,7 +356,7 @@ class HbaseTable[T,R](tableName: String)(implicit conf: Configuration) {
   }
 
   def family[F, K, V](familyName: F, compressed: Boolean = false, versions: Int = 1)(implicit c: ByteConverter[F]) = {
-    val family = new ColumnFamily[T, R, F, K, V](this, familyName, compressed, versions)
+    val family = new ColumnFamily[T,R,F,K,V](this, familyName, compressed, versions)
     families += family
     family
   }
@@ -393,9 +393,9 @@ class HbaseTable[T,R](tableName: String)(implicit conf: Configuration) {
 
   def query = new Query(this)
 
-  def put(key:R)(implicit c:ByteConverter[R]) = new PutOp[T,R](this,c.toBytes(key))
-  def delete(key:R)(implicit c:ByteConverter[R]) = new DeleteOp[T,R](this, c.toBytes(key))
-  def increment(key:R)(implicit c:ByteConverter[R]) = new IncrementOp[T,R](this, c.toBytes(key))
+  def put(key:R)(implicit c:ByteConverter[R]) = new PutOp(this,c.toBytes(key))
+  def delete(key:R)(implicit c:ByteConverter[R]) = new DeleteOp(this, c.toBytes(key))
+  def increment(key:R)(implicit c:ByteConverter[R]) = new IncrementOp(this, c.toBytes(key))
 }
 
 case class YearDay(year: Int, day: Int)
