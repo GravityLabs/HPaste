@@ -117,6 +117,7 @@ class OpBase[T,R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpBas
       }
 
       if(deletes.size > 0 || puts.size > 0) {
+        //IN THEORY, the operations will happen in order.  If not, break this into two different batched calls for deletes and puts
         table.batch(deletes ++ puts)
       }
       if(increments.size > 0) {
