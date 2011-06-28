@@ -98,7 +98,9 @@ class OpBase[T,R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpBas
     del
   }
 
-  def execute() {
+  def size = previous.size
+
+  def execute() = {
     val puts = Buffer[Put]()
     val deletes = Buffer[Delete]()
     val increments = Buffer[Increment]()
@@ -124,8 +126,12 @@ class OpBase[T,R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpBas
         increments.foreach(increment=>table.increment(increment))
       }
     }
+
+    OpsResult(deletes.size, puts.size, increments.size)
   }
 }
+
+case class OpsResult(numDeletes: Int, numPuts: Int, numIncrements: Int)
 
 /**
 * An increment operation -- can increment multiple columns in a single go.
