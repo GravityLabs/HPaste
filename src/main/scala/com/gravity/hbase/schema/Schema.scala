@@ -26,7 +26,7 @@ abstract class ByteConverter[T] {
 /**
 * When a query comes back, there are a bucket of column families and columns to retrieve.  This class retrieves them.
 */
-class QueryResult[T](val result: Result, table: HbaseTable[T]) {
+class QueryResult[T](val result: Result, table: HbaseTable[T], keyConvertor: ByteConverter[_] = StringConverter) {
   def column[F, K, V](column: (T) => Column[T, F, K, V])(implicit c: ByteConverter[V]): Option[V] = {
     val co = column(table.pops)
     val col = result.getColumnLatest(co.familyBytes, co.columnBytes)
@@ -49,6 +49,7 @@ class QueryResult[T](val result: Result, table: HbaseTable[T]) {
     }
   }
 
+  def rowid = keyConvertor.fromBytes(result.getRow)
 }
 
 /**
@@ -193,9 +194,17 @@ class Query[T](table: HbaseTable[T]) {
   val families = Buffer[Array[Byte]]()
   val columns = Buffer[(Array[Byte], Array[Byte])]()
 
+  private[schema] var keyConvertor: ByteConverter[_] = StringConverter
+
 
   def withKey[K](key: K)(implicit c: ByteConverter[K]) = {
     keys += c.toBytes(key)
+    keyConvertor = c
+    this
+  }
+
+  def withKeys[K](keys: Set[K])(implicit c: ByteConverter[K]) = {
+    for (key <- keys) withKey(key)(c)
     this
   }
 
@@ -228,7 +237,7 @@ class Query[T](table: HbaseTable[T]) {
       get.addColumn(columnFamily, column)
     }
 
-    table.withTable {htable => new QueryResult(htable.get(get), table)}
+    table.withTable {htable => new QueryResult(htable.get(get), table, keyConvertor)}
   }
 
   def execute() = {
@@ -246,7 +255,7 @@ class Query[T](table: HbaseTable[T]) {
     table.withTable {
       htable =>
         val results = htable.get(gets)
-        results.map(res => new QueryResult(res, table))
+        results.map(res => new QueryResult(res, table, keyConvertor))
     }
   }
 
@@ -268,6 +277,18 @@ class Column[T, F, K, V](table:HbaseTable[T], columnFamily: F, columnName: K)(im
 
   def getValue(res: QueryResult[T]) = {
     kv.fromBytes(res.result.getColumnLatest(familyBytes, columnBytes).getValue)
+  }
+
+  def apply(res: QueryResult[T]): Option[V] = {
+    val rawValue = res.result.getColumnLatest(familyBytes, columnBytes)
+    if (rawValue == null) None else {
+      Some(kv.fromBytes(rawValue.getValue))
+    }
+  }
+
+  def getOrDefault(res: QueryResult[T], default: V): V = apply(res) match {
+    case Some(value) => value
+    case None => default
   }
 }
 

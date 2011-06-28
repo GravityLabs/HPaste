@@ -24,21 +24,35 @@ package object schema {
     override def fromBytes(bytes: Array[Byte]) = Bytes.toLong(bytes)
   }
 
+  implicit object DoubleConverter extends ByteConverter[Double] {
+    override def toBytes(t: Double) = Bytes.toBytes(t)
+
+    override def fromBytes(bytes: Array[Byte]) = Bytes.toDouble(bytes)
+  }
+
+  implicit object FloatConverter extends ByteConverter[Float] {
+    override def toBytes(t: Float) = Bytes.toBytes(t)
+
+    override def fromBytes(bytes: Array[Byte]) = Bytes.toFloat(bytes)
+  }
+
   implicit object DateTimeConverter extends ByteConverter[DateTime] {
     override def toBytes(t:DateTime) = Bytes.toBytes(t.getMillis)
     override def fromBytes(bytes:Array[Byte]) = new DateTime(Bytes.toLong(bytes))
   }
 
   implicit object CommaSetConverter extends ByteConverter[CommaSet] {
+    val SPLITTER = ",".r
     override def toBytes(t:CommaSet) = Bytes.toBytes(t.items.mkString(","))
-    override def fromBytes(bytes:Array[Byte]) = new CommaSet(Bytes.toString(bytes).split(",").toSet)
+    override def fromBytes(bytes:Array[Byte]) = new CommaSet(SPLITTER.split(Bytes.toString(bytes)).toSet)
   }
 
   implicit object YearDayConverter extends ByteConverter[YearDay] {
+    val SPLITTER = "_".r
     override def toBytes(t:YearDay) = Bytes.toBytes(t.year.toString + "_" + t.day.toString)
     override def fromBytes(bytes:Array[Byte]) = {
       val strRep = Bytes.toString(bytes)
-      val strRepSpl = strRep.split("_")
+      val strRepSpl = SPLITTER.split(strRep)
       val year = strRepSpl(0).toInt
       val day = strRepSpl(1).toInt
       YearDay(year,day)

@@ -3,7 +3,8 @@ package com.gravity.hbase.schema
 import org.apache.hadoop.hbase.HBaseTestingUtility
 import org.apache.hadoop.hbase.util.Bytes
 import collection.mutable.ArrayBuffer
-import org.junit._
+import org.junit.Test
+import org.junit.Assert._
 import junit.framework.TestCase
 
 /*             )\._.,--....,'``.
@@ -91,6 +92,22 @@ class ClusterTest extends TestCase {
     val views = ExampleSchema.ExampleTable.query.withKey("Chris").withColumn(_.views).single().column(_.views)
 
     println("Views: " + views.get)
+  }
+
+  @Test def testWithKeys() {
+    ExampleSchema.ExampleTable.put("Robbie").value(_.title, "My Bros, My Probs")
+            .put("Ronnie").value(_.title, "My Weights, My Muskellz").execute()
+
+    val bros = ExampleSchema.ExampleTable.query.withKeys(Set("Robbie", "Ronnie")).withColumnFamily(_.meta).execute()
+
+    if (bros.isEmpty) fail("Failed to retrieve the data we just put!")
+
+    for (bro <- bros) {
+      ExampleSchema.ExampleTable.title(bro) match {
+        case Some(title) => println("%nBro: %s; title: %s".format(bro.rowid, title))
+        case None => fail("FAILED TO GET TITLE!")
+      }
+    }
   }
 }
 
