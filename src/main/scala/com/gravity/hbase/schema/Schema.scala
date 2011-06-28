@@ -83,39 +83,41 @@ class OpBase[T,R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpBas
 
   previous += this
 
-  def put[K](key:K)(implicit c:ByteConverter[K]) = {
+  def put(key:R)(implicit c:ByteConverter[R]) = {
     val po = new PutOp(table,c.toBytes(key),previous)
     po
   }
 
-  def increment[K](key:K)(implicit c:ByteConverter[K]) = {
+  def increment(key:R)(implicit c:ByteConverter[R]) = {
     val inc = new IncrementOp(table,c.toBytes(key),previous)
     inc
   }
 
-  def delete[K](key:K)(implicit c:ByteConverter[K]) = {
+  def delete(key:R)(implicit c:ByteConverter[R]) = {
     val del = new DeleteOp(table,c.toBytes(key),previous)
     del
   }
 
   def execute() {
-    val rows = Buffer[Row]()
+    val puts = Buffer[Put]()
+    val deletes = Buffer[Delete]()
     val increments = Buffer[Increment]()
     table.withTable{table=>
+
       previous.foreach{
-        case put:PutOp[_,_] => {
-          rows += put.put
+        case put:PutOp[T,R] => {
+          puts += put.put
         }
-        case delete:DeleteOp[_,_] => {
-          rows += delete.delete
+        case delete:DeleteOp[T,R] => {
+          deletes += delete.delete
         }
-        case increment:IncrementOp[_,_] => {
+        case increment:IncrementOp[T,R] => {
           increments += increment.increment
         }
       }
 
-      if(rows.size > 0) {
-        table.batch(rows)
+      if(deletes.size > 0 || puts.size > 0) {
+        table.batch(deletes ++ puts)
       }
       if(increments.size > 0) {
         increments.foreach(increment=>table.increment(increment))
