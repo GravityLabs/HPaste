@@ -18,6 +18,11 @@ package object schema {
     override def fromBytes(bytes: Array[Byte]) = Bytes.toString(bytes)
   }
 
+  implicit object IntConverter extends ByteConverter[Int] {
+    override def toBytes(t:Int) = Bytes.toBytes(t)
+    override def fromBytes(bytes: Array[Byte]) = Bytes.toInt(bytes)
+  }
+
   implicit object LongConverter extends ByteConverter[Long] {
     override def toBytes(t: Long) = Bytes.toBytes(t)
 

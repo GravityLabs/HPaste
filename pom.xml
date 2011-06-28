@@ -107,8 +107,10 @@
           <disableXmlReport>true</disableXmlReport>
           <includes>
             <include>**/*Test.*</include>
-            <include>**/*Suite.*</include>
           </includes>
+          <excludes>
+            <exclude>**/*IT.*</exclude>
+          </excludes>
         </configuration>
       </plugin>
     </plugins>
