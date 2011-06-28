@@ -259,6 +259,27 @@ class Query[T,R](table: HbaseTable[T,R]) {
     }
   }
 
+  def executeMap(implicit c:ByteConverter[R]) = {
+    val gets = for (key <- keys) yield {
+      new Get(key)
+    }
+    for (family <- families; get <- gets) {
+      get.addFamily(family)
+    }
+    for ((columnFamily, column) <- columns; get <- gets) {
+      get.addColumn(columnFamily, column)
+    }
+
+    table.withTable {
+      htable =>
+        val results = htable.get(gets)
+        results.map(res => {
+          val qr = new QueryResult[T,R](res, table)
+          (qr.rowid -> qr)
+        })
+    }
+  }
+
 }
 
 /**
@@ -298,6 +319,9 @@ trait Schema {
 
 /**
 * Represents a Table.  Expects an instance of HBaseConfiguration to be present.
+* A parameter-type T should be the actual table that is implementing this one (this is to allow syntactic sugar for easily specifying columns during
+* queries).
+* A parameter-type R should be the type of the key for the table.  
 */
 class HbaseTable[T,R](tableName: String)(implicit conf: Configuration) {
 
