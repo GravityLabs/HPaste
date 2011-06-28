@@ -37,7 +37,7 @@ class QueryResult[T,R](val result: Result, table: HbaseTable[T,R]) {
     }
   }
 
-  def family[F, K, V](family:(T)=>ColumnFamily[T, R, F, K, V])(implicit c:ByteConverter[F], d:ByteConverter[K], e:ByteConverter[V]) = {
+  def family[F, K, V](family:(T)=>ColumnFamily[T, R, F, K, V])(implicit c:ByteConverter[F], d:ByteConverter[K], e:ByteConverter[V]): Map[K, V] = {
 
     val familyMap = result.getFamilyMap(family(table.pops).familyBytes)
     if(familyMap != null) {
@@ -45,7 +45,8 @@ class QueryResult[T,R](val result: Result, table: HbaseTable[T,R]) {
         d.fromBytes(column) -> e.fromBytes(value)
       }
     }else {
-      Map[K,V]()
+      val mt = Map.empty[K,V]
+      mt
     }
   }
 
@@ -203,12 +204,9 @@ class Query[T,R](table: HbaseTable[T,R]) {
   val families = Buffer[Array[Byte]]()
   val columns = Buffer[(Array[Byte], Array[Byte])]()
 
-  private[schema] var keyConvertor: ByteConverter[_] = StringConverter
-
 
   def withKey(key: R)(implicit c: ByteConverter[R]) = {
     keys += c.toBytes(key)
-    keyConvertor = c
     this
   }
 
@@ -344,9 +342,8 @@ class HbaseTable[T,R](tableName: String)(implicit conf: Configuration) {
 
 
     create + (for (family <- families) yield {
-      "{NAME => '" + Bytes.toString(family.familyBytes) + "', VERSIONS => " + family.versions +
-              (if (family.compressed) ", COMPRESSION=>'lzo'" else "") +
-              "}"
+      val compression = if (family.compressed) ", COMPRESSION=>'lzo'" else ""
+      "{NAME => '%s', VERSIONS => %d%s}".format(Bytes.toString(family.familyBytes), family.versions, compression)
     }).mkString(",")
   }
 

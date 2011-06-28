@@ -14,7 +14,6 @@ import org.joda.time.DateTime
 package object schema {
   implicit object StringConverter extends ByteConverter[String] {
     override def toBytes(t: String) = Bytes.toBytes(t)
-
     override def fromBytes(bytes: Array[Byte]) = Bytes.toString(bytes)
   }
 
@@ -23,21 +22,28 @@ package object schema {
     override def fromBytes(bytes: Array[Byte]) = Bytes.toInt(bytes)
   }
 
+  implicit object ShortConverter extends ByteConverter[Short] {
+    override def toBytes(t:Short) = Bytes.toBytes(t)
+    override def fromBytes(bytes: Array[Byte]) = Bytes.toShort(bytes)
+  }
+
+  implicit object BooleanConverter extends ByteConverter[Boolean] {
+    override def toBytes(t:Boolean) = Bytes.toBytes(t)
+    override def fromBytes(bytes: Array[Byte]) = Bytes.toBoolean(bytes)
+  }
+
   implicit object LongConverter extends ByteConverter[Long] {
     override def toBytes(t: Long) = Bytes.toBytes(t)
-
     override def fromBytes(bytes: Array[Byte]) = Bytes.toLong(bytes)
   }
 
   implicit object DoubleConverter extends ByteConverter[Double] {
     override def toBytes(t: Double) = Bytes.toBytes(t)
-
     override def fromBytes(bytes: Array[Byte]) = Bytes.toDouble(bytes)
   }
 
   implicit object FloatConverter extends ByteConverter[Float] {
     override def toBytes(t: Float) = Bytes.toBytes(t)
-
     override def fromBytes(bytes: Array[Byte]) = Bytes.toFloat(bytes)
   }
 
