@@ -27,7 +27,7 @@ class ClusterTest extends TestCase {
   object ExampleSchema extends Schema {
     implicit val conf = ClusterTest.htest.getConfiguration
 
-    class ExampleTable extends HbaseTable[ExampleTable](tableName = "schema_example") {
+    class ExampleTable extends HbaseTable[ExampleTable,String](tableName = "schema_example") {
       val meta = family[String, String, Any]("meta")
       val title = column(meta, "title", classOf[String])
       val url = column(meta, "url", classOf[String])
@@ -47,7 +47,7 @@ class ClusterTest extends TestCase {
     println(create)
   }
 
-  def dumpViewMap(key: Long) {
+  def dumpViewMap(key: String) {
     val dayViewsRes = ExampleSchema.ExampleTable.query.withKey(key).withColumnFamily(_.viewCountsByDay).single()
     val dayViewsMap = dayViewsRes.family(_.viewCountsByDay)
 
@@ -63,9 +63,11 @@ class ClusterTest extends TestCase {
             .increment("Chris").value(_.views, 10l)
             .execute()
 
-    ExampleSchema.ExampleTable.put(1346l).value(_.title, "My kittens").execute
+    val id = "Bill"
 
-    ExampleSchema.ExampleTable.put(1346l).valueMap(_.viewCounts, Map("Today" -> 61l, "Yesterday" -> 86l)).execute
+    ExampleSchema.ExampleTable.put(id).value(_.title, "My kittens").execute
+
+    ExampleSchema.ExampleTable.put(id).valueMap(_.viewCounts, Map("Today" -> 61l, "Yesterday" -> 86l)).execute
 
     val dayMap = Map(
       YearDay(2011, 63) -> 64l,
@@ -73,7 +75,6 @@ class ClusterTest extends TestCase {
       YearDay(2011, 65) -> 67l
     )
 
-    val id = 1346l
 
     ExampleSchema.ExampleTable.put(id).valueMap(_.viewCountsByDay, dayMap).execute
 
