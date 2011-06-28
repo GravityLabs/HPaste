@@ -69,9 +69,9 @@ class ScanQuery[T,R](table: HbaseTable[T,R]) {
     }
   }
 
-  def withStartKey[K](key: K)(implicit c: ByteConverter[K]) = {scan.setStartRow(c.toBytes(key)); this}
+  def withStartKey[R](key: R)(implicit c: ByteConverter[R]) = {scan.setStartRow(c.toBytes(key)); this}
 
-  def withEndKey[K](key: K)(implicit c: ByteConverter[K]) = {scan.setStopRow(c.toBytes(key)); this}
+  def withEndKey[R](key: R)(implicit c: ByteConverter[R]) = {scan.setStopRow(c.toBytes(key)); this}
 
 }
 
@@ -200,13 +200,13 @@ class Query[T,R](table: HbaseTable[T,R]) {
   private[schema] var keyConvertor: ByteConverter[_] = StringConverter
 
 
-  def withKey[R](key: R)(implicit c: ByteConverter[R]) = {
+  def withKey(key: R)(implicit c: ByteConverter[R]) = {
     keys += c.toBytes(key)
     keyConvertor = c
     this
   }
 
-  def withKeys[R](keys: Set[R])(implicit c: ByteConverter[R]) = {
+  def withKeys(keys: Set[R])(implicit c: ByteConverter[R]) = {
     for (key <- keys) withKey(key)(c)
     this
   }
