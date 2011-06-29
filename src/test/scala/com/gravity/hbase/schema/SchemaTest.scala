@@ -48,7 +48,8 @@ class ClusterTest extends TestCase {
   }
 
   def dumpViewMap(key: String) {
-    val dayViewsRes = ExampleSchema.ExampleTable.query.withKey(key).withColumnFamily(_.viewCountsByDay).single()
+    val dayViewsRes = ExampleSchema.ExampleTable.query.withKey(key).withColumnFamily(_.viewCountsByDay).withColumn(_.views).withColumn(_.title).single()
+
     val dayViewsMap = dayViewsRes.family(_.viewCountsByDay)
 
     for ((yearDay, views) <- dayViewsMap) {
@@ -91,6 +92,9 @@ class ClusterTest extends TestCase {
     dumpViewMap(id)
 
     val views = ExampleSchema.ExampleTable.query.withKey("Chris").withColumn(_.views).single().column(_.views)
+
+    val myviewqueryresult = ExampleSchema.ExampleTable.query.withKey("Chris").withColumn(_.views).single()
+
 
     println("Views: " + views.get)
   }
