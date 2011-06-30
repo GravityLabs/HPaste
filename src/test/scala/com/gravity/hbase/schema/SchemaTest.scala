@@ -33,6 +33,9 @@ class ClusterTest extends TestCase {
       val url = column(meta, "url", classOf[String])
       val views = column(meta, "views", classOf[Long])
 
+      val viewsArr = column(meta,"viewsArr", classOf[Seq[String]])
+      val viewsMap = column(meta,"viewsMap", classOf[Map[String,Long]])
+
       val viewCounts = family[String, String, Long]("views")
 
       val viewCountsByDay = family[String, YearDay, Long]("viewsByDay")
@@ -61,8 +64,19 @@ class ClusterTest extends TestCase {
     ExampleSchema.ExampleTable
             .put("Chris").value(_.title, "My Life, My Times")
             .put("Joe").value(_.title, "Joe's Life and Times")
+            .put("Fred").value(_.viewsArr,Seq("Chris","Bissell"))
             .increment("Chris").value(_.views, 10l)
+            .put("Fred").value(_.viewsMap, Map("Chris"->50l,"Bissell"->100l))
             .execute()
+
+    val arrRes = ExampleSchema.ExampleTable.query.withKey("Fred").withColumn(_.viewsArr).withColumn(_.viewsMap).single()
+
+    val arr = arrRes.column(_.viewsArr)
+
+    arr.get.foreach(println)
+
+    val arrMap = arrRes.column(_.viewsMap)
+    arrMap.get.foreach((tuple: (String, Long)) => println(tuple._1 + " views " + tuple._2))
 
     val id = "Bill"
 

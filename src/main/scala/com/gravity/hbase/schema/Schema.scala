@@ -46,6 +46,107 @@ abstract class ComplexByteConverter[T] extends ByteConverter[T] {
   def read(input:DataInputStream) : T
 }
 
+class MapConverter[K, V, MP <: Map[K,V]](implicit c:ByteConverter[K], d:ByteConverter[V]) extends ComplexByteConverter[MP] {
+  override def write(map:MP, output:DataOutputStream) {
+    val length = map.size
+    output.writeInt(length)
+
+    for((k,v) <- map) {
+      val keyBytes = c.toBytes(k)
+      val valBytes = d.toBytes(v)
+      output.writeInt(keyBytes.size)
+      output.write(keyBytes)
+      output.writeInt(valBytes.size)
+      output.write(valBytes)
+    }
+  }
+  
+  override def read(input:DataInputStream) = {
+    val length = input.readInt()
+    val map = mutable.Map[K,V]()
+    for(i <- 0 until length) {
+      val keyLength = input.readInt
+      val keyArr = new Array[Byte](keyLength)
+      input.read(keyArr)
+      val key = c.fromBytes(keyArr)
+
+      val valLength = input.readInt
+      val valArr = new Array[Byte](valLength)
+      input.read(valArr)
+      val value = d.fromBytes(valArr)
+
+      map.put(key,value)
+    }
+    map.asInstanceOf[MP]
+  }
+}
+
+class SetConverter[T, ST <: Set[T]](implicit c:ByteConverter[T]) extends ComplexByteConverter[ST] {
+  override def write(seq:ST, output:DataOutputStream) {
+    writeSeq(seq,output)
+  }
+
+  def writeSeq(seq:ST, output:DataOutputStream)  {
+      val length = seq.size
+    output.writeInt(length)
+
+    for(t <- seq){
+      val bytes = c.toBytes(t)
+      output.writeInt(bytes.size)
+      output.write(bytes)
+    }
+  }
+
+  override def read(input:DataInputStream) = readSeq(input)
+
+  def readSeq(input:DataInputStream)= {
+    val length = input.readInt()
+    val buffer = Buffer[T]()
+    for(i <- 0 until length) {
+      val arrLength = input.readInt()
+      val arr = new Array[Byte](arrLength)
+      input.read(arr)
+      buffer += c.fromBytes(arr)
+    }
+    buffer.toSet.asInstanceOf[ST]
+  }
+
+}
+
+class SeqConverter[T, ST <: Seq[T]](implicit c:ByteConverter[T]) extends ComplexByteConverter[ST] {
+  override def write(seq:ST, output:DataOutputStream) {
+    writeSeq(seq,output)
+  }
+
+  def writeSeq(seq:ST, output:DataOutputStream)  {
+      val length = seq.size
+    output.writeInt(length)
+
+    for(t <- seq){
+      val bytes = c.toBytes(t)
+      output.writeInt(bytes.size)
+      output.write(bytes)
+    }
+  }
+
+  override def read(input:DataInputStream) = readSeq(input)
+
+  def readSeq(input:DataInputStream)= {
+    val length = input.readInt()
+    val buffer = Buffer[T]()
+    for(i <- 0 until length) {
+      val arrLength = input.readInt()
+      val arr = new Array[Byte](arrLength)
+      input.read(arr)
+      buffer += c.fromBytes(arr)
+    }
+    buffer.toIndexedSeq.asInstanceOf[ST]
+  }
+
+}
+
+
+
 
 /**
 * When a query comes back, there are a bucket of column families and columns to retrieve.  This class retrieves them.
