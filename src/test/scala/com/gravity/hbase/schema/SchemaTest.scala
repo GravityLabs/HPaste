@@ -73,6 +73,19 @@ class ClusterTest extends TestCase {
     Assert.assertEquals(returnedMap("Fred"), 100l)
   }
 
+  @Test def testSeqs() {
+    ExampleSchema.ExampleTable
+      .put("SeqTest").value(_.viewsArr, Seq("Chris","Fred","Bill"))
+      .execute()
+
+    val res = ExampleSchema.ExampleTable.query.withKey("SeqTest").withColumn(_.viewsArr).single()
+
+    val resSeq = res.column(_.viewsArr).get
+    Assert.assertEquals(resSeq(0),"Chris")
+    Assert.assertEquals(resSeq(1),"Fred")
+    Assert.assertEquals(resSeq(2),"Bill")
+  }
+
   @Test def testPut() {
     ExampleSchema.ExampleTable
             .put("Chris").value(_.title, "My Life, My Times")
