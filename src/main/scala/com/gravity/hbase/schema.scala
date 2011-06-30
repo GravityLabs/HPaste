@@ -4,6 +4,7 @@ import org.apache.hadoop.hbase.util.Bytes
 import org.joda.time.DateTime
 import java.io.{DataInputStream, DataOutputStream}
 import collection.mutable.Buffer
+import scala.collection._
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -99,6 +100,6 @@ package object schema {
   implicit object YearDaySetConverter extends SetConverter[YearDay,Set[YearDay]]
 
 
-  implicit object StringLongMap extends MapConverter[String,Long,Map[String,Long]]
+  implicit object StringLongMap extends MapConverter[String,Long,mutable.Map[String,Long]]
 
 }

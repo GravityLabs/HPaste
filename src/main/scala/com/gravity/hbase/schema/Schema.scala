@@ -46,7 +46,7 @@ abstract class ComplexByteConverter[T] extends ByteConverter[T] {
   def read(input:DataInputStream) : T
 }
 
-class MapConverter[K, V, MP <: Map[K,V]](implicit c:ByteConverter[K], d:ByteConverter[V]) extends ComplexByteConverter[MP] {
+class MapConverter[K, V, MP <: mutable.Map[K,V]](implicit c:ByteConverter[K], d:ByteConverter[V]) extends ComplexByteConverter[MP] {
   override def write(map:MP, output:DataOutputStream) {
     val length = map.size
     output.writeInt(length)

@@ -3,9 +3,10 @@ package com.gravity.hbase.schema
 import org.apache.hadoop.hbase.HBaseTestingUtility
 import org.apache.hadoop.hbase.util.Bytes
 import collection.mutable.ArrayBuffer
-import org.junit.Test
 import org.junit.Assert._
 import junit.framework.TestCase
+import org.junit.{Assert, Test}
+import scala.collection._
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -34,7 +35,7 @@ class ClusterTest extends TestCase {
       val views = column(meta, "views", classOf[Long])
 
       val viewsArr = column(meta,"viewsArr", classOf[Seq[String]])
-      val viewsMap = column(meta,"viewsMap", classOf[Map[String,Long]])
+      val viewsMap = column(meta,"viewsMap", classOf[mutable.Map[String,Long]])
 
       val viewCounts = family[String, String, Long]("views")
 
@@ -60,13 +61,25 @@ class ClusterTest extends TestCase {
     }
   }
 
+  @Test def testMaps() {
+    ExampleSchema.ExampleTable
+      .put("MapTest").value(_.viewsMap,mutable.Map("Chris"->50l, "Fred" -> 100l))
+      .execute()
+
+    val res = ExampleSchema.ExampleTable.query.withKey("MapTest").withColumn(_.viewsMap).single()
+    val returnedMap = res.column(_.viewsMap).get
+
+    Assert.assertEquals(returnedMap("Chris"), 50l)
+    Assert.assertEquals(returnedMap("Fred"), 100l)
+  }
+
   @Test def testPut() {
     ExampleSchema.ExampleTable
             .put("Chris").value(_.title, "My Life, My Times")
             .put("Joe").value(_.title, "Joe's Life and Times")
             .put("Fred").value(_.viewsArr,Seq("Chris","Bissell"))
             .increment("Chris").value(_.views, 10l)
-            .put("Fred").value(_.viewsMap, Map("Chris"->50l,"Bissell"->100l))
+            .put("Fred").value(_.viewsMap, mutable.Map("Chris"->50l,"Bissell"->100l))
             .execute()
 
     val arrRes = ExampleSchema.ExampleTable.query.withKey("Fred").withColumn(_.viewsArr).withColumn(_.viewsMap).single()
