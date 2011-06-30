@@ -7,6 +7,7 @@ import org.apache.hadoop.hbase.TableNotFoundException
 import org.apache.hadoop.conf.Configuration
 import scala.collection._
 import mutable.Buffer
+import java.io._
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -20,6 +21,29 @@ abstract class ByteConverter[T] {
   def toBytes(t: T): Array[Byte]
 
   def fromBytes(bytes: Array[Byte]): T
+}
+
+/**
+* Simple high performance conversions from complex types to bytes
+*/
+abstract class ComplexByteConverter[T] extends ByteConverter[T] {
+  override def toBytes(t: T) : Array[Byte] = {
+    val bos = new ByteArrayOutputStream()
+
+    val dout = new DataOutputStream(bos)
+    write(t, dout)
+
+    bos.toByteArray
+  }
+
+  def write(data: T, output:DataOutputStream)
+
+  override def fromBytes(bytes:Array[Byte]):T = {
+    val din = new DataInputStream(new ByteArrayInputStream(bytes))
+    read(din)
+  }
+
+  def read(input:DataInputStream) : T
 }
 
 
@@ -61,7 +85,7 @@ class ScanQuery[T,R](table: HbaseTable[T,R]) {
   val scan = new Scan()
 
   def execute(handler: (QueryResult[T,R]) => Unit) {
-    table.withTable {
+    table.withTable() {
       htable =>
         val scanner = htable.getScanner(scan)
         for (result <- scanner) {
@@ -101,11 +125,11 @@ class OpBase[T,R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpBas
 
   def size = previous.size
 
-  def execute() = {
+  def execute(tableName:String = table.tableName) = {
     val puts = Buffer[Put]()
     val deletes = Buffer[Delete]()
     val increments = Buffer[Increment]()
-    table.withTable{table=>
+    table.withTable(tableName){table=>
 
       previous.foreach{
         case put:PutOp[T,R] => {
@@ -233,7 +257,7 @@ class Query[T,R](table: HbaseTable[T,R]) {
     this
   }
 
-  def single() = {
+  def single(tableName:String = table.tableName) = {
     require(keys.size == 1, "Calling single() with more than one key")
     val get = new Get(keys(0))
 
@@ -244,10 +268,10 @@ class Query[T,R](table: HbaseTable[T,R]) {
       get.addColumn(columnFamily, column)
     }
 
-    table.withTable {htable => new QueryResult(htable.get(get), table)}
+    table.withTable(tableName) {htable => new QueryResult(htable.get(get), table)}
   }
 
-  def execute() = {
+  def execute(tableName:String = table.tableName) = {
 
     val gets = for (key <- keys) yield {
       new Get(key)
@@ -259,14 +283,14 @@ class Query[T,R](table: HbaseTable[T,R]) {
       get.addColumn(columnFamily, column)
     }
 
-    table.withTable {
+    table.withTable(tableName) {
       htable =>
         val results = htable.get(gets)
         results.map(res => new QueryResult(res, table))
     }
   }
 
-  def executeMap(implicit c:ByteConverter[R]) = {
+  def executeMap(tableName:String = table.tableName)(implicit c:ByteConverter[R]) = {
     val gets = for (key <- keys) yield {
       new Get(key)
     }
@@ -277,7 +301,7 @@ class Query[T,R](table: HbaseTable[T,R]) {
       get.addColumn(columnFamily, column)
     }
 
-    table.withTable {
+    table.withTable(tableName) {
       htable =>
         val results = htable.get(gets)
         results.map(res => {
@@ -330,7 +354,7 @@ trait Schema {
 * queries).
 * A parameter-type R should be the type of the key for the table.  
 */
-class HbaseTable[T,R](tableName: String)(implicit conf: Configuration) {
+class HbaseTable[T,R](val tableName: String)(implicit conf: Configuration) {
 
   def pops = this.asInstanceOf[T]
 
@@ -383,8 +407,8 @@ class HbaseTable[T,R](tableName: String)(implicit conf: Configuration) {
   }
 
 
-  def withTable[Q](funct: (HTable) => Q) : Q = {
-    withTableOption(tableName) {
+  def withTable[Q](mytableName:String = tableName)(funct: (HTable) => Q) : Q = {
+    withTableOption(mytableName) {
       case Some(table) => {
         funct(table)
       }

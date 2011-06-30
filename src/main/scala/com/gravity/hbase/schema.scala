@@ -12,6 +12,7 @@ import org.joda.time.DateTime
 * This is the standard set of types that can be auto converted into hbase values (they work as families, columns, and values)
 */
 package object schema {
+
   implicit object StringConverter extends ByteConverter[String] {
     override def toBytes(t: String) = Bytes.toBytes(t)
     override def fromBytes(bytes: Array[Byte]) = Bytes.toString(bytes)

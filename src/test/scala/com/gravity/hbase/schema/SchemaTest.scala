@@ -66,9 +66,9 @@ class ClusterTest extends TestCase {
 
     val id = "Bill"
 
-    ExampleSchema.ExampleTable.put(id).value(_.title, "My kittens").execute
+    ExampleSchema.ExampleTable.put(id).value(_.title, "My kittens").execute()
 
-    ExampleSchema.ExampleTable.put(id).valueMap(_.viewCounts, Map("Today" -> 61l, "Yesterday" -> 86l)).execute
+    ExampleSchema.ExampleTable.put(id).valueMap(_.viewCounts, Map("Today" -> 61l, "Yesterday" -> 86l)).execute()
 
     val dayMap = Map(
       YearDay(2011, 63) -> 64l,
@@ -77,17 +77,17 @@ class ClusterTest extends TestCase {
     )
 
 
-    ExampleSchema.ExampleTable.put(id).valueMap(_.viewCountsByDay, dayMap).execute
+    ExampleSchema.ExampleTable.put(id).valueMap(_.viewCountsByDay, dayMap).execute()
 
     println("Dumping after map insert")
     dumpViewMap(id)
 
-    ExampleSchema.ExampleTable.increment(id).valueMap(_.viewCountsByDay, dayMap).execute
+    ExampleSchema.ExampleTable.increment(id).valueMap(_.viewCountsByDay, dayMap).execute()
 
     println("Dumping after increment")
     dumpViewMap(id)
 
-    ExampleSchema.ExampleTable.delete(id).family(_.viewCountsByDay).execute
+    ExampleSchema.ExampleTable.delete(id).family(_.viewCountsByDay).execute()
     println("Dumping after delete")
     dumpViewMap(id)
 
