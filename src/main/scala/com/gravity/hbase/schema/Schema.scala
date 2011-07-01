@@ -459,21 +459,41 @@ class HbaseTable[T,R](val tableName: String)(implicit conf: Configuration) {
 
   def pops = this.asInstanceOf[T]
 
+  //alter 'articles', NAME => 'html', VERSIONS =>1, COMPRESSION=>'lzo'
+
   /*
   WARNING - Currently assumes the family names are strings (which is probably a best practice, but we support byte families)
    */
-  def createScript() = {
-    val create = "create '" + tableName + "', "
-
-
+  def createScript(tableNameOverride : String = tableName) = {
+    val create = "create '" + tableNameOverride + "', "
     create + (for (family <- families) yield {
-      val compression = if (family.compressed) ", COMPRESSION=>'lzo'" else ""
-      "{NAME => '%s', VERSIONS => %d%s}".format(Bytes.toString(family.familyBytes), family.versions, compression)
+      familyDef(family)
     }).mkString(",")
   }
 
-  private val columns = Buffer[Column[_, _, _, _,_]]()
-  private val families = Buffer[ColumnFamily[_, _,_, _, _]]()
+  def deleteScript(tableNameOverride : String = tableName) = {
+    val delete = "disable '" + tableNameOverride + "'\n"
+
+    delete + "delete '" + tableNameOverride + "'"
+  }
+
+  def alterScript(tableNameOverride : String = tableName, families: Seq[ColumnFamily[T,_,_,_,_]]) = {
+    var alter = "disable '" + tableNameOverride + "'\n"
+    alter += "alter '" + tableNameOverride + "', "
+    alter += (for(family <- families) yield {
+      familyDef(family)
+    }).mkString(",")
+    alter += "\nenable '" + tableNameOverride + "'"
+    alter
+  }
+
+  def familyDef(family:ColumnFamily[T,_,_,_,_]) = {
+    val compression = if (family.compressed) ", COMPRESSION=>'lzo'" else ""
+    "{NAME => '%s', VERSIONS => %d%s}".format(Bytes.toString(family.familyBytes), family.versions, compression)
+  }
+
+  private val columns = Buffer[Column[T, R, _, _,_]]()
+  private val families = Buffer[ColumnFamily[T, R,_, _, _]]()
 
   def getTable(name: String) = new HTable(conf, name)
 
