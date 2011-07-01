@@ -5,14 +5,15 @@ import org.apache.hadoop.hbase.util.Bytes
 import collection.mutable.ArrayBuffer
 import org.junit.Assert._
 import junit.framework.TestCase
-import org.junit.{Assert, Test}
 import scala.collection._
+import org.junit._
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
-object ClusterTest {
+
+object ClusterTest extends TestCase {
   val htest = new HBaseTestingUtility()
   htest.startMiniCluster()
   val fams = ArrayBuffer[Array[Byte]]()
@@ -21,12 +22,18 @@ object ClusterTest {
   fams += Bytes.toBytes("viewsByDay")
 
   val table = htest.createTable(Bytes.toBytes("schema_example"), fams.toArray)
+
+  @AfterClass def after() {
+    println("Hi there peeps")
+  }
 }
 
 class ClusterTest extends TestCase {
 
+  import ClusterTest._
+
   object ExampleSchema extends Schema {
-    implicit val conf = ClusterTest.htest.getConfiguration
+    implicit val conf = htest.getConfiguration
 
     class ExampleTable extends HbaseTable[ExampleTable,String](tableName = "schema_example") {
       val meta = family[String, String, Any]("meta")
@@ -153,6 +160,13 @@ class ClusterTest extends TestCase {
         case None => fail("FAILED TO GET TITLE!")
       }
     }
+
   }
+
+  @Test def testLastTest() {
+    println("Last test...")
+    htest.shutdownMiniCluster()
+  }
+
 }
 
