@@ -42,7 +42,7 @@ class ClusterTest extends TestCase {
       val viewCountsByDay = family[String, YearDay, Long]("viewsByDay")
     }
 
-    val ExampleTable = new ExampleTable
+    val ExampleTable = table(new ExampleTable)
 
   }
 

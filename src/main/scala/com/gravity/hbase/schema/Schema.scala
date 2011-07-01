@@ -446,6 +446,12 @@ class Column[T, R, F, K, V](table:HbaseTable[T,R], columnFamily: F, columnName: 
 }
 
 trait Schema {
+  val tables = mutable.Set[HbaseTable[_,_]]()
+
+  def table[T <: HbaseTable[T,_]](table: T)= {
+    tables += table
+    table
+  }
 
 }
 
