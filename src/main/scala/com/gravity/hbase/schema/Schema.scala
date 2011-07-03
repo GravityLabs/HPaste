@@ -8,6 +8,7 @@ import org.apache.hadoop.conf.Configuration
 import scala.collection._
 import mutable.Buffer
 import java.io._
+import org.apache.hadoop.io.Writable
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -225,6 +226,26 @@ class OpBase[T,R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpBas
   }
 
   def size = previous.size
+
+  def getOperations : Iterable[Writable] = {
+    val puts = Buffer[Put]()
+    val deletes = Buffer[Delete]()
+    val increments = Buffer[Increment]()
+    previous.foreach{
+      case put:PutOp[T,R] => {
+        puts += put.put
+      }
+      case delete:DeleteOp[T,R] => {
+        deletes += delete.delete
+      }
+      case increment:IncrementOp[T,R] => {
+        increments += increment.increment
+      }
+    }
+
+    deletes ++ puts ++ increments
+
+  }
 
   def execute(tableName:String = table.tableName) = {
     val puts = Buffer[Put]()
