@@ -8,7 +8,7 @@ import org.apache.hadoop.conf.Configuration
 import scala.collection._
 import mutable.Buffer
 import java.io._
-import org.apache.hadoop.io.Writable
+import org.apache.hadoop.io.{BytesWritable, Writable}
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -22,6 +22,14 @@ abstract class ByteConverter[T] {
   def toBytes(t: T): Array[Byte]
 
   def fromBytes(bytes: Array[Byte]): T
+
+  def toBytesWritable(t:T) : BytesWritable = {
+    new BytesWritable(toBytes(t))
+  }
+
+  def fromBytesWritable(bytes: BytesWritable) : T = {
+    fromBytes(bytes.getBytes)
+  }
 }
 
 /**

@@ -28,6 +28,3 @@ class ExampleTableMapper extends Mapper[LongWritable,Text,NullWritable,Writable]
   }
 }
 
-class MapReduceTest extends TestCase {
-
-}

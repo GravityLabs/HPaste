@@ -15,7 +15,33 @@ import com.gravity.hbase.schema._
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
+/**
+ * Base class for Jobs that will be composed using the JobTraits.
+ */
+abstract class JobBase(name:String)(implicit conf:Configuration) extends JobTrait {
+  var job : Job = _
+  def init() {
+    val jobConf = new Configuration(conf)
+    configure(jobConf)
 
+    job = new Job(jobConf)
+    job.setJarByClass(getClass)
+    job.setJobName(name)
+    configureJob(job)
+  }
+
+
+  def run() {
+    init()
+    job.waitForCompletion(true)
+  }
+
+}
+
+/**
+ * Declares that you want a Reducer.  Will force you to provide the class, and the number thereof.
+ * If you specify None for the numReducers it will use the configured default.
+ */
 trait ReducerJob[M] extends JobTrait {
   val reducer : Class[M]
   val numReducers : Option[Int]
@@ -31,6 +57,11 @@ trait ReducerJob[M] extends JobTrait {
   }
 }
 
+/**
+ * Declares that you want a Mapper.  You'll be asked to provide a mapper,
+ * as well as its output key and value classes (Hadoop can be very picky about this, so we
+ * play it safe).
+ */
 trait MapperJob[M <: StandardMapper[MK,MV],MK,MV] extends JobTrait {
   val mapper : Class[M]
   val mapperOutputKey : Class[MK]
@@ -51,6 +82,9 @@ trait MapperJob[M <: StandardMapper[MK,MV],MK,MV] extends JobTrait {
 
 }
 
+/**
+ * If your job will be running against a set of files or globs, this trait configures them.
+ */
 trait FromPaths extends JobTrait {
   val paths : Seq[String]
 
@@ -67,6 +101,9 @@ trait FromPaths extends JobTrait {
 
 }
 
+/**
+ * Base trait.
+ */
 trait JobTrait {
 
   def configure(conf: Configuration) {
@@ -78,6 +115,9 @@ trait JobTrait {
   }
 }
 
+/**
+ * Specifies the Table from which you'll be mapping.
+ */
 trait FromTable[T <: HbaseTable[T,_]] extends JobTrait {
   val fromTable: HbaseTable[T, _]
   override def configure(conf:Configuration) {
@@ -93,6 +133,9 @@ trait FromTable[T <: HbaseTable[T,_]] extends JobTrait {
   }
 }
 
+/**
+ * Specifies the Table against which you'll be outputting your operation.
+ */
 trait ToTable[T <: HbaseTable[T,_]] extends JobTrait {
   val toTable: HbaseTable[T,_]
   override def configure(conf:Configuration) {
@@ -148,10 +191,20 @@ abstract class TableWritingReducer[TF <: HbaseTable[TF, TFK], TFK, MK, MV](name:
 }
 
 abstract class StandardMapper[MK, MV] extends Mapper[LongWritable, Text, MK, MV] {
-  def mapEvent(key: LongWritable, value: Text, context: Mapper[LongWritable, Text, MK, MV]#Context)
+  def mapEvent(key: LongWritable, value: Text, writer:(MK,MV)=>Unit, counter:(String,String)=>Unit) {
 
-  override def map(key: LongWritable, value: Text, context: Mapper[LongWritable, Text, MK, MV]#Context) {
-    mapEvent(key, value, context)
+  }
+
+  final override def map(key: LongWritable, value: Text, context: Mapper[LongWritable, Text, MK, MV]#Context) {
+    def write(key:MK, value:MV) {
+      context.write(key,value)
+    }
+
+    def counter(group:String, name:String) {
+      context.getCounter(group,name).increment(1l)
+    }
+    
+    mapEvent(key, value, write _, counter _)
   }
 }
 
