@@ -66,6 +66,10 @@ The above import statement is very important: it brings in all of HPaste's defau
 
 The above table has a column family called meta, and several strongly-typed columns in the "meta" family.  It then creates several column families that do not have column definitions under them ("views" and "viewsByDay").  The reason for this is that in HBase you tend to create two different type of column families: in one scenario, you create a column family that contains a set of columns that resemble columns in an RDBMS: each column is "typed" and has a unique identity.  In the second scenario, you create a column family that resembles a Map: you dynamically add key-value pairs to this family.  In this second scenario, you don't know what the columns are ahead of time--you'll be adding and removing columns on the fly.  HPaste supports both models.
 
+## Lifecycle Management
+
+Because HBase prefers to have a single instance of the Configuration object for connection management purposes, gravity-hbase-schema does not manage any Configuration lifecycle.  When you specify your schema, you need to have an implicit instance of Configuration in scope.
+
 ## Table Creation
 If you have an existing table in HBase with the same name and families, you can get started.  If you don't, you can now call:
 ```scala
@@ -217,9 +221,26 @@ Assuming the examples under the DATA MANIPULATION section, the following will re
     val dayViewsMap = dayViewsRes.family(_.viewCountsByDay)
 ```
 
-# Lifecycle Management
 
-Because HBase prefers to have a single instance of the Configuration object for connection management purposes, gravity-hbase-schema does not manage any Configuration lifecycle.  When you specify your schema, you need to have an implicit instance of Configuration in scope.
+# MapReduce Operation Support
+
+HPaste is designed to work well in the context of MapReduce operations.  Mappers and Reducers that read and write from HBase using the TableOutputFormat can use Schema tables, such as in the following hypothetical Mapper.  The syntax for writing data to columns and rows is the exact same as the syntax for regular operations, except instead of calling "execute" you call "getOperations", which returns a list of the Writable PUT / DELETE operations that HBase wants.  This makes your code portable between regular HBase client/server work and MapReduce operations.
+
+```scala
+class ExampleTableMapper extends Mapper[LongWritable,Text,NullWritable,Writable] {
+  override def map(key: LongWritable, value: Text, context: Mapper[LongWritable,Text,NullWritable,Writable]#Context) {
+    val ops = ExampleSchema.ExampleTable
+            .put("Joe").value(_.title,"Joe and the Volcano")
+            .put("Bill").value(_.title,"Bill and the Cheese")
+            .getOperations
+
+    ops.foreach(op=>{
+      context.write(NullWritable.get(),op)
+    })
+  }
+}
+```
+
 
 # Developers
 

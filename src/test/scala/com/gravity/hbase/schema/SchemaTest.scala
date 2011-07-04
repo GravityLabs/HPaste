@@ -47,6 +47,47 @@ object CustomTypes {
   implicit object KittenSeqConverter extends SeqConverter[Kitten,Seq[Kitten]]
 }
 
+object ExampleSchema extends Schema {
+
+  //There should only be one HBaseConfiguration object per process.  You'll probably want to manage that
+  //instance yourself, so this library expects a reference to that instance.  It's implicitly injected into
+  //the code, so the most convenient place to put it is right after you declare your Schema.
+  implicit val conf = ClusterTest.htest.getConfiguration
+
+  //A table definition, where the row keys are Strings
+  class ExampleTable extends HbaseTable[ExampleTable,String](tableName = "schema_example")
+  {
+    //Column family definition
+    val meta = family[String, String, Any]("meta")
+    //Inside meta, assume a column called title whose value is a string
+    val title = column(meta, "title", classOf[String])
+    //Inside meta, assume a column called url whose value is a string
+    val url = column(meta, "url", classOf[String])
+    //Inside meta, assume a column called views whose value is a string
+    val views = column(meta, "views", classOf[Long])
+    //A column called date whose value is a Joda DateTime
+    val creationDate = column(meta, "date", classOf[DateTime])
+
+    //A column called viewsArr whose value is a sequence of strings
+    val viewsArr = column(meta,"viewsArr", classOf[Seq[String]])
+    //A column called viewsMap whose value is a map of String to Long
+    val viewsMap = column(meta,"viewsMap", classOf[mutable.Map[String,Long]])
+
+    //A column family called views whose column names are Strings and values are Longs.  Can be treated as a Map
+    val viewCounts = family[String, String, Long]("views")
+
+    //A column family called views whose column names are YearDay instances and whose values are Longs
+    val viewCountsByDay = family[String, YearDay, Long]("viewsByDay")
+
+    //A column family called kittens whose column values are the custom Kitten type
+    val kittens = family[String,String,Kitten]("kittens")
+  }
+
+  //Register the table (DON'T FORGET TO DO THIS :) )
+  val ExampleTable = table(new ExampleTable)
+
+}
+
 
 /**
  * This sets up the testing cluster.
@@ -75,46 +116,6 @@ class ClusterTest extends TestCase {
 
   import ClusterTest._
 
-  object ExampleSchema extends Schema {
-
-    //There should only be one HBaseConfiguration object per process.  You'll probably want to manage that
-    //instance yourself, so this library expects a reference to that instance.  It's implicitly injected into
-    //the code, so the most convenient place to put it is right after you declare your Schema.
-    implicit val conf = htest.getConfiguration
-
-    //A table definition, where the row keys are Strings
-    class ExampleTable extends HbaseTable[ExampleTable,String](tableName = "schema_example")
-    {
-      //Column family definition
-      val meta = family[String, String, Any]("meta")
-      //Inside meta, assume a column called title whose value is a string
-      val title = column(meta, "title", classOf[String])
-      //Inside meta, assume a column called url whose value is a string
-      val url = column(meta, "url", classOf[String])
-      //Inside meta, assume a column called views whose value is a string
-      val views = column(meta, "views", classOf[Long])
-      //A column called date whose value is a Joda DateTime
-      val creationDate = column(meta, "date", classOf[DateTime])
-
-      //A column called viewsArr whose value is a sequence of strings
-      val viewsArr = column(meta,"viewsArr", classOf[Seq[String]])
-      //A column called viewsMap whose value is a map of String to Long
-      val viewsMap = column(meta,"viewsMap", classOf[mutable.Map[String,Long]])
-
-      //A column family called views whose column names are Strings and values are Longs.  Can be treated as a Map
-      val viewCounts = family[String, String, Long]("views")
-
-      //A column family called views whose column names are YearDay instances and whose values are Longs
-      val viewCountsByDay = family[String, YearDay, Long]("viewsByDay")
-
-      //A column family called kittens whose column values are the custom Kitten type
-      val kittens = family[String,String,Kitten]("kittens")
-    }
-
-    //Register the table (DON'T FORGET TO DO THIS :) )
-    val ExampleTable = table(new ExampleTable)
-
-  }
 
   /**
    * Test that a complex custom type can be added and retrieved from a table as a Map
