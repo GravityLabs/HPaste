@@ -512,6 +512,8 @@ class HbaseTable[T,R](val tableName: String)(implicit conf: Configuration) {
 
   def pops = this.asInstanceOf[T]
 
+  val tablePool = new HTablePool(conf,50)
+
   //alter 'articles', NAME => 'html', VERSIONS =>1, COMPRESSION=>'lzo'
 
   /*
@@ -548,7 +550,7 @@ class HbaseTable[T,R](val tableName: String)(implicit conf: Configuration) {
   private val columns = Buffer[Column[T, R, _, _,_]]()
   private val families = Buffer[ColumnFamily[T, R,_, _, _]]()
 
-  def getTable(name: String) = new HTable(conf, name)
+  def getTable(name: String) = tablePool.getTable(name)
 
   def column[F, K, V](columnFamily: ColumnFamily[T, R, F, K, _], columnName: K, valueClass: Class[V])(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) = {
     val c = new Column[T, R,F, K, V](this, columnFamily.familyName, columnName)
@@ -571,17 +573,18 @@ class HbaseTable[T,R](val tableName: String)(implicit conf: Configuration) {
   }
 
 
-  def withTableOption[Q](name: String)(work: (Option[HTable]) => Q) : Q = {
+  def withTableOption[Q](name: String)(work: (Option[HTableInterface]) => Q) : Q = {
     val table = getTableOption(name)
     try {
       work(table)
     } finally {
       table foreach (_.flushCommits())
+      table foreach (tbl=>tablePool.putTable(tbl))
     }
   }
 
 
-  def withTable[Q](mytableName:String = tableName)(funct: (HTable) => Q) : Q = {
+  def withTable[Q](mytableName:String = tableName)(funct: (HTableInterface) => Q) : Q = {
     withTableOption(mytableName) {
       case Some(table) => {
         funct(table)
