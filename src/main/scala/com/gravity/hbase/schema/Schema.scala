@@ -401,6 +401,24 @@ class Query[T,R](table: HbaseTable[T,R]) {
     table.withTable(tableName) {htable => new QueryResult(htable.get(get), table)}
   }
 
+  def singleOption(tableName: String = table.tableName): Option[QueryResult[T,R]] = {
+    require(keys.size == 1, "Calling single() with more than one key")
+
+    table.withTableOption(tableName) {
+      case Some(htable) => {
+        val get = new Get(keys(0))
+        for (family <- families) {
+          get.addFamily(family)
+        }
+        for ((columnFamily, column) <- columns) {
+          get.addColumn(columnFamily, column)
+        }
+        return Some(new QueryResult(htable.get(get), table))
+      }
+      case None => return None
+    }
+  }
+
   def execute(tableName:String = table.tableName) = {
 
     val gets = for (key <- keys) yield {
