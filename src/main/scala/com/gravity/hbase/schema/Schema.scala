@@ -193,14 +193,20 @@ class QueryResult[T,R](val result: Result, table: HbaseTable[T,R]) {
 */
 class ScanQuery[T,R](table: HbaseTable[T,R]) {
   val scan = new Scan()
+  scan.setCaching(100)
 
   def execute(handler: (QueryResult[T,R]) => Unit) {
     table.withTable() {
       htable =>
-        val scanner = htable.getScanner(scan)
-        for (result <- scanner) {
-          handler(new QueryResult[T,R](result, table))
-        }
+          val scanner = htable.getScanner(scan)
+
+          try {
+          for (result <- scanner) {
+            handler(new QueryResult[T,R](result, table))
+          }
+        }finally {
+            scanner.close()
+          }
     }
   }
 
@@ -208,6 +214,7 @@ class ScanQuery[T,R](table: HbaseTable[T,R]) {
 
   def withEndKey[R](key: R)(implicit c: ByteConverter[R]) = {scan.setStopRow(c.toBytes(key)); this}
 
+  def withCaching(rowsToCache:Int) = scan.setCaching(rowsToCache)
 }
 
 /**

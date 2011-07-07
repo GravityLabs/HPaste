@@ -119,10 +119,14 @@ trait JobTrait {
  * Specifies the Table from which you'll be mapping.
  */
 trait FromTable[T <: HbaseTable[T,_]] extends JobTrait {
+
   val fromTable: HbaseTable[T, _]
+
   override def configure(conf:Configuration) {
     println("Configuring FromTable")
     conf.set(TableInputFormat.INPUT_TABLE, fromTable.tableName)
+    conf.setInt(TableInputFormat.SCAN_CACHEDROWS, 1000)
+    conf.setInt(TableInputFormat.SCAN_MAXVERSIONS, 1)
     super.configure(conf)
   }
 
@@ -141,8 +145,6 @@ trait ToTable[T <: HbaseTable[T,_]] extends JobTrait {
   override def configure(conf:Configuration) {
     println("Configuring ToTable")
     conf.set(TableOutputFormat.OUTPUT_TABLE, toTable.tableName)
-    conf.setInt(TableInputFormat.SCAN_CACHEDROWS, 1000)
-    conf.setInt(TableInputFormat.SCAN_MAXVERSIONS, 1)
     super.configure(conf)
   }
 
