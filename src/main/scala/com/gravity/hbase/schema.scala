@@ -2,8 +2,6 @@ package com.gravity.hbase
 
 import org.apache.hadoop.hbase.util.Bytes
 import org.joda.time.DateTime
-import java.io.{DataInputStream, DataOutputStream}
-import collection.mutable.Buffer
 import scala.collection._
 
 /*             )\._.,--....,'``.
