@@ -160,7 +160,7 @@ class SeqConverter[T, ST <: Seq[T]](implicit c:ByteConverter[T]) extends Complex
 /**
 * When a query comes back, there are a bucket of column families and columns to retrieve.  This class retrieves them.
 */
-class QueryResult[T,R](val result: Result, table: HbaseTable[T,R]) {
+class QueryResult[T,R](val result: Result, table: HbaseTable[T,R], val tableName: String) {
   def column[F, K, V](column: (T) => Column[T, R, F, K, V])(implicit c: ByteConverter[V]): Option[V] = {
     val co = column(table.pops)
     val col = result.getColumnLatest(co.familyBytes, co.columnBytes)
@@ -185,6 +185,8 @@ class QueryResult[T,R](val result: Result, table: HbaseTable[T,R]) {
   }
 
   def rowid(implicit c:ByteConverter[R]) = c.fromBytes(result.getRow)
+
+  def getTableName = tableName
 }
 
 /**
@@ -202,7 +204,7 @@ class ScanQuery[T,R](table: HbaseTable[T,R]) {
 
           try {
           for (result <- scanner) {
-            handler(new QueryResult[T,R](result, table))
+            handler(new QueryResult[T,R](result, table, table.tableName))
           }
         }finally {
             scanner.close()
@@ -405,7 +407,7 @@ class Query[T,R](table: HbaseTable[T,R]) {
       get.addColumn(columnFamily, column)
     }
 
-    table.withTable(tableName) {htable => new QueryResult(htable.get(get), table)}
+    table.withTable(tableName) {htable => new QueryResult(htable.get(get), table, tableName)}
   }
 
   def singleOption(tableName: String = table.tableName): Option[QueryResult[T,R]] = {
@@ -420,7 +422,7 @@ class Query[T,R](table: HbaseTable[T,R]) {
         for ((columnFamily, column) <- columns) {
           get.addColumn(columnFamily, column)
         }
-        return Some(new QueryResult(htable.get(get), table))
+        return Some(new QueryResult(htable.get(get), table, tableName))
       }
       case None => return None
     }
@@ -441,7 +443,7 @@ class Query[T,R](table: HbaseTable[T,R]) {
     table.withTable(tableName) {
       htable =>
         val results = htable.get(gets)
-        results.map(res => new QueryResult(res, table))
+        results.map(res => new QueryResult(res, table, tableName))
     }
   }
 
@@ -460,7 +462,7 @@ class Query[T,R](table: HbaseTable[T,R]) {
       htable =>
         val results = htable.get(gets)
         results.map(res => {
-          val qr = new QueryResult[T,R](res, table)
+          val qr = new QueryResult[T,R](res, table, tableName)
           (qr.rowid -> qr)
         })
     }
@@ -575,7 +577,7 @@ class HbaseTable[T,R](val tableName: String)(implicit conf: Configuration) {
     try {
       Some(getTable(name))
     } catch {
-      case e: TableNotFoundException => None
+      case e: Exception => None
     }
   }
 

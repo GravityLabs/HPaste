@@ -236,7 +236,7 @@ abstract class TableAnnotationMapper[TF <: HbaseTable[TF, TFK], TFK](val name: S
 
   override def map(key: ImmutableBytesWritable, value: Result, context: Mapper[ImmutableBytesWritable, Result, NullWritable, Writable]#Context) {
     def counter(name: String) {context.getCounter("Article Job", name).increment(1l)}
-    val queryResult = new QueryResult[TF, TFK](value, table)
+    val queryResult = new QueryResult[TF, TFK](value, table, table.tableName)
     row(queryResult, counter _).foreach(row => context.write(NullWritable.get(), row))
   }
 
