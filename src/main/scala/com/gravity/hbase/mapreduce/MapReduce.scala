@@ -4,12 +4,12 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable
-import com.gravity.hadoop.HadoopScalaShim
 import org.apache.hadoop.mapreduce.{Mapper, Reducer, Job}
 import org.apache.hadoop.io.{Text, LongWritable, Writable, NullWritable}
-import org.apache.hadoop.hbase.mapreduce.{TableMapper, TableOutputFormat, TableInputFormat}
+import org.apache.hadoop.hbase.mapreduce.{TableMapper, TableInputFormat}
 import org.apache.hadoop.hbase.client.{Row, Result}
 import com.gravity.hbase.schema._
+import com.gravity.hadoop.{GravityTableOutputFormat, HadoopScalaShim}
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -144,13 +144,13 @@ trait ToTable[T <: HbaseTable[T,_]] extends JobTrait {
   val toTable: HbaseTable[T,_]
   override def configure(conf:Configuration) {
     println("Configuring ToTable")
-    conf.set(TableOutputFormat.OUTPUT_TABLE, toTable.tableName)
+    conf.set(GravityTableOutputFormat.OUTPUT_TABLE, toTable.tableName)
     super.configure(conf)
   }
 
   override def configureJob(job:Job) {
     println("Configuring ToTable Job")
-    HadoopScalaShim.registerOutputFormat(job, classOf[TableOutputFormat[ImmutableBytesWritable]])
+    HadoopScalaShim.registerOutputFormat(job, classOf[GravityTableOutputFormat[ImmutableBytesWritable]])
     super.configureJob(job)
   }
 }
