@@ -557,7 +557,7 @@ class HbaseTable[T,R](val tableName: String)(implicit conf: Configuration) {
   }
 
   private val columns = Buffer[Column[T, R, _, _,_]]()
-  private val families = Buffer[ColumnFamily[T, R,_, _, _]]()
+  val families = Buffer[ColumnFamily[T, R,_, _, _]]()
 
   def getTable(name: String) = tablePool.getTable(name)
 
