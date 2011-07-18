@@ -119,7 +119,7 @@ trait JobTrait {
 /**
  * Specifies the Table from which you'll be mapping.
  */
-trait FromTable[T <: HbaseTable[T, _]] extends JobTrait {
+trait FromTable[T <: HbaseTable[T, _]] extends JobTrait with NoSpeculativeExecution {
 
   val fromTable: HbaseTable[T, _]
 
@@ -138,11 +138,26 @@ trait FromTable[T <: HbaseTable[T, _]] extends JobTrait {
   }
 }
 
+/**
+* Turn of speculative execution.  This is always advisable with HBase MR operations, so this is automatically mixed in to the
+* ToTable and FromTable traits.
+*/
+trait NoSpeculativeExecution extends JobTrait {
+  override def configure(conf:Configuration) {
+    conf.set("mapred.map.tasks.speculative.execution","false")
+    conf.set("mapred.reduce.tasks.speculative.execution","false")
+    super.configure(conf)
+  }
+
+  override def configureJob(job:Job) {
+    super.configureJob(job)
+  }
+}
 
 /**
 * Specifies the Table against which you'll be outputting your operation.
 */
-trait ToTable[T <: HbaseTable[T, _]] extends JobTrait {
+trait ToTable[T <: HbaseTable[T, _]] extends JobTrait with NoSpeculativeExecution {
   val toTable: HbaseTable[T, _]
 
   override def configure(conf: Configuration) {

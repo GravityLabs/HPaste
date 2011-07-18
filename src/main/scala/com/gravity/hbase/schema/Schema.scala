@@ -284,6 +284,7 @@ class OpBase[T,R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpBas
 
       if(deletes.size > 0 || puts.size > 0) {
         //IN THEORY, the operations will happen in order.  If not, break this into two different batched calls for deletes and puts
+        println("Deleting " + deletes.size + " items")
         table.batch(deletes ++ puts)
       }
       if(increments.size > 0) {
@@ -349,6 +350,14 @@ class DeleteOp[T,R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpB
   def family[F, K, V](family :(T)=> ColumnFamily[T,R, F,K,V]) = {
     val fam = family(table.pops)
     delete.deleteFamily(fam.familyBytes)
+    this
+  }
+
+  def values[F, K, V](family : (T) => ColumnFamily[T,R,F,K,V], values:Set[K])(implicit vc:ByteConverter[K]) = {
+    for(value <- values) {
+      val fam = family(table.pops)
+      delete.deleteColumns(fam.familyBytes,vc.toBytes(value))
+    }
     this
   }
 }
