@@ -236,7 +236,7 @@ abstract class TableWritingMapper[TF <: HbaseTable[TF, TFK], TFK](val name: Stri
  * Reads from a specified Table and writes to that Table or another Table
  */
 abstract class TableAnnotationMapper[TF <: HbaseTable[TF, TFK], TFK](val table: TF) extends TableMapper[NullWritable, Writable] {
-  def row(value: QueryResult[TF, TFK], counter: (String) => Unit): Iterable[Row]
+  def row(value: QueryResult[TF, TFK], counter: (String) => Unit): Iterable[Writable]
 
   override def map(key: ImmutableBytesWritable, value: Result, context: Mapper[ImmutableBytesWritable, Result, NullWritable, Writable]#Context) {
     def counter(name: String) {context.getCounter(table.tableName + " Annotation Job", name).increment(1l)}
