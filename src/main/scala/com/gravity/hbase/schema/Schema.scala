@@ -623,5 +623,10 @@ class HbaseTable[T,R](val tableName: String)(implicit conf: Configuration) {
 case class YearDay(year: Int, day: Int)
 
 case class CommaSet(items: Set[String])
+object CommaSet {
+  val empty = CommaSet(Set.empty[String])
+
+  def apply(item: String): CommaSet = CommaSet(Set(item))
+}
 
 
