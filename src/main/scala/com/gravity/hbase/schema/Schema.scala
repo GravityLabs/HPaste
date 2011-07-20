@@ -474,7 +474,7 @@ class Query[T,R](table: HbaseTable[T,R]) {
           val qr = new QueryResult[T,R](res, table, tableName)
           (qr.rowid -> qr)
         })
-    }
+    }.toMap
   }
 
 }
