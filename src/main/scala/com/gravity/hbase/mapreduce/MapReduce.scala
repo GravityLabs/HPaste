@@ -10,6 +10,7 @@ import org.apache.hadoop.hbase.mapreduce.{TableMapper, TableInputFormat}
 import org.apache.hadoop.hbase.client.{Row, Result}
 import com.gravity.hbase.schema._
 import com.gravity.hadoop.{GravityTableOutputFormat, HadoopScalaShim}
+import org.apache.hadoop.mapreduce.lib.map.MultithreadedMapper
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -214,6 +215,24 @@ trait BigMemoryJob extends JobTrait {
   }
 
 }
+
+trait TableAnnotationMultithreadedMapperJob[M <: TableAnnotationMapper[T, _], T <: HbaseTable[T, _], TT <: HbaseTable[TT, _]] extends JobTrait with FromTable[T] with ToTable[TT] with MapperOnly {
+  val mapper: Class[M]
+
+  override def configure(conf: Configuration) {
+    super.configure(conf)
+  }
+
+  override def configureJob(job: Job) {
+    //job.setMapperClass(mapper)
+    println("Configuring Job in Annotation Mapper")
+    HadoopScalaShim.registerMapper(job, classOf[MultithreadedMapper[_, _, _, _]])
+    HadoopScalaShim.setMultithreadedMapperClass(job, mapper)
+    MultithreadedMapper.setNumberOfThreads(job, 10)
+    super.configureJob(job)
+  }
+}
+
 
 trait TableAnnotationMapperJob[M <: TableAnnotationMapper[T, _], T <: HbaseTable[T, _], TT <: HbaseTable[TT, _]] extends JobTrait with FromTable[T] with ToTable[TT] with MapperOnly {
   val mapper: Class[M]
