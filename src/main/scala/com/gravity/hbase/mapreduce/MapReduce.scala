@@ -32,9 +32,11 @@ abstract class JobBase(name: String)(implicit conf: Configuration) extends JobTr
   }
 
 
-  def run() {
+  def run() : Boolean = {
     init()
     job.waitForCompletion(true)
+
+    
   }
 
 }
@@ -180,6 +182,38 @@ trait MapperOnly extends JobTrait {
   }
 }
 
+trait ReuseJVMJob extends JobTrait {
+  override def configure(conf:Configuration) {
+    conf.setInt("mapred.job.reuse.jvm.num.tasks", -1)
+    super.configure(conf)
+  }
+
+  override def configureJob(job: Job) {
+    super.configureJob(job)
+  }
+}
+
+trait BigMemoryJob extends JobTrait {
+  val mapMemory : Int
+  val reduceMemory : Int
+
+  override def configure(conf: Configuration) {
+
+    val memory = mapMemory
+    val reducememory = reduceMemory
+    conf.set("mapred.map.child.java.opts", "-Xmx" + memory + "m")
+    conf.set("mapred.reduce.child.java.opts", "-Xmx" + reducememory + "m")
+    conf.setInt("mapred.job.map.memory.mb", memory + 2000)
+    conf.setInt("mapred.job.reduce.memory.mb", reducememory + 1000)
+
+    super.configure(conf)
+  }
+
+  override def configureJob(job: Job) {
+    super.configureJob(job)
+  }
+
+}
 
 trait TableAnnotationMapperJob[M <: TableAnnotationMapper[T, _], T <: HbaseTable[T, _], TT <: HbaseTable[TT, _]] extends JobTrait with FromTable[T] with ToTable[TT] with MapperOnly {
   val mapper: Class[M]

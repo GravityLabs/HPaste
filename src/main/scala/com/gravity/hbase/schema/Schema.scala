@@ -284,7 +284,6 @@ class OpBase[T,R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpBas
 
       if(deletes.size > 0 || puts.size > 0) {
         //IN THEORY, the operations will happen in order.  If not, break this into two different batched calls for deletes and puts
-        println("Deleting " + deletes.size + " items")
         table.batch(deletes ++ puts)
       }
       if(increments.size > 0) {
@@ -550,7 +549,7 @@ class HbaseTable[T,R](val tableName: String)(implicit conf: Configuration) {
     delete + "delete '" + tableNameOverride + "'"
   }
 
-  def alterScript(tableNameOverride : String = tableName, families: Seq[ColumnFamily[T,_,_,_,_]]) = {
+  def alterScript(tableNameOverride : String = tableName, families: Seq[ColumnFamily[T,_,_,_,_]] = families) = {
     var alter = "disable '" + tableNameOverride + "'\n"
     alter += "alter '" + tableNameOverride + "', "
     alter += (for(family <- families) yield {
