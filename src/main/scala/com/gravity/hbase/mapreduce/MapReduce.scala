@@ -255,7 +255,8 @@ trait BigMemoryJob extends JobTrait {
 
     val memory = mapMemory
     val reducememory = reduceMemory
-    conf.set("mapred.map.child.java.opts", "-Xmx" + memory + "m")
+    conf.set("mapred.map.child.java.opts", "-Xmx"+memory+"m" + " -Xms" + memory + "m")
+//    conf.set("mapred.map.child.java.opts", "-Xmx" + memory + "m")
     conf.set("mapred.reduce.child.java.opts", "-Xmx" + reducememory + "m")
     conf.setInt("mapred.job.map.memory.mb", memory + 2000)
     conf.setInt("mapred.job.reduce.memory.mb", reducememory + 1000)
