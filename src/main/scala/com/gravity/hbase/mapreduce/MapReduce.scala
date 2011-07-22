@@ -6,11 +6,16 @@ import org.apache.hadoop.fs.Path
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable
 import org.apache.hadoop.mapreduce.{Mapper, Reducer, Job}
 import org.apache.hadoop.io.{Text, LongWritable, Writable, NullWritable}
-import org.apache.hadoop.hbase.mapreduce.{TableMapper, TableInputFormat}
-import org.apache.hadoop.hbase.client.{Row, Result}
 import com.gravity.hbase.schema._
 import com.gravity.hadoop.{GravityTableOutputFormat, HadoopScalaShim}
 import org.apache.hadoop.mapreduce.lib.map.MultithreadedMapper
+import org.apache.hadoop.hbase.client.{Scan, Row, Result}
+import org.apache.hadoop.hbase.filter.Filter
+import org.apache.hadoop.hbase.mapreduce.{TableMapper, TableInputFormat}
+import org.apache.hadoop.hbase.mapreduce.TableMapReduceUtil
+import java.io.{DataOutputStream, ByteArrayOutputStream, ByteArrayInputStream}
+import org.apache.hadoop.hbase.util.{Base64, Bytes}
+import collection.mutable.Buffer
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -137,6 +142,7 @@ trait JobTrait {
   }
 }
 
+
 /**
  * Specifies the Table from which you'll be mapping.
  */
@@ -144,12 +150,40 @@ trait FromTable[T <: HbaseTable[T, _]] extends JobTrait with NoSpeculativeExecut
 
   val fromTable: HbaseTable[T, _]
 
+  val families = Buffer[ColumnFamily[T,_,_,_,_]]()
+  val columns = Buffer[Column[T,_,_,_,_]]()
+
+  def specifyFamily(family: (T)=>ColumnFamily[T,_, _, _, _]) {
+    families += family(fromTable.pops)
+  }
+
+  def specifyColumn(column: (T)=>Column[T,_,_,_,_]) {
+    columns += column(fromTable.pops)
+  }
+
   override def configure(conf: Configuration) {
     println("Configuring FromTable")
     conf.set(TableInputFormat.INPUT_TABLE, fromTable.tableName)
-    conf.setInt(TableInputFormat.SCAN_CACHEDROWS, 10000)
-    conf.setInt(TableInputFormat.SCAN_MAXVERSIONS, 1)
-    conf.setBoolean(TableInputFormat.SCAN_CACHEBLOCKS,false)
+
+    val scanner = new Scan()
+    scanner.setCacheBlocks(false)
+    scanner.setCaching(10000)
+    scanner.setMaxVersions(1)
+
+        columns.foreach{col=>
+          scanner.addColumn(col.familyBytes,col.columnBytes)
+        }
+
+        families.foreach{family=>
+          scanner.addFamily(family.familyBytes)
+        }
+
+    val bas = new ByteArrayOutputStream()
+    val dos = new DataOutputStream(bas)
+    scanner.write(dos)
+    conf.set(TableInputFormat.SCAN,Base64.encodeBytes(bas.toByteArray))
+
+
     super.configure(conf)
   }
 
