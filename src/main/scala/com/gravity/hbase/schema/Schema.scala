@@ -469,9 +469,13 @@ class Query[T,R](table: HbaseTable[T,R]) {
     table.withTable(tableName) {
       htable =>
         val results = htable.get(gets)
-        results.map(res => {
-          val qr = new QueryResult[T,R](res, table, tableName)
-          (qr.rowid -> qr)
+        results.flatMap(res => {
+          if(res != null && !res.isEmpty) {
+            val qr = new QueryResult[T,R](res, table, tableName)
+            Some(qr.rowid -> qr)
+          }else {
+            None
+          }
         })
     }.toMap
   }

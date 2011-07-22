@@ -86,6 +86,24 @@ trait MapperJob[M <: StandardMapper[MK, MV], MK, MV] extends JobTrait {
 
 }
 
+trait TableMapperJob[M <: TableReadingMapper[TF,TFK,MK,MV], TF <: HbaseTable[TF,TFK],TFK,MK,MV] extends FromTable[TF] {
+  val mapper: Class[M]
+  val mapperOutputKey: Class[MK]
+  val mapperOutputValue: Class[MV]
+
+  override def configure(conf: Configuration) {
+    super.configure(conf)
+  }
+
+  override def configureJob(job: Job) {
+    HadoopScalaShim.registerMapper(job, mapper)
+    job.setMapOutputKeyClass(mapperOutputKey)
+    job.setMapOutputValueClass(mapperOutputValue)
+    super.configureJob(job)
+
+  }
+}
+
 /**
  * If your job will be running against a set of files or globs, this trait configures them.
  */
@@ -129,8 +147,9 @@ trait FromTable[T <: HbaseTable[T, _]] extends JobTrait with NoSpeculativeExecut
   override def configure(conf: Configuration) {
     println("Configuring FromTable")
     conf.set(TableInputFormat.INPUT_TABLE, fromTable.tableName)
-    conf.setInt(TableInputFormat.SCAN_CACHEDROWS, 1000)
+    conf.setInt(TableInputFormat.SCAN_CACHEDROWS, 10000)
     conf.setInt(TableInputFormat.SCAN_MAXVERSIONS, 1)
+    conf.setBoolean(TableInputFormat.SCAN_CACHEBLOCKS,false)
     super.configure(conf)
   }
 
@@ -284,9 +303,16 @@ abstract class StandardMapper[MK, MV] extends Mapper[LongWritable, Text, MK, MV]
 /**
  * Reads from a specified Table and writes to MK and MV
  */
-abstract class TableReadingMapper[TF <: HbaseTable[TF, TFK], TFK, MK, MV] extends TableMapper[MK, MV] {
-  override def map(key: ImmutableBytesWritable, value: Result, context: Mapper[ImmutableBytesWritable, Result, MK, MV]#Context) {
+abstract class TableReadingMapper[TF <: HbaseTable[TF, TFK], TFK, MK, MV](val table:TF) extends TableMapper[MK, MV] {
 
+  def row(value: QueryResult[TF, TFK], counter: (String,Long) => Unit, writer: (MK,MV) => Unit)
+
+  override def map(key: ImmutableBytesWritable, value: Result, context: Mapper[ImmutableBytesWritable, Result, MK, MV]#Context) {
+    def counter(name: String,count:Long=1) {context.getCounter(table.tableName + " Reading Job", name).increment(count)}
+    def writer(key:MK, value:MV) {context.write(key,value)}
+
+    val queryResult = new QueryResult[TF, TFK](value, table, table.tableName)
+    row(queryResult, counter _, writer _)
   }
 }
 
