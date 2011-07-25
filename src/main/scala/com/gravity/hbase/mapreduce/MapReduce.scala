@@ -5,7 +5,6 @@ import org.apache.hadoop.mapreduce.lib.input.FileInputFormat
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable
 import org.apache.hadoop.mapreduce.{Mapper, Reducer, Job}
-import org.apache.hadoop.io.{Text, LongWritable, Writable, NullWritable}
 import com.gravity.hbase.schema._
 import com.gravity.hadoop.{GravityTableOutputFormat, HadoopScalaShim}
 import org.apache.hadoop.mapreduce.lib.map.MultithreadedMapper
@@ -16,6 +15,7 @@ import org.apache.hadoop.hbase.mapreduce.TableMapReduceUtil
 import java.io.{DataOutputStream, ByteArrayOutputStream, ByteArrayInputStream}
 import org.apache.hadoop.hbase.util.{Base64, Bytes}
 import collection.mutable.Buffer
+import org.apache.hadoop.io._
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -91,10 +91,26 @@ trait MapperJob[M <: StandardMapper[MK, MV], MK, MV] extends JobTrait {
 
 }
 
+trait TableReducerJob[R <: TableWritingReducer[TF, TFK, MK,MV], TF <: HbaseTable[TF,TFK],TFK,MK,MV] extends ToTable[TF] {
+  val reducer : Class[R]
+
+  override def configure(conf: Configuration) {
+    super.configure(conf)
+  }
+
+  override def configureJob(job: Job) {
+    HadoopScalaShim.registerReducer(job,reducer)
+    super.configureJob(job)
+  }
+
+
+}
+
 trait TableMapperJob[M <: TableReadingMapper[TF,TFK,MK,MV], TF <: HbaseTable[TF,TFK],TFK,MK,MV] extends FromTable[TF] {
   val mapper: Class[M]
   val mapperOutputKey: Class[MK]
   val mapperOutputValue: Class[MV]
+
 
   override def configure(conf: Configuration) {
     super.configure(conf)
@@ -287,6 +303,12 @@ trait TableAnnotationMultithreadedMapperJob[M <: TableAnnotationMapper[T, _], T 
   }
 }
 
+class TableAnnotationMapReduceJob[M <: TableReadingMapper[TF,TFK,BytesWritable,BytesWritable],R <: TableWritingReducer[TT,TTK,BytesWritable,BytesWritable],TF <: HbaseTable[TF,TFK],TFK, TT <: HbaseTable[TT,TTK],TTK](name:String, conf:Configuration, val fromTable:TF, val toTable:TT, val mapper:Class[M], val reducer:Class[R]) extends JobBase(name)(conf) with TableMapperJob[M,TF,TFK,BytesWritable,BytesWritable] with TableReducerJob[R,TT,TTK,BytesWritable,BytesWritable] {
+
+  val mapperOutputKey = classOf[BytesWritable]
+  val mapperOutputValue = classOf[BytesWritable]
+  
+}
 
 trait TableAnnotationMapperJob[M <: TableAnnotationMapper[T, _], T <: HbaseTable[T, _], TT <: HbaseTable[TT, _]] extends JobTrait with FromTable[T] with ToTable[TT] with MapperOnly {
   val mapper: Class[M]
@@ -307,12 +329,13 @@ trait TableAnnotationMapperJob[M <: TableAnnotationMapper[T, _], T <: HbaseTable
 abstract class TableWritingReducer[TF <: HbaseTable[TF, TFK], TFK, MK, MV](name: String, table: TF)(implicit conf: Configuration)
         extends Reducer[MK, MV, NullWritable, Writable] {
 
-  def item(key: MK, values: java.lang.Iterable[MV], counter: (String, String) => Unit): Iterable[Writable]
+  def item(key: MK, values: java.lang.Iterable[MV], counter: (String, String) => Unit, writer: (Writable)=>Unit)
 
   override def reduce(key: MK, values: java.lang.Iterable[MV], context: Reducer[MK, MV, NullWritable, Writable]#Context) {
-    def counter(grp: String, itm: String) = context.getCounter(grp, itm).increment(1l)
+    def counter(grp: String, itm: String) { context.getCounter(grp, itm).increment(1l) }
+    def writer(item:Writable) {context.write(NullWritable.get(),item)}
 
-    item(key, values, counter _).foreach(row => context.write(NullWritable.get, row))
+    item(key, values, counter _, writer _)
   }
 
 }
