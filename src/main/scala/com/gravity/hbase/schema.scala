@@ -14,6 +14,9 @@ import scala.collection._
 */
 package object schema {
 
+  type FamilyExtractor[T,R,F,K,V] = (T) => ColumnFamily[T,R,F,K,V]
+  type ColumnExtractor[T,R,F,K,V] = (T) => Column[T, R, F, K, V]
+
 
   implicit object StringConverter extends ByteConverter[String] {
     override def toBytes(t: String) = Bytes.toBytes(t)

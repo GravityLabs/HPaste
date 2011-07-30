@@ -9,6 +9,8 @@ import scala.collection._
 import mutable.Buffer
 import java.io._
 import org.apache.hadoop.io.{BytesWritable, Writable}
+import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp
+import org.apache.hadoop.hbase.filter.{FilterList, SingleColumnValueFilter}
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -196,6 +198,7 @@ class QueryResult[T,R](val result: Result, table: HbaseTable[T,R], val tableName
 class ScanQuery[T,R](table: HbaseTable[T,R]) {
   val scan = new Scan()
   scan.setCaching(100)
+  val filterList = new FilterList(FilterList.Operator.MUST_PASS_ALL)
 
   def execute(handler: (QueryResult[T,R]) => Unit) {
     table.withTable() {
@@ -212,11 +215,31 @@ class ScanQuery[T,R](table: HbaseTable[T,R]) {
     }
   }
 
+  def withFamily[F,K,V](family:FamilyExtractor[T,R,F,K,V]) = {
+    val fam = family(table.pops)
+    scan.addFamily(fam.familyBytes)
+    this
+  }
+
+  def withColumnOp[F,K,V](column:ColumnExtractor[T,R,F,K,V], compareOp:CompareOp, value:Option[V], excludeIfNull:Boolean)(implicit c:ByteConverter[V]) = {
+    val col = column(table.pops)
+    val filter = new SingleColumnValueFilter(
+      col.familyBytes,
+      col.columnBytes,
+      compareOp,
+      value match {case Some(v) => c.toBytes(v); case None => new Array[Byte](0)}
+    )
+    if(excludeIfNull) filter.setFilterIfMissing(true) else filter.setFilterIfMissing(false)
+    filterList.addFilter(filter)
+    scan.setFilter(filterList)
+    this
+  }
+
   def withStartKey[R](key: R)(implicit c: ByteConverter[R]) = {scan.setStartRow(c.toBytes(key)); this}
 
   def withEndKey[R](key: R)(implicit c: ByteConverter[R]) = {scan.setStopRow(c.toBytes(key)); this}
 
-  def withCaching(rowsToCache:Int) = scan.setCaching(rowsToCache)
+  def withCaching(rowsToCache:Int) =scan.setCaching(rowsToCache);this;
 }
 
 /**
