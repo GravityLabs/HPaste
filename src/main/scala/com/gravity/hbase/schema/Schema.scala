@@ -557,6 +557,10 @@ class HbaseTable[T,R](val tableName: String)(implicit conf: Configuration) {
   def pops = this.asInstanceOf[T]
 
   val tablePool = new HTablePool(conf,50)
+  private val columns = Buffer[Column[T, R, _, _,_]]()
+  val families = Buffer[ColumnFamily[T, R,_, _, _]]()
+
+  val meta = family[String,String,Any]("meta")
 
   //alter 'articles', NAME => 'html', VERSIONS =>1, COMPRESSION=>'lzo'
 
@@ -591,8 +595,6 @@ class HbaseTable[T,R](val tableName: String)(implicit conf: Configuration) {
     "{NAME => '%s', VERSIONS => %d%s}".format(Bytes.toString(family.familyBytes), family.versions, compression)
   }
 
-  private val columns = Buffer[Column[T, R, _, _,_]]()
-  val families = Buffer[ColumnFamily[T, R,_, _, _]]()
 
   def getTable(name: String) = tablePool.getTable(name)
 

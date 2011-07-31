@@ -1,8 +1,8 @@
 package com.gravity.hbase
 
 import org.apache.hadoop.hbase.util.Bytes
-import org.joda.time.DateTime
 import scala.collection._
+import org.joda.time.{DateMidnight, DateTime}
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -100,6 +100,20 @@ package object schema {
   implicit object YearDaySeqConverter extends SeqConverter[YearDay,Seq[YearDay]]
   implicit object YearDaySetConverter extends SetConverter[YearDay,Set[YearDay]]
 
+  implicit object DateMidnightConverter extends ByteConverter[DateMidnight] {
+    override def toBytes(dm:DateMidnight) = {
+      Bytes.toBytes(dm.getMillis)
+    }
+
+    override def fromBytes(bytes:Array[Byte]) = {
+      new DateMidnight(Bytes.toLong(bytes))
+    }
+
+    def apply(year:Int, day:Int) = new DateMidnight().withYear(year).withDayOfYear(day)
+  }
+
+  implicit object DateMidnightSeqConverter extends SeqConverter[DateMidnight,Seq[DateMidnight]]
+  implicit object DateMidnightSetConverter extends SetConverter[DateMidnight,Set[DateMidnight]]
 
   implicit object StringLongMap extends MapConverter[String,Long,mutable.Map[String,Long]]
 

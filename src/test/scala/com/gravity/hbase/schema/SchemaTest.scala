@@ -58,7 +58,6 @@ object ExampleSchema extends Schema {
   class ExampleTable extends HbaseTable[ExampleTable,String](tableName = "schema_example")
   {
     //Column family definition
-    val meta = family[String, String, Any]("meta")
     //Inside meta, assume a column called title whose value is a string
     val title = column(meta, "title", classOf[String])
     //Inside meta, assume a column called url whose value is a string
