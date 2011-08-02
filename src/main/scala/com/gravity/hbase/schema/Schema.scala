@@ -10,7 +10,7 @@ import mutable.Buffer
 import java.io._
 import org.apache.hadoop.io.{BytesWritable, Writable}
 import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp
-import org.apache.hadoop.hbase.filter.{FilterList, SingleColumnValueFilter}
+import org.apache.hadoop.hbase.filter.{Filter, FilterList, SingleColumnValueFilter}
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -198,11 +198,17 @@ class QueryResult[T,R](val result: Result, table: HbaseTable[T,R], val tableName
 class ScanQuery[T,R](table: HbaseTable[T,R]) {
   val scan = new Scan()
   scan.setCaching(100)
-  val filterList = new FilterList(FilterList.Operator.MUST_PASS_ALL)
 
-  def execute(handler: (QueryResult[T,R]) => Unit) {
+  val filterBuffer = Buffer[Filter]()
+
+  def execute(handler: (QueryResult[T,R]) => Unit,operator:FilterList.Operator = FilterList.Operator.MUST_PASS_ALL) {
     table.withTable() {
       htable =>
+          if(filterBuffer.size > 0) {
+            val filterList = new FilterList(operator)
+            filterBuffer.foreach{filter=>filterList.addFilter(filter)}
+            scan.setFilter(filterList)
+          }
           val scanner = htable.getScanner(scan)
 
           try {
@@ -249,8 +255,7 @@ class ScanQuery[T,R](table: HbaseTable[T,R]) {
       value match {case Some(v) => c.toBytes(v); case None => new Array[Byte](0)}
     )
     filter.setFilterIfMissing(excludeIfNull)
-    filterList.addFilter(filter)
-    scan.setFilter(filterList)
+    filterBuffer += filter
     this
   }
 
