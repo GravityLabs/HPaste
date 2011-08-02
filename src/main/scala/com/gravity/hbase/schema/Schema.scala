@@ -215,6 +215,25 @@ class ScanQuery[T,R](table: HbaseTable[T,R]) {
     }
   }
 
+  def executeToSeq[I](handler: (QueryResult[T,R]) => I): Seq[I] = {
+    val results = Buffer[I]()
+
+    table.withTable() {
+      htable =>
+          val scanner = htable.getScanner(scan)
+
+          try {
+          for (result <- scanner; if (result != null)) {
+            results += handler(new QueryResult[T,R](result, table, table.tableName))
+          }
+        }finally {
+            scanner.close()
+          }
+    }
+
+    results.toSeq
+  }
+
   def withFamily[F,K,V](family:FamilyExtractor[T,R,F,K,V]) = {
     val fam = family(table.pops)
     scan.addFamily(fam.familyBytes)
@@ -229,7 +248,7 @@ class ScanQuery[T,R](table: HbaseTable[T,R]) {
       compareOp,
       value match {case Some(v) => c.toBytes(v); case None => new Array[Byte](0)}
     )
-    if(excludeIfNull) filter.setFilterIfMissing(true) else filter.setFilterIfMissing(false)
+    filter.setFilterIfMissing(excludeIfNull)
     filterList.addFilter(filter)
     scan.setFilter(filterList)
     this
@@ -239,7 +258,7 @@ class ScanQuery[T,R](table: HbaseTable[T,R]) {
 
   def withEndKey[R](key: R)(implicit c: ByteConverter[R]) = {scan.setStopRow(c.toBytes(key)); this}
 
-  def withCaching(rowsToCache:Int) =scan.setCaching(rowsToCache);this;
+  def withCaching(rowsToCache:Int) = scan.setCaching(rowsToCache);this;
 }
 
 /**
