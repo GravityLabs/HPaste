@@ -204,11 +204,7 @@ class ScanQuery[T,R](table: HbaseTable[T,R]) {
   def execute(handler: (QueryResult[T,R]) => Unit,operator:FilterList.Operator = FilterList.Operator.MUST_PASS_ALL) {
     table.withTable() {
       htable =>
-          if(filterBuffer.size > 0) {
-            val filterList = new FilterList(operator)
-            filterBuffer.foreach{filter=>filterList.addFilter(filter)}
-            scan.setFilter(filterList)
-          }
+             completeScanner(operator)
           val scanner = htable.getScanner(scan)
 
           try {
@@ -221,11 +217,23 @@ class ScanQuery[T,R](table: HbaseTable[T,R]) {
     }
   }
 
-  def executeToSeq[I](handler: (QueryResult[T,R]) => I): Seq[I] = {
+  /*
+  Prepares the scanner for use by chaining the filters together.  Should be called immediately before passing the scanner to the table.
+   */
+  def completeScanner(operator:FilterList.Operator = FilterList.Operator.MUST_PASS_ALL) {
+    if(filterBuffer.size > 0) {
+      val filterList = new FilterList(operator)
+      filterBuffer.foreach{filter=>filterList.addFilter(filter)}
+      scan.setFilter(filterList)
+    }
+  }
+
+  def executeToSeq[I](handler: (QueryResult[T,R]) => I, operator:FilterList.Operator = FilterList.Operator.MUST_PASS_ALL): Seq[I] = {
     val results = Buffer[I]()
 
     table.withTable() {
       htable =>
+          completeScanner(operator)
           val scanner = htable.getScanner(scan)
 
           try {
