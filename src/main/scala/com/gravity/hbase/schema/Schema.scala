@@ -271,7 +271,7 @@ class ScanQuery[T,R](table: HbaseTable[T,R]) {
 
   def withEndKey[R](key: R)(implicit c: ByteConverter[R]) = {scan.setStopRow(c.toBytes(key)); this}
 
-  def withCaching(rowsToCache:Int) = scan.setCaching(rowsToCache);this;
+  def withCaching(rowsToCache:Int) = {scan.setCaching(rowsToCache);this;}
 }
 
 /**
