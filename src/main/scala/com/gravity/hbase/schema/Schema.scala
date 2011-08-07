@@ -16,6 +16,15 @@ import org.apache.hadoop.hbase.filter.{Filter, FilterList, SingleColumnValueFilt
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
+trait QueryResultCache[T <: HbaseTable[T,R],R] {
+  def get(key:R) : Option[QueryResult[T,R]]
+  def put(key:R, value:QueryResult[T,R])
+}
+
+class NoOpCache[T <: HbaseTable[T,R],R] extends QueryResultCache[T,R] {
+  def get(key:R) : Option[QueryResult[T,R]] = None
+  def put(key:R, value:QueryResult[T,R]) {}
+}
 
 /**
 * Class to be implemented by custom converters
@@ -162,7 +171,7 @@ class SeqConverter[T, ST <: Seq[T]](implicit c:ByteConverter[T]) extends Complex
 /**
 * When a query comes back, there are a bucket of column families and columns to retrieve.  This class retrieves them.
 */
-class QueryResult[T,R](val result: Result, table: HbaseTable[T,R], val tableName: String) {
+class QueryResult[T <: HbaseTable[T,R],R](val result: Result, table: HbaseTable[T,R], val tableName: String) {
   def column[F, K, V](column: (T) => Column[T, R, F, K, V])(implicit c: ByteConverter[V]): Option[V] = {
     val co = column(table.pops)
     val col = result.getColumnLatest(co.familyBytes, co.columnBytes)
@@ -195,7 +204,7 @@ class QueryResult[T,R](val result: Result, table: HbaseTable[T,R], val tableName
 * A query for setting up a scanner across the whole table or key subsets.
 * There is a lot of room for expansion in this class -- caching parameters, scanner specs, key-only, etc.
 */
-class ScanQuery[T,R](table: HbaseTable[T,R]) {
+class ScanQuery[T <: HbaseTable[T,R],R](table: HbaseTable[T,R]) {
   val scan = new Scan()
   scan.setCaching(100)
 
@@ -278,7 +287,7 @@ class ScanQuery[T,R](table: HbaseTable[T,R]) {
 * An individual data modification operation (put, increment, or delete usually)
 * These operations are chained together by the client, and then executed in bulk.
 */
-class OpBase[T,R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpBase[T,R]] = Buffer[OpBase[T,R]]()) {
+class OpBase[T <: HbaseTable[T,R],R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpBase[T,R]] = Buffer[OpBase[T,R]]()) {
 
   previous += this
 
@@ -355,7 +364,7 @@ case class OpsResult(numDeletes: Int, numPuts: Int, numIncrements: Int)
 /**
 * An increment operation -- can increment multiple columns in a single go.
 */
-class IncrementOp[T,R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpBase[T,R]] = Buffer[OpBase[T,R]]()) extends OpBase[T,R](table,key,previous) {
+class IncrementOp[T <: HbaseTable[T,R],R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpBase[T,R]] = Buffer[OpBase[T,R]]()) extends OpBase[T,R](table,key,previous) {
   val increment = new Increment(key)
 
   def value[F, K, Long](column:(T)=> Column[T, R, F, K, Long], value: java.lang.Long)(implicit c: ByteConverter[F], d: ByteConverter[K]) = {
@@ -376,7 +385,7 @@ class IncrementOp[T,R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[
 /**
 * A Put operation.  Can work across multiple columns or entire column families treated as Maps.
 */
-class PutOp[T,R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpBase[T,R]] = Buffer[OpBase[T,R]]()) extends OpBase[T,R](table,key,previous) {
+class PutOp[T <: HbaseTable[T,R],R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpBase[T,R]] = Buffer[OpBase[T,R]]()) extends OpBase[T,R](table,key,previous) {
   val put = new Put(key)
 
   def value[F, K, V](column:(T) => Column[T,R, F, K, V], value: V)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) = {
@@ -398,7 +407,7 @@ class PutOp[T,R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpBase
 * A deletion operation.  If nothing is specified but a key, will delete the whole row.  If a family is specified, will just delete the values in
 * that family.
 */
-class DeleteOp[T,R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpBase[T,R]] = Buffer[OpBase[T,R]]()) extends OpBase[T,R](table,key,previous) {
+class DeleteOp[T <: HbaseTable[T,R],R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpBase[T,R]] = Buffer[OpBase[T,R]]()) extends OpBase[T,R](table,key,previous) {
   val delete = new Delete(key)
 
   def family[F, K, V](family :(T)=> ColumnFamily[T,R, F,K,V]) = {
@@ -424,7 +433,7 @@ class DeleteOp[T,R](table:HbaseTable[T,R], key:Array[Byte], previous: Buffer[OpB
 * In other words there's no concept of having multiple rows fetched with different columns for each row (that seems to be a rare use-case and
 * would make the API very complex).
 */
-class Query[T,R](table: HbaseTable[T,R]) {
+class Query[T <: HbaseTable[T,R],R](table: HbaseTable[T,R]) {
 
   val keys = Buffer[Array[Byte]]()
   val families = Buffer[Array[Byte]]()
@@ -540,14 +549,14 @@ class Query[T,R](table: HbaseTable[T,R]) {
 /**
 * Represents the specification of a Column Family
 */
-class ColumnFamily[T,R, F, K, V](val table: HbaseTable[T,R], val familyName: F, val compressed: Boolean = false, val versions: Int = 1)(implicit c: ByteConverter[F]) {
+class ColumnFamily[T <: HbaseTable[T,R],R, F, K, V](val table: HbaseTable[T,R], val familyName: F, val compressed: Boolean = false, val versions: Int = 1)(implicit c: ByteConverter[F]) {
   val familyBytes = c.toBytes(familyName)
 }
 
 /**
 * Represents the specification of a Column.
 */
-class Column[T, R, F, K, V](table:HbaseTable[T,R], columnFamily: F, columnName: K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) {
+class Column[T <: HbaseTable[T,R], R, F, K, V](table:HbaseTable[T,R], columnFamily: F, columnName: K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) {
   val columnBytes = kc.toBytes(columnName)
   val familyBytes = fc.toBytes(columnFamily)
 
@@ -584,13 +593,15 @@ trait Schema {
 * queries).
 * A parameter-type R should be the type of the key for the table.  
 */
-class HbaseTable[T,R](val tableName: String)(implicit conf: Configuration) {
+class HbaseTable[T <: HbaseTable[T,R],R](val tableName: String, val cache : QueryResultCache[T,R] = new NoOpCache[T,R]())(implicit conf: Configuration) {
 
   def pops = this.asInstanceOf[T]
 
   val tablePool = new HTablePool(conf,50)
   private val columns = Buffer[Column[T, R, _, _,_]]()
   val families = Buffer[ColumnFamily[T, R,_, _, _]]()
+
+  def familyBytes = families.map(family => family.familyBytes)
 
   val meta = family[String,String,Any]("meta")
 

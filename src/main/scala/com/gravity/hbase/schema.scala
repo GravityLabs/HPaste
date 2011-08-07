@@ -14,8 +14,8 @@ import org.joda.time.{DateMidnight, DateTime}
 */
 package object schema {
 
-  type FamilyExtractor[T,R,F,K,V] = (T) => ColumnFamily[T,R,F,K,V]
-  type ColumnExtractor[T,R,F,K,V] = (T) => Column[T, R, F, K, V]
+  type FamilyExtractor[T <: HbaseTable[T,R],R,F,K,V] = (T) => ColumnFamily[T,R,F,K,V]
+  type ColumnExtractor[T <: HbaseTable[T,R],R,F,K,V] = (T) => Column[T, R, F, K, V]
 
 
   implicit object StringConverter extends ByteConverter[String] {
