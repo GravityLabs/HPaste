@@ -16,14 +16,22 @@ import org.apache.hadoop.hbase.filter.{Filter, FilterList, SingleColumnValueFilt
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
+case class ScanCachePolicy(ttlMinutes:Int)
+
 trait QueryResultCache[T <: HbaseTable[T,R],R] {
-  def get(key:R) : Option[QueryResult[T,R]]
-  def put(key:R, value:QueryResult[T,R])
+  def get(key:R)(implicit c:ByteConverter[R]) : Option[QueryResult[T,R]]
+  def put(key:R, value:QueryResult[T,R])(implicit c:ByteConverter[R])
+
+  def getScanResult(key:Scan) : Option[Seq[QueryResult[T,R]]]
+  def putScanResult(key:Scan, value:Seq[QueryResult[T,R]])
 }
 
 class NoOpCache[T <: HbaseTable[T,R],R] extends QueryResultCache[T,R] {
-  def get(key:R) : Option[QueryResult[T,R]] = None
-  def put(key:R, value:QueryResult[T,R]) {}
+  override def get(key:R)(implicit c:ByteConverter[R]) : Option[QueryResult[T,R]] = None
+  override def put(key:R, value:QueryResult[T,R])(implicit c:ByteConverter[R]) {}
+
+  override def getScanResult(key:Scan) : Option[Seq[QueryResult[T,R]]] = None
+  override def putScanResult(key:Scan, value:Seq[QueryResult[T,R]]) {}
 }
 
 /**
@@ -171,7 +179,7 @@ class SeqConverter[T, ST <: Seq[T]](implicit c:ByteConverter[T]) extends Complex
 /**
 * When a query comes back, there are a bucket of column families and columns to retrieve.  This class retrieves them.
 */
-class QueryResult[T <: HbaseTable[T,R],R](val result: Result, table: HbaseTable[T,R], val tableName: String) {
+class QueryResult[T <: HbaseTable[T,R],R](val result: Result, table: HbaseTable[T,R], val tableName: String) extends Serializable{
   def column[F, K, V](column: (T) => Column[T, R, F, K, V])(implicit c: ByteConverter[V]): Option[V] = {
     val co = column(table.pops)
     val col = result.getColumnLatest(co.familyBytes, co.columnBytes)
@@ -209,6 +217,30 @@ class ScanQuery[T <: HbaseTable[T,R],R](table: HbaseTable[T,R]) {
   scan.setCaching(100)
 
   val filterBuffer = Buffer[Filter]()
+
+  def executeWithCaching(cachePolicy:ScanCachePolicy,operator:FilterList.Operator=FilterList.Operator.MUST_PASS_ALL) : Seq[QueryResult[T,R]] = {
+      completeScanner(operator)
+      val results = table.cache.getScanResult(scan) match {
+        case Some(result) => result
+        case None => {
+          val results = Buffer[QueryResult[T,R]]()
+          table.withTable() { htable=>
+            val scanner = htable.getScanner(scan)
+            try {
+              for(result <- scanner) {
+                results += new QueryResult[T,R](result,table,table.tableName)
+              }
+              table.cache.putScanResult(scan,results.toSeq)
+              results
+            }finally {
+              scanner.close()
+            }
+          }
+        }
+      }
+
+    results
+  }
 
   def execute(handler: (QueryResult[T,R]) => Unit,operator:FilterList.Operator = FilterList.Operator.MUST_PASS_ALL) {
     table.withTable() {
@@ -468,8 +500,10 @@ class Query[T <: HbaseTable[T,R],R](table: HbaseTable[T,R]) {
     this
   }
 
-  def single(tableName:String = table.tableName) = {
+  def single(tableName:String = table.tableName, cacheResults:Boolean=false) = {
     require(keys.size == 1, "Calling single() with more than one key")
+    
+
     val get = new Get(keys(0))
 
     for (family <- families) {
@@ -580,7 +614,7 @@ class Column[T <: HbaseTable[T,R], R, F, K, V](table:HbaseTable[T,R], columnFami
 trait Schema {
   val tables = mutable.Set[HbaseTable[_,_]]()
 
-  def table[T <: HbaseTable[T,_]](table: T)= {
+  def table[T <: HbaseTable[T,_],_](table: T)= {
     tables += table
     table
   }
@@ -593,7 +627,7 @@ trait Schema {
 * queries).
 * A parameter-type R should be the type of the key for the table.  
 */
-class HbaseTable[T <: HbaseTable[T,R],R](val tableName: String, val cache : QueryResultCache[T,R] = new NoOpCache[T,R]())(implicit conf: Configuration) {
+class HbaseTable[T <: HbaseTable[T,R],R](val tableName: String, var cache : QueryResultCache[T,R] = new NoOpCache[T,R]())(implicit conf: Configuration) {
 
   def pops = this.asInstanceOf[T]
 
