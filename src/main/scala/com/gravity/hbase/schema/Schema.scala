@@ -20,18 +20,18 @@ case class ScanCachePolicy(ttlMinutes:Int)
 
 trait QueryResultCache[T <: HbaseTable[T,R],R] {
   def get(key:R)(implicit c:ByteConverter[R]) : Option[QueryResult[T,R]]
-  def put(key:R, value:QueryResult[T,R])(implicit c:ByteConverter[R])
+  def put(key:R, value:QueryResult[T,R], ttl:Int)(implicit c:ByteConverter[R])
 
   def getScanResult(key:Scan) : Option[Seq[QueryResult[T,R]]]
-  def putScanResult(key:Scan, value:Seq[QueryResult[T,R]])
+  def putScanResult(key:Scan, value:Seq[QueryResult[T,R]],ttl:Int)
 }
 
 class NoOpCache[T <: HbaseTable[T,R],R] extends QueryResultCache[T,R] {
   override def get(key:R)(implicit c:ByteConverter[R]) : Option[QueryResult[T,R]] = None
-  override def put(key:R, value:QueryResult[T,R])(implicit c:ByteConverter[R]) {}
+  override def put(key:R, value:QueryResult[T,R], ttl:Int)(implicit c:ByteConverter[R]) {}
 
   override def getScanResult(key:Scan) : Option[Seq[QueryResult[T,R]]] = None
-  override def putScanResult(key:Scan, value:Seq[QueryResult[T,R]]) {}
+  override def putScanResult(key:Scan, value:Seq[QueryResult[T,R]], ttl:Int) {}
 }
 
 /**
@@ -218,11 +218,15 @@ class ScanQuery[T <: HbaseTable[T,R],R](table: HbaseTable[T,R]) {
 
   val filterBuffer = Buffer[Filter]()
 
-  def executeWithCaching(cachePolicy:ScanCachePolicy,operator:FilterList.Operator=FilterList.Operator.MUST_PASS_ALL) : Seq[QueryResult[T,R]] = {
+  def executeWithCaching(operator:FilterList.Operator=FilterList.Operator.MUST_PASS_ALL, ttl:Int=30) : Seq[QueryResult[T,R]] = {
       completeScanner(operator)
       val results = table.cache.getScanResult(scan) match {
-        case Some(result) => result
+        case Some(result) => {
+          println("cache hit against key " + scan.toString)
+          result
+        }
         case None => {
+          println("cache miss against key " + scan.toString)
           val results = Buffer[QueryResult[T,R]]()
           table.withTable() { htable=>
             val scanner = htable.getScanner(scan)
@@ -230,7 +234,7 @@ class ScanQuery[T <: HbaseTable[T,R],R](table: HbaseTable[T,R]) {
               for(result <- scanner) {
                 results += new QueryResult[T,R](result,table,table.tableName)
               }
-              table.cache.putScanResult(scan,results.toSeq)
+              table.cache.putScanResult(scan,results.toSeq,ttl)
               results
             }finally {
               scanner.close()
