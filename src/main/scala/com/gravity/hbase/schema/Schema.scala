@@ -42,6 +42,14 @@ abstract class ByteConverter[T] {
 
   def fromBytes(bytes: Array[Byte]): T
 
+  def fromByteString(str:String) : T = {
+    fromBytes(Bytes.toBytesBinary(str))
+  }
+
+  def toByteString(item:T) = {
+    Bytes.toStringBinary(toBytes(item))
+  }
+
   def toBytesWritable(t:T) : BytesWritable = {
     new BytesWritable(toBytes(t))
   }
