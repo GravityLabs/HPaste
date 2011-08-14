@@ -3,6 +3,8 @@ package com.gravity.hbase
 import org.apache.hadoop.hbase.util.Bytes
 import scala.collection._
 import org.joda.time.{DateMidnight, DateTime}
+import org.apache.hadoop.io.BytesWritable
+import java.io._
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -13,6 +15,9 @@ import org.joda.time.{DateMidnight, DateTime}
 * This is the standard set of types that can be auto converted into hbase values (they work as families, columns, and values)
 */
 package object schema {
+
+  implicit def dow(output:DataOutputStream) = new DataOutputWrapper(output)
+  implicit def diw(input:DataInputStream) = new DataInputWrapper(input)
 
   type FamilyExtractor[T <: HbaseTable[T,R],R,F,K,V] = (T) => ColumnFamily[T,R,F,K,V]
   type ColumnExtractor[T <: HbaseTable[T,R],R,F,K,V] = (T) => Column[T, R, F, K, V]
@@ -116,5 +121,27 @@ package object schema {
   implicit object DateMidnightSetConverter extends SetConverter[DateMidnight,Set[DateMidnight]]
 
   implicit object StringLongMap extends MapConverter[String,Long,mutable.Map[String,Long]]
+
+  /*
+  Helper function to make byte arrays out of arbitrary values.
+   */
+  def makeBytes(writer:(DataOutputStream)=>Unit) : Array[Byte] = {
+    val bos = new ByteArrayOutputStream()
+    val dataOutput = new DataOutputStream(bos)
+    writer(dataOutput)
+    bos.toByteArray  
+  }
+
+  def makeWritable(writer:(DataOutputStream)=>Unit) : BytesWritable = new BytesWritable(makeBytes(writer))
+
+  def readBytes[T](bytes:Array[Byte])(reader:(DataInputStream)=>T) : T = {
+    val bis = new ByteArrayInputStream(bytes)
+    val dis = new DataInputStream(bis)
+    val results = reader(dis)
+    dis.close()
+    results
+  }
+
+  def readWritable[T](bytesWritable:BytesWritable)(reader:(DataInputStream)=>T) : T = readBytes(bytesWritable.getBytes)(reader)
 
 }

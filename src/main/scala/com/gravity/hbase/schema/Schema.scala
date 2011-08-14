@@ -782,4 +782,14 @@ object CommaSet {
   def apply(item: String): CommaSet = CommaSet(Set(item))
 }
 
+class DataInputWrapper(input:DataInputStream) {
+  def readObj[T](implicit c:ComplexByteConverter[T]) = {
+    c.read(input)
+  }
+}
 
+class DataOutputWrapper(output:DataOutputStream) {
+  def writeObj[T](obj:T)(implicit c:ByteConverter[T]) {
+     output.write(c.toBytes(obj))   
+  }
+}
