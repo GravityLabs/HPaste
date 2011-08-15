@@ -14,6 +14,8 @@ import java.io.{DataOutputStream, ByteArrayOutputStream}
 import org.apache.hadoop.hbase.util.Base64
 import collection.mutable.Buffer
 import org.apache.hadoop.io._
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat
+
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -118,6 +120,20 @@ trait TableMapperJob[M <: TableReadingMapper[TF, TFK, MK, MV], TF <: HbaseTable[
     HadoopScalaShim.registerMapper(job, mapper)
     job.setMapOutputKeyClass(mapperOutputKey)
     job.setMapOutputValueClass(mapperOutputValue)
+    super.configureJob(job)
+
+  }
+}
+
+trait ToPath extends JobTrait {
+  val path : String
+
+  override def configure(conf:Configuration) {
+    super.configure(conf)
+  }
+
+   override def configureJob(job: Job) {
+    FileOutputFormat.setOutputPath(job, new Path(path))
     super.configureJob(job)
 
   }
@@ -345,6 +361,16 @@ trait TableAnnotationMapperJob[M <: TableAnnotationMapper[T, _], T <: HbaseTable
   }
 }
 
+abstract class TextFileWritingReducer[MK,MV](name:String="Text File Reducer") extends Reducer[MK, MV, NullWritable, Text] {
+  def item(key: MK, values: java.lang.Iterable[MV], counter: (String, String) => Unit, writer: (String) => Unit)
+  
+  override def reduce(key: MK, values: java.lang.Iterable[MV], context: Reducer[MK, MV, NullWritable, Text]#Context) {
+    def counter(grp: String, itm: String) {context.getCounter(grp, itm).increment(1l)}
+    def writer(item: String) {context.write(NullWritable.get(), new Text(item))}
+
+    item(key, values, counter _, writer _)
+  }
+}
 
 abstract class TableWritingReducer[TF <: HbaseTable[TF, TFK], TFK, MK, MV](name: String, table: TF)(implicit conf: Configuration)
         extends Reducer[MK, MV, NullWritable, Writable] {
