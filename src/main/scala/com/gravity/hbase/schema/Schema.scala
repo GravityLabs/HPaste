@@ -658,7 +658,7 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     val resultMap = mutable.Map[R, QueryResult[T, R]]()
 
     val getsByKey = (for (key <- keys) yield {
-      (key -> new Get(key))
+      (new String(key) -> new Get(key))
     }).toMap
 
     val gets = getsByKey.values.toSeq
@@ -686,7 +686,7 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
           htable.get(uncachedGets).foreach(res => {
             if (res != null && !res.isEmpty) {
               val qr = new QueryResult[T, R](res, table, tableName)
-              table.cache.putResult(getsByKey(c.toBytes(qr.rowid)), qr, ttl)
+              table.cache.putResult(getsByKey(new String(c.toBytes(qr.rowid))), qr, ttl)
               resultMap(qr.rowid) = qr
             }
           })
