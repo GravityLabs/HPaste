@@ -2,7 +2,6 @@ package com.gravity.hbase.mapreduce
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat
-import org.apache.hadoop.fs.Path
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable
 import org.apache.hadoop.mapreduce.{Mapper, Reducer, Job}
 import com.gravity.hbase.schema._
@@ -15,6 +14,7 @@ import org.apache.hadoop.hbase.util.Base64
 import collection.mutable.Buffer
 import org.apache.hadoop.io._
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat
+import org.apache.hadoop.fs.{FileSystem, Path}
 
 
 /*             )\._.,--....,'``.
@@ -129,6 +129,8 @@ trait ToPath extends JobTrait {
   val path : String
 
   override def configure(conf:Configuration) {
+    FileSystem.get(conf).delete(new Path(path),true)
+
     super.configure(conf)
   }
 
