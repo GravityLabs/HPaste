@@ -133,6 +133,8 @@ trait ToPath extends JobTrait {
   }
 
    override def configureJob(job: Job) {
+     job.setOutputKeyClass(classOf[NullWritable])
+     job.setOutputValueClass(classOf[Text])
     FileOutputFormat.setOutputPath(job, new Path(path))
     super.configureJob(job)
 
