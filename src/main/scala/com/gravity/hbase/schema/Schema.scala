@@ -581,7 +581,8 @@ class Query[T <: HbaseTable[T,R],R](table: HbaseTable[T,R]) {
         for ((columnFamily, column) <- columns) {
           get.addColumn(columnFamily, column)
         }
-        return Some(new QueryResult(htable.get(get), table, tableName))
+        val result = htable.get(get)
+        return if (result.isEmpty) None else Some(new QueryResult(result, table, tableName))
       }
       case None => return None
     }
