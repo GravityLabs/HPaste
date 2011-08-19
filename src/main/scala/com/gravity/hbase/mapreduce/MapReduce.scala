@@ -15,11 +15,70 @@ import collection.mutable.Buffer
 import org.apache.hadoop.io._
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat
 import org.apache.hadoop.fs.{FileSystem, Path}
+import sun.reflect.Reflection
 
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
+class FuncMapper[MK,MV,MOK,MOV] extends Mapper[MK,MV,MOK,MOV] {
+
+  var mapper : (MK,MV,(MOK,MOV)=>Unit,(String,Long)=>Unit)=>Unit = _
+
+  override def setup(context: Mapper[MK,MV,MOK,MOV]#Context) {
+    val jobClass = Class.forName(context.getConfiguration.get("mapperholder")).newInstance().asInstanceOf[FunctionalJobBase[MK,MV,MOK,MOV,_,_]]
+    mapper = jobClass.mapper
+  }
+
+  override def map(key: MK, value: MV, context: Mapper[MK,MV,MOK,MOV]#Context) {
+    def counter(ctr:String,times:Long) {context.getCounter("Hi",ctr).increment(times)}
+    def write(key:MOK,value:MOV) {context.write(key,value)}
+
+    counter("Test Run",1l)
+    counter("Mapper " +context.getConfiguration.get("mapperholder"),1l)
+    mapper(key,value,write,counter)
+//    mapper(key,value,write,counter)
+  }
+}
+
+class FuncReducer[IK,IV,OK,OV] extends Reducer[IK,IV,OK,OV] {
+  var reducer : (IK,Iterable[IV],(OK,OV)=>Unit,(String,Long)=>Unit) =>Unit = _
+
+  override def setup(context: Reducer[IK,IV,OK,OV]#Context) {
+    val jobClass = Class.forName(context.getConfiguration.get("mapperholder")).newInstance().asInstanceOf[FunctionalJobBase[_,_,IK,IV,OK,OV]]
+    reducer = jobClass.reducer
+
+  }
+}
+
+abstract class FunctionalJobBase[MK,MV,MOK : Manifest,MOV : Manifest,ROK,ROV](name:String,
+                  val mapper:(MK,MV,(MOK,MOV)=>Unit,(String,Long)=>Unit)=>Unit,
+                  val reducer:(MOK,Iterable[MOV],(ROK,ROV)=>Unit,(String,Long)=>Unit)=>Unit                                   ) extends JobTrait {
+
+
+  def run(conf:Configuration) {
+    val c = new Configuration(conf)
+    c.set("mapperholder", getClass.getName)
+    configure(c)
+    val job = new Job(c)
+    job.setJarByClass(getClass)
+    job.setJobName(name)
+    FileInputFormat.addInputPath(job, new Path("/user/gravity/magellan/beacons/**/*.csv"))
+
+    HadoopScalaShim.registerMapper(job,classOf[FuncMapper[MK,MV,MOK,MOV]])
+//    job.setMapperClass(classOf[FuncMapper[MK,MV,MOK,MOV]])
+    job.setMapOutputKeyClass(classManifest[MOK].erasure)
+    job.setMapOutputValueClass(classManifest[MOV].erasure)
+
+    HadoopScalaShim.registerReducer(job,classOf[FuncReducer[MOK,MOV,ROK,ROV]])
+    //job.setReducerClass(classOf[FuncReducer[MOK,MOV,ROK,ROV]])
+
+    FileOutputFormat.setOutputPath(job, new Path("/user/gravity/magellan/output"))
+
+    configureJob(job)
+    job.waitForCompletion(true)
+  }
+}
 
 /**
  * Base class for Jobs that will be composed using the JobTraits.
@@ -51,7 +110,7 @@ abstract class JobBase(name: String)(implicit conf: Configuration) extends JobTr
  * Declares that you want a Reducer.  Will force you to provide the class, and the number thereof.
  * If you specify None for the numReducers it will use the configured default.
  */
-trait ReducerJob[M] extends JobTrait {
+trait ReducerJob[M <: Reducer[_,_,_,_]] extends JobTrait {
   val reducer: Class[M]
   val numReducers: Option[Int]
 
@@ -60,6 +119,7 @@ trait ReducerJob[M] extends JobTrait {
   }
 
   override def configureJob(job: Job) {
+//    job.setReducerClass(reducer)
     HadoopScalaShim.registerReducer(job, reducer)
     numReducers.foreach(reducerCount => job.setNumReduceTasks(reducerCount))
     super.configureJob(job)
@@ -81,6 +141,7 @@ trait MapperJob[M <: StandardMapper[MK, MV], MK, MV] extends JobTrait {
   }
 
   override def configureJob(job: Job) {
+//    job.setMapperClass(mapper)
     HadoopScalaShim.registerMapper(job, mapper)
     job.setMapOutputKeyClass(mapperOutputKey)
     job.setMapOutputValueClass(mapperOutputValue)
@@ -99,6 +160,7 @@ trait TableReducerJob[R <: TableWritingReducer[TF, TFK, MK, MV], TF <: HbaseTabl
   }
 
   override def configureJob(job: Job) {
+//    job.setReducerClass(reducer)
     HadoopScalaShim.registerReducer(job, reducer)
     super.configureJob(job)
   }
@@ -117,6 +179,7 @@ trait TableMapperJob[M <: TableReadingMapper[TF, TFK, MK, MV], TF <: HbaseTable[
   }
 
   override def configureJob(job: Job) {
+//    job.setMapperClass(mapper)
     HadoopScalaShim.registerMapper(job, mapper)
     job.setMapOutputKeyClass(mapperOutputKey)
     job.setMapOutputValueClass(mapperOutputValue)
@@ -228,7 +291,8 @@ trait FromTable[T <: HbaseTable[T, _]] extends JobTrait with NoSpeculativeExecut
 
   override def configureJob(job: Job) {
     println("Configuring FromTable Job")
-    HadoopScalaShim.registerInputFormat(job, classOf[TableInputFormat])
+    job.setInputFormatClass(classOf[TableInputFormat])
+//    HadoopScalaShim.registerInputFormat(job, classOf[TableInputFormat])
     super.configureJob(job)
   }
 }
@@ -263,7 +327,8 @@ trait ToTable[T <: HbaseTable[T, _]] extends JobTrait with NoSpeculativeExecutio
 
   override def configureJob(job: Job) {
     println("Configuring ToTable Job")
-    HadoopScalaShim.registerOutputFormat(job, classOf[GravityTableOutputFormat[ImmutableBytesWritable]])
+//    job.setOutputFormatClass(classOf[GravityTableOutputFormat[ImmutableBytesWritable]])
+   HadoopScalaShim.registerOutputFormat(job, classOf[GravityTableOutputFormat[ImmutableBytesWritable]])
     super.configureJob(job)
   }
 }
@@ -336,9 +401,11 @@ trait TableAnnotationMultithreadedMapperJob[M <: TableAnnotationMapper[T, _], T 
   override def configureJob(job: Job) {
     //job.setMapperClass(mapper)
     println("Configuring Job in Annotation Mapper")
+    job.setMapperClass(classOf[MultithreadedMapper[_,_,_,_]])
     HadoopScalaShim.registerMapper(job, classOf[MultithreadedMapper[_, _, _, _]])
+//    MultithreadedMapper.setMapperClass(job,mapper)
     HadoopScalaShim.setMultithreadedMapperClass(job, mapper)
-    MultithreadedMapper.setNumberOfThreads(job, 10)
+//    MultithreadedMapper.setNumberOfThreads(job, 10)
     super.configureJob(job)
   }
 }
@@ -360,6 +427,7 @@ trait TableAnnotationMapperJob[M <: TableAnnotationMapper[T, _], T <: HbaseTable
   override def configureJob(job: Job) {
     //job.setMapperClass(mapper)
     println("Configuring Job in Annotation Mapper")
+//    job.setMapperClass(mapper)
     HadoopScalaShim.registerMapper(job, mapper)
     super.configureJob(job)
   }
@@ -367,7 +435,7 @@ trait TableAnnotationMapperJob[M <: TableAnnotationMapper[T, _], T <: HbaseTable
 
 abstract class TextFileWritingReducer[MK,MV](name:String="Text File Reducer") extends Reducer[MK, MV, NullWritable, Text] {
   def item(key: MK, values: java.lang.Iterable[MV], counter: (String, String) => Unit, writer: (String) => Unit)
-  
+
   override def reduce(key: MK, values: java.lang.Iterable[MV], context: Reducer[MK, MV, NullWritable, Text]#Context) {
     def counter(grp: String, itm: String) {context.getCounter(grp, itm).increment(1l)}
     def writer(item: String) {context.write(NullWritable.get(), new Text(item))}
