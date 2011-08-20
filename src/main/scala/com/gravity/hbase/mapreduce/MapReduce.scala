@@ -31,7 +31,7 @@ class FuncMapper[MK, MV, MOK, MOV] extends Mapper[MK, MV, MOK, MOV] {
   }
 
   override def map(key: MK, value: MV, context: Mapper[MK, MV, MOK, MOV]#Context) {
-    def counter(ctr: String, times: Long) {context.getCounter("Hi", ctr).increment(times)}
+    def counter(ctr: String, times: Long) {context.getCounter(context.getJobName, ctr).increment(times)}
     def write(key: MOK, value: MOV) {context.write(key, value)}
 
     counter("Test Run", 1l)
@@ -62,11 +62,9 @@ class FuncTableMapper[T <: HbaseTable[T, R], R] extends TableMapper[NullWritable
   }
 
   override def map(key: ImmutableBytesWritable, value: Result, context: Mapper[ImmutableBytesWritable, Result, NullWritable, Writable]#Context) {
-    def counter(ctr: String, times: Long) {context.getCounter("Hi", ctr).increment(times)}
+    def counter(ctr: String, times: Long) {context.getCounter(context.getJobName, ctr).increment(times)}
     def write(operation: Writable) {context.write(NullWritable.get(), operation)}
 
-    counter("Table Test Run", 1l)
-    counter("Mapper " + context.getConfiguration.get("mapperholder"), 1l)
     jobBase.mapper(new QueryResult[T, R](value, jobBase.mapTable, jobBase.mapTable.tableName), write, counter)
     //    mapper(key,value,write,counter)
   }
@@ -82,11 +80,9 @@ class FuncTableExternMapper[T <: HbaseTable[T, R], R, MOK, MOV] extends TableMap
   }
 
   override def map(key: ImmutableBytesWritable, value: Result, context: Mapper[ImmutableBytesWritable, Result, MOK, MOV]#Context) {
-    def counter(ctr: String, times: Long) {context.getCounter("Hi", ctr).increment(times)}
+    def counter(ctr: String, times: Long) {context.getCounter(context.getJobName, ctr).increment(times)}
     def write(key: MOK, value: MOV) {context.write(key, value)}
 
-    counter("Table Test Run", 1l)
-    counter("Mapper " + context.getConfiguration.get("mapperholder"), 1l)
     jobBase.mapper(new QueryResult[T, R](value, jobBase.mapTable, jobBase.mapTable.tableName), write, counter)
     //    mapper(key,value,write,counter)
   }
@@ -101,7 +97,7 @@ class FuncTableExternReducer[T <: HbaseTable[T, R], R, MOK, MOV] extends TableRe
   }
 
   override def reduce(key: MOK, values: java.lang.Iterable[MOV], context: Reducer[MOK, MOV, NullWritable, Writable]#Context) {
-    def counter(ctr: String, times: Long) {context.getCounter("Hi", ctr).increment(times)}
+    def counter(ctr: String, times: Long) {context.getCounter(context.getJobName, ctr).increment(times)}
     def write(value: OpBase[T, R]) {
       value.getOperations.foreach {
         op =>
@@ -122,7 +118,7 @@ class PathTableExternReducer[T <: HbaseTable[T, R], R, MOK, MOV] extends TableRe
   }
 
   override def reduce(key: MOK, values: java.lang.Iterable[MOV], context: Reducer[MOK, MOV, NullWritable, Writable]#Context) {
-    def counter(ctr: String, times: Long) {context.getCounter("Hi", ctr).increment(times)}
+    def counter(ctr: String, times: Long) {context.getCounter(context.getJobName, ctr).increment(times)}
     def write(value: OpBase[T, R]) {
       value.getOperations.foreach {
         op =>
@@ -145,7 +141,7 @@ class PathMapper[MOK, MOV] extends Mapper[LongWritable, Text, MOK, MOV] {
   }
 
   override def map(key: LongWritable, value: Text, context: Mapper[LongWritable, Text, MOK, MOV]#Context) {
-    def counter(ctr: String, times: Long) {context.getCounter("Hi", ctr).increment(times)}
+    def counter(ctr: String, times: Long) {context.getCounter(context.getJobName, ctr).increment(times)}
     def write(key: MOK, value: MOV) {context.write(key, value)}
 
     counter("Test Run", 1l)
