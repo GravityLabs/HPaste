@@ -41,6 +41,7 @@ class FuncMapper[MK,MV,MOK,MOV] extends Mapper[MK,MV,MOK,MOV] {
   }
 }
 
+
 class FuncReducer[IK,IV,OK,OV] extends Reducer[IK,IV,OK,OV] {
   var reducer : (IK,Iterable[IV],(OK,OV)=>Unit,(String,Long)=>Unit) =>Unit = _
 
@@ -48,6 +49,51 @@ class FuncReducer[IK,IV,OK,OV] extends Reducer[IK,IV,OK,OV] {
     val jobClass = Class.forName(context.getConfiguration.get("mapperholder")).newInstance().asInstanceOf[FunctionalJobBase[_,_,IK,IV,OK,OV]]
     reducer = jobClass.reducer
 
+  }
+}
+
+class FuncTableMapper[T <: HbaseTable[T,R],R] extends TableMapper[NullWritable,Writable] {
+
+
+  var jobBase : TableAnnotationJobBase[T,R] = _
+
+  override def setup(context: Mapper[ImmutableBytesWritable,Result,NullWritable,Writable]#Context) {
+    jobBase = Class.forName(context.getConfiguration.get("mapperholder")).newInstance().asInstanceOf[TableAnnotationJobBase[T,R]]
+  }
+
+  override def map(key: ImmutableBytesWritable, value: Result, context: Mapper[ImmutableBytesWritable,Result,NullWritable,Writable]#Context) {
+    def counter(ctr:String,times:Long) {context.getCounter("Hi",ctr).increment(times)}
+    def write(operation:Writable) {context.write(NullWritable.get(),operation)}
+
+    counter("Table Test Run",1l)
+    counter("Mapper " +context.getConfiguration.get("mapperholder"),1l)
+    jobBase.mapper(new QueryResult[T,R](value, jobBase.mapTable, jobBase.mapTable.tableName),write,counter)
+//    mapper(key,value,write,counter)
+  }
+}
+
+
+abstract class TableAnnotationJobBase[T <: HbaseTable[T,R],R](name:String,val mapTable:T,
+  val mapper:(QueryResult[T,R],(Writable)=>Unit,(String,Long)=>Unit)=>Unit
+) extends JobTrait with FromTable[T] with ToTable[T] {
+
+  val fromTable = mapTable
+  val toTable = mapTable
+
+  def run(conf:Configuration) = {
+    val c = new Configuration(conf)
+    c.set("mapperholder", getClass.getName)
+    configure(c)
+
+    val job = new Job(c)
+    job.setJarByClass(getClass)
+    job.setJobName(name)
+    HadoopScalaShim.registerMapper(job,classOf[FuncTableMapper[T,R]])
+    job.setMapOutputKeyClass(classOf[NullWritable])
+    job.setMapOutputValueClass(classOf[Writable])
+    job.setNumReduceTasks(0)
+    configureJob(job)
+    job.waitForCompletion(true)
   }
 }
 
