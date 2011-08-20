@@ -17,6 +17,7 @@ import sun.reflect.Reflection
 import org.apache.hadoop.hbase.mapreduce.{TableReducer, TableMapper, TableInputFormat}
 import scala.collection.JavaConversions._
 import org.apache.hadoop.hbase.client.{Delete, Put, Scan, Result}
+import java.lang.Iterable
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -131,6 +132,7 @@ class PathTableExternReducer[T <: HbaseTable[T, R], R, MOK, MOV] extends TableRe
 }
 
 
+
 class PathMapper[MOK, MOV] extends Mapper[LongWritable, Text, MOK, MOV] {
 
   var mapper: (LongWritable, Text, (MOK, MOV) => Unit, (String, Long) => Unit) => Unit = _
@@ -148,6 +150,68 @@ class PathMapper[MOK, MOV] extends Mapper[LongWritable, Text, MOK, MOV] {
     counter("Mapper " + context.getConfiguration.get("mapperholder"), 1l)
     mapper(key, value, write, counter)
     //    mapper(key,value,write,counter)
+  }
+}
+
+class TableToPathMapper[T <: HbaseTable[T, R], R, MOK, MOV] extends TableMapper[MOK, MOV] {
+
+
+  var jobBase: TableToPathMRJobBase[T, R, MOK, MOV] = _
+
+  override def setup(context: Mapper[ImmutableBytesWritable, Result, MOK, MOV]#Context) {
+    jobBase = Class.forName(context.getConfiguration.get("mapperholder")).newInstance().asInstanceOf[TableToPathMRJobBase[T, R, MOK, MOV]]
+  }
+
+  override def map(key: ImmutableBytesWritable, value: Result, context: Mapper[ImmutableBytesWritable, Result, MOK, MOV]#Context) {
+    def counter(ctr: String, times: Long) {context.getCounter(context.getJobName, ctr).increment(times)}
+    def write(key: MOK, value: MOV) {context.write(key, value)}
+
+    jobBase.mapper(new QueryResult[T, R](value, jobBase.mapTable, jobBase.mapTable.tableName), write, counter)
+    //    mapper(key,value,write,counter)
+  }
+}
+
+class TableToPathReducer[MOK, MOV] extends Reducer[MOK, MOV, NullWritable, Text] {
+  var reducer: (MOK, Iterable[MOV], (String) => Unit, (String, Long) => Unit) => Unit = _
+
+  override def setup(context: Reducer[MOK, MOV, NullWritable, Text]#Context) {
+    val jobClass = Class.forName(context.getConfiguration.get("mapperholder")).newInstance().asInstanceOf[TableToPathMRJobBase[_, _, MOK, MOV]]
+    reducer = jobClass.reducer
+  }
+
+
+  override def reduce(key: MOK, values: java.lang.Iterable[MOV], context: Reducer[MOK, MOV, NullWritable, Text]#Context) {
+    def counter(ctr:String, times:Long) {context.getCounter(context.getJobName,ctr).increment(times)}
+    def write(value:String) { context.write(NullWritable.get(), new Text(value))}
+
+    reducer(key,values, write, counter)
+
+  }
+}
+
+
+abstract class TableToPathMRJobBase[T <: HbaseTable[T,R],R, MOK: Manifest, MOV: Manifest]
+(
+    name:String,
+    val mapTable: T,
+    val mapper: (QueryResult[T,R], (MOK,MOV)=>Unit, (String,Long)=>Unit) => Unit,
+    val reducer: (MOK, java.lang.Iterable[MOV], (String)=>Unit, (String,Long)=>Unit) => Unit,
+    conf:Configuration
+) extends JobBase(name)(conf) with FromTable[T] with ToPath {
+  val fromTable = mapTable
+
+  override def configure(conf: Configuration) {
+    conf.set("mapperholder", getClass.getName)
+    super.configure(conf)
+  }
+
+  override def configureJob(job: Job) {
+    HadoopScalaShim.registerMapper(job, classOf[TableToPathMapper[T,R,MOK,MOV]])
+    job.setMapOutputKeyClass(classManifest[MOK].erasure)
+    job.setMapOutputValueClass(classManifest[MOV].erasure)
+    HadoopScalaShim.registerReducer(job, classOf[TableToPathReducer[MOK,MOV]])
+    job.setNumReduceTasks(1)
+    super.configureJob(job)
   }
 }
 
