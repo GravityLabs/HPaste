@@ -354,6 +354,8 @@ class ScanQuery[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     this
   }
 
+  def addFilter(filter: Filter) = withFilter(() => filter)
+
   def withColumnOp[F, K, V](column: ColumnExtractor[T, R, F, K, V], compareOp: CompareOp, value: Option[V], excludeIfNull: Boolean)(implicit c: ByteConverter[V]) = {
     val col = column(table.pops)
     val filter = new SingleColumnValueFilter(
