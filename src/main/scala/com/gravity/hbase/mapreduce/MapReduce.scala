@@ -185,53 +185,53 @@ abstract class PathToTableMRJobBase[T <: HbaseTable[T, R], R, MOK: Manifest, MOV
 abstract class TableAnnotationMRJobBase[T <: HbaseTable[T, R], R, TT <: HbaseTable[TT, RR], RR, MOK: Manifest, MOV: Manifest]
 (name: String, val mapTable: T, val reduceTable: TT,
  val mapper: (QueryResult[T, R], (MOK, MOV) => Unit, (String, Long) => Unit) => Unit,
- val reducer: (MOK, Iterable[MOV], (OpBase[TT, RR]) => Unit, (String, Long) => Unit) => Unit
-        ) extends JobTrait with FromTable[T] with ToTable[TT] {
+ val reducer: (MOK, Iterable[MOV], (OpBase[TT, RR]) => Unit, (String, Long) => Unit) => Unit,
+  conf:Configuration
+        ) extends JobBase(name)(conf) with FromTable[T] with ToTable[TT] {
 
   val fromTable = mapTable
   val toTable = reduceTable
 
-  def run(conf: Configuration) = {
-    val c = new Configuration(conf)
-    c.set("mapperholder", getClass.getName)
-    configure(c)
 
-    val job = new Job(c)
-    job.setJarByClass(getClass)
-    job.setJobName(name)
+  override def configure(conf: Configuration) {
+    conf.set("mapperholder", getClass.getName)
+    super.configure(conf)
+  }
+
+  override def configureJob(job: Job) {
     HadoopScalaShim.registerMapper(job, classOf[FuncTableExternMapper[T, R, MOK, MOV]])
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
     HadoopScalaShim.registerReducer(job, classOf[FuncTableExternReducer[TT, RR, MOK, MOV]])
-    configureJob(job)
-    job.waitForCompletion(true)
+    super.configureJob(job)
   }
+
 }
 
 
 abstract class TableAnnotationJobBase[T <: HbaseTable[T, R], R]
 (name: String, val mapTable: T,
- val mapper: (QueryResult[T, R], (Writable) => Unit, (String, Long) => Unit) => Unit
-        ) extends JobTrait with FromTable[T] with ToTable[T] {
+ val mapper: (QueryResult[T, R], (Writable) => Unit, (String, Long) => Unit) => Unit,
+conf:Configuration
+        ) extends JobBase(name)(conf) with FromTable[T] with ToTable[T] {
 
   val fromTable = mapTable
   val toTable = mapTable
 
-  def run(conf: Configuration) = {
-    val c = new Configuration(conf)
-    c.set("mapperholder", getClass.getName)
-    configure(c)
 
-    val job = new Job(c)
-    job.setJarByClass(getClass)
-    job.setJobName(name)
+  override def configure(conf: Configuration) {
+    conf.set("mapperholder", getClass.getName)
+    super.configure(conf)
+  }
+
+  override def configureJob(job: Job) {
     HadoopScalaShim.registerMapper(job, classOf[FuncTableMapper[T, R]])
     job.setMapOutputKeyClass(classOf[NullWritable])
     job.setMapOutputValueClass(classOf[Writable])
     job.setNumReduceTasks(0)
-    configureJob(job)
-    job.waitForCompletion(true)
+    super.configureJob(job)
   }
+
 }
 
 abstract class FunctionalJobBase[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV]
