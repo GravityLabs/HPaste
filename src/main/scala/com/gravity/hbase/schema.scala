@@ -105,14 +105,12 @@ package object schema {
   implicit object YearDaySeqConverter extends SeqConverter[YearDay,Seq[YearDay]]
   implicit object YearDaySetConverter extends SetConverter[YearDay,Set[YearDay]]
 
-  implicit object DateMidnightConverter extends ByteConverter[DateMidnight] {
-    override def toBytes(dm:DateMidnight) = {
-      Bytes.toBytes(dm.getMillis)
+  implicit object DateMidnightConverter extends ComplexByteConverter[DateMidnight] {
+    override def write(dm:DateMidnight,output:DataOutputStream) {
+      output.writeLong(dm.getMillis)
     }
+    override def read(input:DataInputStream) = new DateMidnight(input.readLong())
 
-    override def fromBytes(bytes:Array[Byte]) = {
-      new DateMidnight(Bytes.toLong(bytes))
-    }
 
     def apply(year:Int, day:Int) = new DateMidnight().withYear(year).withDayOfYear(day)
   }

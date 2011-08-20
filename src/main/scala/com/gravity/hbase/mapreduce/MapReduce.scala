@@ -173,6 +173,7 @@ abstract class PathToTableMRJobBase[T <: HbaseTable[T, R], R, MOK: Manifest, MOV
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
     HadoopScalaShim.registerReducer(job, classOf[PathTableExternReducer[T, R, MOK, MOV]])
+    job.setNumReduceTasks(20)
     super.configureJob(job)
   }
 
@@ -199,6 +200,8 @@ abstract class TableAnnotationMRJobBase[T <: HbaseTable[T, R], R, TT <: HbaseTab
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
     HadoopScalaShim.registerReducer(job, classOf[FuncTableExternReducer[TT, RR, MOK, MOV]])
+    job.setNumReduceTasks(20)
+
     super.configureJob(job)
   }
 
