@@ -88,7 +88,7 @@ abstract class ComplexByteConverter[T] extends ByteConverter[T] {
 }
 
 
-class ImmutableMapConverter[K, V](implicit c: ByteConverter[K], d: ByteConverter[V]) extends ComplexByteConverter[Map[K, V]] {
+class MapConverter[K, V](implicit c: ByteConverter[K], d: ByteConverter[V]) extends ComplexByteConverter[Map[K, V]] {
   override def write(map: Map[K, V], output: DataOutputStream) {
     val length = map.size
     output.writeInt(length)
@@ -123,40 +123,6 @@ class ImmutableMapConverter[K, V](implicit c: ByteConverter[K], d: ByteConverter
 }
 
 
-class MapConverter[K, V, MP <: scala.collection.mutable.Map[K, V]](implicit c: ByteConverter[K], d: ByteConverter[V]) extends ComplexByteConverter[MP] {
-  override def write(map: MP, output: DataOutputStream) {
-    val length = map.size
-    output.writeInt(length)
-
-    for ((k, v) <- map) {
-      val keyBytes = c.toBytes(k)
-      val valBytes = d.toBytes(v)
-      output.writeInt(keyBytes.size)
-      output.write(keyBytes)
-      output.writeInt(valBytes.size)
-      output.write(valBytes)
-    }
-  }
-
-  override def read(input: DataInputStream) = {
-    val length = input.readInt()
-    val map = scala.collection.mutable.Map[K, V]()
-    for (i <- 0 until length) {
-      val keyLength = input.readInt
-      val keyArr = new Array[Byte](keyLength)
-      input.read(keyArr)
-      val key = c.fromBytes(keyArr)
-
-      val valLength = input.readInt
-      val valArr = new Array[Byte](valLength)
-      input.read(valArr)
-      val value = d.fromBytes(valArr)
-
-      map.put(key, value)
-    }
-    map.asInstanceOf[MP]
-  }
-}
 
 class SetConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Set[T]] {
 
