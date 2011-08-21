@@ -44,7 +44,7 @@ object CustomTypes {
     }
   }
 
-  implicit object KittenSeqConverter extends SeqConverter[Kitten,Seq[Kitten]]
+  implicit object KittenSeqConverter extends SeqConverter[Kitten]
 }
 
 object ExampleSchema extends Schema {
@@ -70,7 +70,7 @@ object ExampleSchema extends Schema {
     //A column called viewsArr whose value is a sequence of strings
     val viewsArr = column(meta,"viewsArr", classOf[Seq[String]])
     //A column called viewsMap whose value is a map of String to Long
-    val viewsMap = column(meta,"viewsMap", classOf[mutable.Map[String,Long]])
+    val viewsMap = column(meta,"viewsMap", classOf[Map[String,Long]])
 
     //A column family called views whose column names are Strings and values are Longs.  Can be treated as a Map
     val viewCounts = family[String, String, Long]("views")
@@ -167,7 +167,7 @@ enable 'schema_example'"""
   }
 
   @Test def testMaps() {
-    val viewMap = mutable.Map("Chris"->50l, "Fred" -> 100l)
+    val viewMap = Map("Chris"->50l, "Fred" -> 100l)
     ExampleSchema.ExampleTable
       .put("MapTest").value(_.viewsMap,viewMap)
       .execute()

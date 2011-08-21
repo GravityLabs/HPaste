@@ -5,13 +5,12 @@ import org.apache.hadoop.hbase.util._
 import scala.collection.JavaConversions._
 import org.apache.hadoop.hbase.TableNotFoundException
 import org.apache.hadoop.conf.Configuration
-import scala.collection._
-import mutable.Buffer
+import scala.collection.mutable.Buffer
 import java.io._
 import org.apache.hadoop.io.{BytesWritable, Writable}
 import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp
 import org.apache.hadoop.hbase.filter.{Filter, FilterList, SingleColumnValueFilter}
-
+import scala.collection._
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
@@ -124,7 +123,7 @@ class ImmutableMapConverter[K, V](implicit c: ByteConverter[K], d: ByteConverter
 }
 
 
-class MapConverter[K, V, MP <: mutable.Map[K, V]](implicit c: ByteConverter[K], d: ByteConverter[V]) extends ComplexByteConverter[MP] {
+class MapConverter[K, V, MP <: scala.collection.mutable.Map[K, V]](implicit c: ByteConverter[K], d: ByteConverter[V]) extends ComplexByteConverter[MP] {
   override def write(map: MP, output: DataOutputStream) {
     val length = map.size
     output.writeInt(length)
@@ -141,7 +140,7 @@ class MapConverter[K, V, MP <: mutable.Map[K, V]](implicit c: ByteConverter[K], 
 
   override def read(input: DataInputStream) = {
     val length = input.readInt()
-    val map = mutable.Map[K, V]()
+    val map = scala.collection.mutable.Map[K, V]()
     for (i <- 0 until length) {
       val keyLength = input.readInt
       val keyArr = new Array[Byte](keyLength)
@@ -159,44 +158,37 @@ class MapConverter[K, V, MP <: mutable.Map[K, V]](implicit c: ByteConverter[K], 
   }
 }
 
-class SetConverter[T, ST <: Set[T]](implicit c: ByteConverter[T]) extends ComplexByteConverter[ST] {
-  override def write(seq: ST, output: DataOutputStream) {
-    writeSeq(seq, output)
-  }
+class SetConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Set[T]] {
 
-  def writeSeq(seq: ST, output: DataOutputStream) {
-    val length = seq.size
+  override def write(set: Set[T], output: DataOutputStream) {
+    val length = set.size
     output.writeInt(length)
 
-    for (t <- seq) {
-      val bytes = c.toBytes(t)
+    set.foreach{itm=>
+      val bytes = c.toBytes(itm)
       output.writeInt(bytes.size)
       output.write(bytes)
     }
   }
 
-  override def read(input: DataInputStream) = readSeq(input)
-
-  def readSeq(input: DataInputStream) = {
+  override def read(input:DataInputStream) : Set[T] = {
     val length = input.readInt()
-    val buffer = Buffer[T]()
-    for (i <- 0 until length) {
+    Set((for(i <- 0 until length) yield {
       val arrLength = input.readInt()
       val arr = new Array[Byte](arrLength)
       input.read(arr)
-      buffer += c.fromBytes(arr)
-    }
-    buffer.toSet.asInstanceOf[ST]
+      c.fromBytes(arr)
+    }):_*)
   }
-
 }
 
-class SeqConverter[T, ST <: Seq[T]](implicit c: ByteConverter[T]) extends ComplexByteConverter[ST] {
-  override def write(seq: ST, output: DataOutputStream) {
+
+class SeqConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Seq[T]] {
+  override def write(seq: Seq[T], output: DataOutputStream) {
     writeSeq(seq, output)
   }
 
-  def writeSeq(seq: ST, output: DataOutputStream) {
+  def writeSeq(seq: Seq[T], output: DataOutputStream) {
     val length = seq.size
     output.writeInt(length)
 
@@ -211,14 +203,13 @@ class SeqConverter[T, ST <: Seq[T]](implicit c: ByteConverter[T]) extends Comple
 
   def readSeq(input: DataInputStream) = {
     val length = input.readInt()
-    val buffer = Buffer[T]()
-    for (i <- 0 until length) {
+
+    Seq((for (i <- 0 until length) yield {
       val arrLength = input.readInt()
       val arr = new Array[Byte](arrLength)
       input.read(arr)
-      buffer += c.fromBytes(arr)
-    }
-    buffer.toIndexedSeq.asInstanceOf[ST]
+      c.fromBytes(arr)
+    }):_*)
   }
 
 }
@@ -265,7 +256,7 @@ class ScanQuery[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
   val scan = new Scan()
   scan.setCaching(100)
 
-  val filterBuffer = Buffer[Filter]()
+  val filterBuffer = scala.collection.mutable.Buffer[Filter]()
 
   def executeWithCaching(operator: FilterList.Operator = FilterList.Operator.MUST_PASS_ALL, ttl: Int = 30): Seq[QueryResult[T, R]] = {
     completeScanner(operator)
@@ -276,7 +267,7 @@ class ScanQuery[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
       }
       case None => {
         println("cache miss against key " + scan.toString)
-        val results = Buffer[QueryResult[T, R]]()
+        val results = scala.collection.mutable.Buffer[QueryResult[T, R]]()
         table.withTable() {
           htable =>
             val scanner = htable.getScanner(scan)
@@ -735,7 +726,7 @@ class Column[T <: HbaseTable[T, R], R, F, K, V](table: HbaseTable[T, R], columnF
 }
 
 trait Schema {
-  val tables = mutable.Set[HbaseTable[_, _]]()
+  val tables = scala.collection.mutable.Set[HbaseTable[_, _]]()
 
   def table[T <: HbaseTable[T, _], _](table: T) = {
     tables += table
