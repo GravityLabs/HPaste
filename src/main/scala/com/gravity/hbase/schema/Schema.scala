@@ -3,14 +3,15 @@ package com.gravity.hbase.schema
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util._
 import scala.collection.JavaConversions._
-import org.apache.hadoop.hbase.TableNotFoundException
 import org.apache.hadoop.conf.Configuration
-import scala.collection.mutable.Buffer
 import java.io._
 import org.apache.hadoop.io.{BytesWritable, Writable}
 import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp
 import org.apache.hadoop.hbase.filter.{Filter, FilterList, SingleColumnValueFilter}
 import scala.collection._
+import java.util.NavigableSet
+import scala.collection.mutable.Buffer
+
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
@@ -35,6 +36,7 @@ class NoOpCache[T <: HbaseTable[T, R], R] extends QueryResultCache[T, R] {
   override def putScanResult(key: Scan, value: Seq[QueryResult[T, R]], ttl: Int) {}
 
   override def getResult(key: Get): Option[QueryResult[T, R]] = None
+
 
   override def putResult(key: Get, value: QueryResult[T, R], ttl: Int) {}
 }
@@ -533,10 +535,6 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     get
   }
 
-  def makeGetCacheKey(get: Get) = {
-    get.toString
-  }
-
   def singleWithCaching(tableName: String = table.tableName, ttl: Int = 30) = {
     val get = prepareSingleGet()
 
@@ -568,7 +566,7 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     }
   }
 
-  def execute(tableName: String = table.tableName) = {
+  def execute(tableName: String = table.tableName, skipCache: Boolean = false) = {
 
     val gets = for (key <- keys) yield {
       new Get(key)
@@ -587,7 +585,7 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     }
   }
 
-  def executeMap(tableName: String = table.tableName)(implicit c: ByteConverter[R]) = {
+  def executeMap(tableName: String = table.tableName, skipCache: Boolean = false)(implicit c: ByteConverter[R]) = {
     val gets = for (key <- keys) yield {
       new Get(key)
     }
@@ -613,8 +611,11 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     }.toMap
   }
 
-  def executeMapWithCaching(tableName: String = table.tableName, ttl: Int = 30)(implicit c: ByteConverter[R]) = {
+  def executeMapWithCaching(tableName: String = table.tableName, ttl: Int = 30)(implicit c: ByteConverter[R]): Map[R, QueryResult[T, R]] = {
+    if (keys.isEmpty) return Map.empty[R, QueryResult[T, R]]
+
     val resultMap = mutable.Map[R, QueryResult[T, R]]()
+    resultMap.sizeHint(keys.size)
 
     val getsByKey = (for (key <- keys) yield {
       (new String(key) -> new Get(key))
@@ -622,15 +623,23 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
 
     val gets = getsByKey.values.toSeq
     val uncachedGets = Buffer[Get]()
+    val firstGet = gets(0)
 
-    for (family <- families; get <- gets) {
-      get.addFamily(family)
+    for (family <- families) {
+      firstGet.addFamily(family)
     }
-    for ((columnFamily, column) <- columns; get <- gets) {
-      get.addColumn(columnFamily, column)
+    for ((columnFamily, column) <- columns) {
+      firstGet.addColumn(columnFamily, column)
     }
 
+    var pastFirst = false
     for (get <- gets) {
+      if (pastFirst) {
+        firstGet.getFamilyMap.foreach {case (fam: Array[Byte], cols: NavigableSet[Array[Byte]]) => {
+          get.getFamilyMap.put(fam, cols)
+        }}
+      } else pastFirst = true
+
       table.cache.getResult(get) match {
         case Some(result) => {
           resultMap(result.rowid) = result
@@ -645,7 +654,7 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
           htable.get(uncachedGets).foreach(res => {
             if (res != null && !res.isEmpty) {
               val qr = new QueryResult[T, R](res, table, tableName)
-              table.cache.putResult(getsByKey(new String(c.toBytes(qr.rowid))), qr, ttl)
+              table.cache.putResult(getsByKey(new String(res.getRow)), qr, ttl)
               resultMap(qr.rowid) = qr
             }
           })
