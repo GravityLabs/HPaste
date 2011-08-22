@@ -22,36 +22,71 @@ import java.lang.Iterable
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
-class FuncMapper[MK, MV, MOK, MOV] extends Mapper[MK, MV, MOK, MOV] {
 
-  var mapper: (MK, MV, (MOK, MOV) => Unit, (String, Long) => Unit) => Unit = _
+trait OurMapper[MK,MV,MOK,MOV] {
+  var hcontext : HpasteContext = _
+  var context : Mapper[MK,MV,MOK,MOV]#Context = _
+
+  def counter(message:String, count:Long) {
+    context.getCounter("Custom",message).increment(count)
+  }
+
+  def setupOurs(ctx:Mapper[MK,MV,MOK,MOV]#Context) {
+    context = ctx
+    hcontext = new HpasteContext(context.getConfiguration,counter)
+  }
+}
+
+trait OurReducer[MOK,MOV,RK,RV]{
+  var hcontext : HpasteContext = _
+  var context : Reducer[MOK,MOV,RK,RV]#Context = _
+
+  def counter(message:String, count:Long) {
+    context.getCounter("Custom",message).increment(count)
+  }
+
+  def setupOurs(ctx:Reducer[MOK,MOV,RK,RV]#Context) {
+    context = ctx
+    hcontext = new HpasteContext(context.getConfiguration,counter)
+  }
+}
+
+class HpasteContext(conf:Configuration, val counter:(String,Long)=>Unit) {
+  def apply(message:String,count:Long) = counter
+}
+
+
+class FuncMapper[MK, MV, MOK, MOV] extends Mapper[MK, MV, MOK, MOV] with OurMapper[MK,MV,MOK,MOV]{
+
+  var mapper: (MK, MV, (MOK, MOV) => Unit, HpasteContext) => Unit = _
 
   override def setup(context: Mapper[MK, MV, MOK, MOV]#Context) {
     val jobClass = Class.forName(context.getConfiguration.get("mapperholder")).newInstance().asInstanceOf[FunctionalJobBase[MK, MV, MOK, MOV, _, _]]
     mapper = jobClass.mapper
+    setupOurs(context)
   }
 
   override def map(key: MK, value: MV, context: Mapper[MK, MV, MOK, MOV]#Context) {
-    def counter(ctr: String, times: Long) {context.getCounter("Custom", ctr).increment(times)}
     def write(key: MOK, value: MOV) {context.write(key, value)}
 
-    mapper(key, value, write, counter)
+    mapper(key, value, write, hcontext)
     //    mapper(key,value,write,counter)
   }
 }
 
 
-class FuncReducer[IK, IV, OK, OV] extends Reducer[IK, IV, OK, OV] {
-  var reducer: (IK, Iterable[IV], (OK, OV) => Unit, (String, Long) => Unit) => Unit = _
+class FuncReducer[IK, IV, OK, OV] extends Reducer[IK, IV, OK, OV] with OurReducer[IK,IV,OK,OV]{
+  var reducer: (IK, Iterable[IV], (OK, OV) => Unit, HpasteContext) => Unit = _
 
   override def setup(context: Reducer[IK, IV, OK, OV]#Context) {
     val jobClass = Class.forName(context.getConfiguration.get("mapperholder")).newInstance().asInstanceOf[FunctionalJobBase[_, _, IK, IV, OK, OV]]
     reducer = jobClass.reducer
 
+    setupOurs(context)
   }
 }
 
-class FuncTableMapper[T <: HbaseTable[T, R], R] extends TableMapper[NullWritable, Writable] {
+class FuncTableMapper[T <: HbaseTable[T, R], R] extends TableMapper[NullWritable, Writable] with OurMapper[ImmutableBytesWritable,Result,NullWritable,Writable] {
 
 
   var jobBase: TableAnnotationJobBase[T, R] = _
@@ -60,18 +95,18 @@ class FuncTableMapper[T <: HbaseTable[T, R], R] extends TableMapper[NullWritable
     jobBase = Class.forName(context.getConfiguration.get("mapperholder")).newInstance().asInstanceOf[TableAnnotationJobBase[T, R]]
     jobBase.fromSettings(context.getConfiguration)
 
+    setupOurs(context)
   }
 
   override def map(key: ImmutableBytesWritable, value: Result, context: Mapper[ImmutableBytesWritable, Result, NullWritable, Writable]#Context) {
-    def counter(ctr: String, times: Long) {context.getCounter("Custom", ctr).increment(times)}
     def write(operation: Writable) {context.write(NullWritable.get(), operation)}
 
-    jobBase.mapper(new QueryResult[T, R](value, jobBase.mapTable, jobBase.mapTable.tableName), write, counter)
+    jobBase.mapper(new QueryResult[T, R](value, jobBase.mapTable, jobBase.mapTable.tableName), write, hcontext)
     //    mapper(key,value,write,counter)
   }
 }
 
-class FuncTableExternMapper[T <: HbaseTable[T, R], R, MOK, MOV] extends TableMapper[MOK, MOV] {
+class FuncTableExternMapper[T <: HbaseTable[T, R], R, MOK, MOV] extends TableMapper[MOK, MOV] with OurMapper[ImmutableBytesWritable,Result,MOK,MOV] {
 
 
   var jobBase: TableAnnotationMRJobBase[T, R, _, _, MOK, MOV] = _
@@ -80,28 +115,28 @@ class FuncTableExternMapper[T <: HbaseTable[T, R], R, MOK, MOV] extends TableMap
     jobBase = Class.forName(context.getConfiguration.get("mapperholder")).newInstance().asInstanceOf[TableAnnotationMRJobBase[T, R, _, _, MOK, MOV]]
 
     jobBase.fromSettings(context.getConfiguration)
+    setupOurs(context)
   }
 
   override def map(key: ImmutableBytesWritable, value: Result, context: Mapper[ImmutableBytesWritable, Result, MOK, MOV]#Context) {
-    def counter(ctr: String, times: Long) {context.getCounter("Custom", ctr).increment(times)}
     def write(key: MOK, value: MOV) {context.write(key, value)}
 
-    jobBase.mapper(new QueryResult[T, R](value, jobBase.mapTable, jobBase.mapTable.tableName), write, counter)
+    jobBase.mapper(new QueryResult[T, R](value, jobBase.mapTable, jobBase.mapTable.tableName), write, hcontext)
     //    mapper(key,value,write,counter)
   }
 }
 
-class FuncTableExternReducer[T <: HbaseTable[T, R], R, MOK, MOV] extends TableReducer[MOK, MOV, NullWritable] {
+class FuncTableExternReducer[T <: HbaseTable[T, R], R, MOK, MOV] extends TableReducer[MOK, MOV, NullWritable] with OurReducer[MOK,MOV,NullWritable,Writable] {
   var jobBase: TableAnnotationMRJobBase[_, _, T, R, MOK, MOV] = _
 
   override def setup(context: Reducer[MOK, MOV, NullWritable, Writable]#Context) {
     jobBase = Class.forName(context.getConfiguration.get("mapperholder")).newInstance().asInstanceOf[TableAnnotationMRJobBase[_, _, T, R, MOK, MOV]]
     jobBase.fromSettings(context.getConfiguration)
+    setupOurs(context)
 
   }
 
   override def reduce(key: MOK, values: java.lang.Iterable[MOV], context: Reducer[MOK, MOV, NullWritable, Writable]#Context) {
-    def counter(ctr: String, times: Long) {context.getCounter("Custom", ctr).increment(times)}
     def write(value: OpBase[T, R]) {
       value.getOperations.foreach {
         op =>
@@ -109,22 +144,22 @@ class FuncTableExternReducer[T <: HbaseTable[T, R], R, MOK, MOV] extends TableRe
       }
     }
 
-    jobBase.reducer(key, values, write, counter)
+    jobBase.reducer(key, values, write, hcontext)
   }
 }
 
-class PathTableExternReducer[T <: HbaseTable[T, R], R, MOK, MOV] extends TableReducer[MOK, MOV, NullWritable] {
+class PathTableExternReducer[T <: HbaseTable[T, R], R, MOK, MOV] extends TableReducer[MOK, MOV, NullWritable] with OurReducer[MOK,MOV,NullWritable,Writable] {
   var jobBase: PathToTableMRJobBase[T, R, MOK, MOV] = _
 
   override def setup(context: Reducer[MOK, MOV, NullWritable, Writable]#Context) {
     jobBase = Class.forName(context.getConfiguration.get("mapperholder")).newInstance().asInstanceOf[PathToTableMRJobBase[T, R, MOK, MOV]]
 
     jobBase.fromSettings(context.getConfiguration)
+    setupOurs(context)
 
   }
 
   override def reduce(key: MOK, values: java.lang.Iterable[MOV], context: Reducer[MOK, MOV, NullWritable, Writable]#Context) {
-    def counter(ctr: String, times: Long) {context.getCounter("Custom", ctr).increment(times)}
     def write(value: OpBase[T, R]) {
       value.getOperations.foreach {
         op =>
@@ -132,14 +167,14 @@ class PathTableExternReducer[T <: HbaseTable[T, R], R, MOK, MOV] extends TableRe
       }
     }
 
-    jobBase.reducer(key, values, write, counter)
+    jobBase.reducer(key, values, write, hcontext)
   }
 }
 
 
-class PathMapper[MOK, MOV] extends Mapper[LongWritable, Text, MOK, MOV] {
+class PathMapper[MOK, MOV] extends Mapper[LongWritable, Text, MOK, MOV] with OurMapper[LongWritable,Text,MOK,MOV]{
 
-  var mapper: (LongWritable, Text, (MOK, MOV) => Unit, (String, Long) => Unit) => Unit = _
+  var mapper: (LongWritable, Text, (MOK, MOV) => Unit, HpasteContext) => Unit = _
 
   override def setup(context: Mapper[LongWritable, Text, MOK, MOV]#Context) {
 
@@ -147,19 +182,19 @@ class PathMapper[MOK, MOV] extends Mapper[LongWritable, Text, MOK, MOV] {
     mapper = jobClass.mapper
 
     jobClass.fromSettings(context.getConfiguration)
+    setupOurs(context)
   }
 
   override def map(key: LongWritable, value: Text, context: Mapper[LongWritable, Text, MOK, MOV]#Context) {
-    def counter(ctr: String, times: Long) {context.getCounter("Custom", ctr).increment(times)}
     def write(key: MOK, value: MOV) {context.write(key, value)}
 
-    mapper(key, value, write, counter)
+    mapper(key, value, write, hcontext)
     //    mapper(key,value,write,counter)
   }
 }
 
 
-class TableToPathMapper[T <: HbaseTable[T, R], R, MOK, MOV] extends TableMapper[MOK, MOV] {
+class TableToPathMapper[T <: HbaseTable[T, R], R, MOK, MOV] extends TableMapper[MOK, MOV] with OurMapper[ImmutableBytesWritable,Result,MOK,MOV]{
 
 
   var jobBase: TableToPathMRJobBase[T, R, MOK, MOV] = _
@@ -169,43 +204,44 @@ class TableToPathMapper[T <: HbaseTable[T, R], R, MOK, MOV] extends TableMapper[
     jobBase = Class.forName(context.getConfiguration.get("mapperholder")).newInstance().asInstanceOf[TableToPathMRJobBase[T, R, MOK, MOV]]
     jobBase.fromSettings(context.getConfiguration)
 
+    setupOurs(context)
   }
 
   override def map(key: ImmutableBytesWritable, value: Result, context: Mapper[ImmutableBytesWritable, Result, MOK, MOV]#Context) {
-    def counter(ctr: String, times: Long) {context.getCounter("Custom", ctr).increment(times)}
     def write(key: MOK, value: MOV) {context.write(key, value)}
 
-    jobBase.mapper(new QueryResult[T, R](value, jobBase.mapTable, jobBase.mapTable.tableName), write, counter)
+    jobBase.mapper(new QueryResult[T, R](value, jobBase.mapTable, jobBase.mapTable.tableName), write, hcontext)
     //    mapper(key,value,write,counter)
   }
 }
 
-class TableToPathReducer[MOK, MOV] extends Reducer[MOK, MOV, NullWritable, Text] {
-  var reducer: (MOK, Iterable[MOV], (String) => Unit, (String, Long) => Unit) => Unit = _
+
+class TableToPathReducer[MOK, MOV] extends Reducer[MOK, MOV, NullWritable, Text] with OurReducer[MOK,MOV,NullWritable,Text] {
+  var reducer: (MOK, Iterable[MOV], (String) => Unit, HpasteContext) => Unit = _
+
 
   override def setup(context: Reducer[MOK, MOV, NullWritable, Text]#Context) {
     val jobClass = Class.forName(context.getConfiguration.get("mapperholder")).newInstance().asInstanceOf[TableToPathMRJobBase[_, _, MOK, MOV]]
     reducer = jobClass.reducer
     jobClass.fromSettings(context.getConfiguration)
+    setupOurs(context)
   }
 
 
   override def reduce(key: MOK, values: java.lang.Iterable[MOV], context: Reducer[MOK, MOV, NullWritable, Text]#Context) {
-    def counter(ctr: String, times: Long) {context.getCounter("Custom", ctr).increment(times)}
     def write(value: String) {context.write(NullWritable.get(), new Text(value))}
 
-    reducer(key, values, write, counter)
+    reducer(key, values, write, hcontext)
 
   }
 }
-
 
 abstract class TableToPathMRJobBase[T <: HbaseTable[T, R], R, MOK: Manifest, MOV: Manifest]
 (
         name: String,
         val mapTable: T,
-        val mapper: (QueryResult[T, R], (MOK, MOV) => Unit, (String, Long) => Unit) => Unit,
-        val reducer: (MOK, java.lang.Iterable[MOV], (String) => Unit, (String, Long) => Unit) => Unit,
+        val mapper: (QueryResult[T, R], (MOK, MOV) => Unit, HpasteContext) => Unit,
+        val reducer: (MOK, java.lang.Iterable[MOV], (String) => Unit, HpasteContext) => Unit,
         conf: Configuration
         ) extends JobBase(name)(conf) with FromTable[T] with ToPath with JobSettings {
   val fromTable = mapTable
@@ -230,8 +266,8 @@ abstract class PathToTableMRJobBase[T <: HbaseTable[T, R], R, MOK: Manifest, MOV
 (
         name: String,
         val reduceTable: T,
-        val mapper: (LongWritable, Text, (MOK, MOV) => Unit, (String, Long) => Unit) => Unit,
-        val reducer: (MOK, java.lang.Iterable[MOV], (OpBase[T, R]) => Unit, (String, Long) => Unit) => Unit,
+        val mapper: (LongWritable, Text, (MOK, MOV) => Unit, HpasteContext) => Unit,
+        val reducer: (MOK, java.lang.Iterable[MOV], (OpBase[T, R]) => Unit, HpasteContext) => Unit,
         val paths: Seq[String],
         conf: Configuration
         ) extends JobBase(name)(conf) with ToTable[T] with FromPaths with JobSettings {
@@ -256,8 +292,8 @@ abstract class PathToTableMRJobBase[T <: HbaseTable[T, R], R, MOK: Manifest, MOV
 
 abstract class TableAnnotationMRJobBase[T <: HbaseTable[T, R], R, TT <: HbaseTable[TT, RR], RR, MOK: Manifest, MOV: Manifest]
 (name: String, val mapTable: T, val reduceTable: TT,
- val mapper: (QueryResult[T, R], (MOK, MOV) => Unit, (String, Long) => Unit) => Unit,
- val reducer: (MOK, Iterable[MOV], (OpBase[TT, RR]) => Unit, (String, Long) => Unit) => Unit,
+ val mapper: (QueryResult[T, R], (MOK, MOV) => Unit, HpasteContext) => Unit,
+ val reducer: (MOK, Iterable[MOV], (OpBase[TT, RR]) => Unit, HpasteContext) => Unit,
  conf: Configuration
         ) extends JobBase(name)(conf) with FromTable[T] with ToTable[TT] with JobSettings {
 
@@ -287,7 +323,7 @@ abstract class TableAnnotationMRJobBase[T <: HbaseTable[T, R], R, TT <: HbaseTab
 
 abstract class TableAnnotationJobBase[T <: HbaseTable[T, R], R]
 (name: String, val mapTable: T,
- val mapper: (QueryResult[T, R], (Writable) => Unit, (String, Long) => Unit) => Unit,
+ val mapper: (QueryResult[T, R], (Writable) => Unit, HpasteContext) => Unit,
  conf: Configuration
         ) extends JobBase(name)(conf) with FromTable[T] with ToTable[T] with JobSettings {
 
@@ -312,8 +348,8 @@ abstract class TableAnnotationJobBase[T <: HbaseTable[T, R], R]
 
 abstract class FunctionalJobBase[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV]
 (name: String,
- val mapper: (MK, MV, (MOK, MOV) => Unit, (String, Long) => Unit) => Unit,
- val reducer: (MOK, Iterable[MOV], (ROK, ROV) => Unit, (String, Long) => Unit) => Unit) extends JobTrait {
+ val mapper: (MK, MV, (MOK, MOV) => Unit, HpasteContext) => Unit,
+ val reducer: (MOK, Iterable[MOV], (ROK, ROV) => Unit, HpasteContext) => Unit) extends JobTrait {
 
 
   def run(conf: Configuration) {
