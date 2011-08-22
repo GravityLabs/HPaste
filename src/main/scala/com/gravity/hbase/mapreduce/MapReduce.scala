@@ -52,7 +52,7 @@ trait OurReducer[MOK,MOV,RK,RV,S <: SettingsBase]{
 }
 
 class HpasteContext[S <: SettingsBase](conf:Configuration, val counter:(String,Long)=>Unit) {
-  def apply(message:String,count:Long) = counter
+  def apply(message:String,count:Long) {counter(message,count)}
 
 
   val settings:Option[S] = try {
