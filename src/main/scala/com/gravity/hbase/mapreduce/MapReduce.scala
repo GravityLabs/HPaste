@@ -657,8 +657,8 @@ trait FromTable[T <: HbaseTable[T, _]] extends JobTrait with NoSpeculativeExecut
 
   override def configureJob(job: Job) {
     println("Configuring FromTable Job")
-    job.setInputFormatClass(classOf[TableInputFormat])
-    //    HadoopScalaShim.registerInputFormat(job, classOf[TableInputFormat])
+//    job.setInputFormatClass(classOf[TableInputFormat])
+      HadoopScalaShim.registerInputFormat(job, classOf[TableInputFormat])
     super.configureJob(job)
   }
 }
