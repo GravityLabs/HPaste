@@ -11,6 +11,7 @@ import org.apache.hadoop.hbase.filter.{Filter, FilterList, SingleColumnValueFilt
 import scala.collection._
 import java.util.NavigableSet
 import scala.collection.mutable.Buffer
+import org.joda.time.DateTime
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -197,29 +198,39 @@ class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTabl
     }
   }
 
-  def family[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V])(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]): Map[K, V] = {
-
-//    val fm = family(table.pops)
-//    val kvs = result.raw()
-//    for(kv <- kvs) yield {
-//      if(Bytes.equals(kv.getFamily, fm.familyBytes)) {
-//
-//      }
-//      if(kv.getFamily.equals(fm.familyBytes)) {
-//
-//      }
-//    }
-
-    val familyMap = result.getFamilyMap(family(table.pops).familyBytes)
-    if (familyMap != null) {
-      familyMap.map {
-        case (column: Array[Byte], value: Array[Byte]) =>
-          d.fromBytes(column) -> e.fromBytes(value)
-      }
-    } else {
-      val mt = Map.empty[K, V]
-      mt
+  def columnTimestamp[F,K,V](column: (T) => Column[T,R,F,K,V])(implicit c: ByteConverter[V]): Option[DateTime] = {
+    val co = column(table.pops)
+    val col = result.getColumnLatest(co.familyBytes, co.columnBytes)
+    if(col != null) {
+      Some(new DateTime(col.getTimestamp))
+    }else {
+      None
     }
+  }
+
+  def familyLatestTimestamp[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V])(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]): Option[DateTime] = {
+    val fam = family(table.pops)
+    var ts = -1l
+    for(kv <- result.raw()) {
+      if(Bytes.equals(kv.getFamily,fam.familyBytes)) {
+        val tsn = kv.getTimestamp
+        if(tsn > ts) ts = tsn
+      }
+    }
+    if(ts >= 0) Some(new DateTime(ts))
+    else None
+  }
+
+  def family[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V])(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]): Map[K, V] = {
+    val fm = family(table.pops)
+    val kvs = result.raw()
+    val mymap = scala.collection.mutable.Map[K,V]()
+    for(kv <- kvs) yield {
+      if(Bytes.equals(kv.getFamily, fm.familyBytes)) {
+        mymap.put(d.fromBytes(kv.getQualifier), e.fromBytes(kv.getValue))
+      }
+    }
+    mymap
   }
 
   def rowid(implicit c: ByteConverter[R]) = c.fromBytes(result.getRow)
