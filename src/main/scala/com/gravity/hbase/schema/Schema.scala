@@ -523,7 +523,9 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     this
   }
 
-  def prepareSingleGet() = {
+  def single(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true) = singleOption(tableName, ttl, skipCache, false).get
+
+  def singleOption(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, noneOnEmpty: Boolean = true): Option[QueryResult[T, R]] = {
     require(keys.size == 1, "Calling single() with more than one key")
     val get = new Get(keys(0))
     for (family <- families) {
@@ -532,136 +534,172 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     for ((columnFamily, column) <- columns) {
       get.addColumn(columnFamily, column)
     }
-    get
-  }
 
-  def singleWithCaching(tableName: String = table.tableName, ttl: Int = 30) = {
-    val get = prepareSingleGet()
+    val fromCache = if (skipCache) None else table.cache.getResult(get)
 
-    table.cache.getResult(get) match {
-      case Some(result) => result
+    fromCache match {
+      case Some(result) => Some(result)
       case None => {
-        val result = single(tableName)
-        table.cache.putResult(get, result, ttl)
-      }
-    }
-
-  }
-
-
-  def single(tableName: String = table.tableName) = {
-    val get = prepareSingleGet()
-
-    table.withTable(tableName) {htable => new QueryResult(htable.get(get), table, tableName)}
-  }
-
-  def singleOption(tableName: String = table.tableName, useCache: Boolean = false): Option[QueryResult[T, R]] = {
-    table.withTableOption(tableName) {
-      case Some(htable) => {
-        val get = prepareSingleGet()
-        val result = htable.get(get)
-        return if (result.isEmpty) None else Some(new QueryResult(result, table, tableName))
-      }
-      case None => return None
-    }
-  }
-
-  def execute(tableName: String = table.tableName, skipCache: Boolean = false) = {
-
-    val gets = for (key <- keys) yield {
-      new Get(key)
-    }
-    for (family <- families; get <- gets) {
-      get.addFamily(family)
-    }
-    for ((columnFamily, column) <- columns; get <- gets) {
-      get.addColumn(columnFamily, column)
-    }
-
-    table.withTable(tableName) {
-      htable =>
-        val results = htable.get(gets)
-        results.map(res => new QueryResult(res, table, tableName))
-    }
-  }
-
-  def executeMap(tableName: String = table.tableName, skipCache: Boolean = false)(implicit c: ByteConverter[R]) = {
-    val gets = for (key <- keys) yield {
-      new Get(key)
-    }
-    for (family <- families; get <- gets) {
-      get.addFamily(family)
-    }
-    for ((columnFamily, column) <- columns; get <- gets) {
-      get.addColumn(columnFamily, column)
-    }
-
-
-    table.withTable(tableName) {
-      htable =>
-        val results = htable.get(gets)
-        results.flatMap(res => {
-          if (res != null && !res.isEmpty) {
-            val qr = new QueryResult[T, R](res, table, tableName)
-            Some(qr.rowid -> qr)
-          } else {
-            None
+        table.withTableOption(tableName) {
+          case Some(htable) => {
+            val result = htable.get(get)
+            if (noneOnEmpty && result.isEmpty) {
+              None
+            } else {
+              val qr = new QueryResult(result, table, tableName)
+              if (!skipCache  && !result.isEmpty) table.cache.putResult(get, qr, ttl)
+              Some(qr)
+            }
           }
-        })
-    }.toMap
+          case None => None
+        }
+      }
+    }
+
   }
 
-  def executeMapWithCaching(tableName: String = table.tableName, ttl: Int = 30)(implicit c: ByteConverter[R]): Map[R, QueryResult[T, R]] = {
-    if (keys.isEmpty) return Map.empty[R, QueryResult[T, R]]
+  def execute(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true): Seq[QueryResult[T, R]] = {
+    if (keys.isEmpty) return Seq.empty[QueryResult[T, R]]
 
-    val resultMap = mutable.Map[R, QueryResult[T, R]]()
-    resultMap.sizeHint(keys.size)
+    val results = Buffer[QueryResult[T, R]]()
 
-    val getsByKey = (for (key <- keys) yield {
-      (new String(key) -> new Get(key))
-    }).toMap
+    val getsByKey = if (skipCache) mutable.Map.empty[String, Get] else mutable.Map[String, Get]()
 
-    val gets = getsByKey.values.toSeq
-    val uncachedGets = Buffer[Get]()
+    if (!skipCache) getsByKey.sizeHint(keys.size)
+
+    val gets = Buffer[Get]()
+
+    // init all gets and store them by the string repr of the key bytes for later retrieval
+    for (key <- keys) {
+        val get = new Get(key)
+        gets += get
+        if (!skipCache) getsByKey.put(new String(key), get)
+    }
+
+    // buffer for all gets that really need to be gotten
+    val hbaseGets = if (skipCache) gets else Buffer[Get]()
+
+    // since the families and columns will be identical for all gets, only build them once
     val firstGet = gets(0)
 
+    // add all families to the first get
     for (family <- families) {
       firstGet.addFamily(family)
     }
+    // add all columns to the first get
     for ((columnFamily, column) <- columns) {
       firstGet.addColumn(columnFamily, column)
     }
 
     var pastFirst = false
     for (get <- gets) {
-      if (pastFirst) {
-        firstGet.getFamilyMap.foreach {case (fam: Array[Byte], cols: NavigableSet[Array[Byte]]) => {
-          get.getFamilyMap.put(fam, cols)
-        }}
+      if (pastFirst) { // we want to skip the first get as it already has families/columns
+        firstGet.getFamilyMap.foreach((kv: (Array[Byte], NavigableSet[Array[Byte]])) => {
+          get.getFamilyMap.put(kv._1, kv._2)
+        })
       } else pastFirst = true
 
-      table.cache.getResult(get) match {
-        case Some(result) => {
-          resultMap(result.rowid) = result
+      // first try the cache with this filled in get
+      if (!skipCache) {
+        table.cache.getResult(get) match {
+          case Some(result) => {
+            results += result // got it! place it in our result buffer
+          }
+          case None => hbaseGets += get // missed it! place the get in the buffer
         }
-        case None => uncachedGets += get
       }
     }
 
-    if (!uncachedGets.isEmpty) {
+    if (!hbaseGets.isEmpty) { // only do this if we have something to do
       table.withTable(tableName) {
         htable =>
-          htable.get(uncachedGets).foreach(res => {
-            if (res != null && !res.isEmpty) {
-              val qr = new QueryResult[T, R](res, table, tableName)
-              table.cache.putResult(getsByKey(new String(res.getRow)), qr, ttl)
-              resultMap(qr.rowid) = qr
+          htable.get(hbaseGets).foreach(res => {
+            if (res != null && !res.isEmpty) { // ignore empty results
+              val qr = new QueryResult[T, R](res, table, tableName) // construct query result
+
+              // now is where we need to retrive the 'get' used for this result so that we can
+              // pass this 'get' as the key for our local cache
+              if (!skipCache) table.cache.putResult(getsByKey(new String(res.getRow)), qr, ttl)
+              results += qr // place it in our result buffer
             }
           })
       }
     }
 
-    resultMap
+    results.toSeq // DONE!
+  }
+
+  def executeMap(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true)(implicit c: ByteConverter[R]): Map[R, QueryResult[T, R]] = {
+    if (keys.isEmpty) return Map.empty[R, QueryResult[T, R]] // don't get all started with nothing to do
+
+    // init our result map and give it a hint of the # of keys we have
+    val resultMap = mutable.Map[R, QueryResult[T, R]]()
+    resultMap.sizeHint(keys.size)
+
+    val getsByKey = if (skipCache) mutable.Map.empty[String, Get] else mutable.Map[String, Get]()
+
+    if (!skipCache) getsByKey.sizeHint(keys.size)
+
+    val gets = Buffer[Get]()
+
+    // init all gets and store them by the string repr of the key bytes for later retrieval
+    for (key <- keys) {
+        val get = new Get(key)
+        gets += get
+        if (!skipCache) getsByKey.put(new String(key), get)
+    }
+
+    // buffer for all gets that really need to be gotten
+    val hbaseGets = if (skipCache) gets else Buffer[Get]()
+
+    // since the families and columns will be identical for all gets, only build them once
+    val firstGet = gets(0)
+
+    // add all families to the first get
+    for (family <- families) {
+      firstGet.addFamily(family)
+    }
+    // add all columns to the first get
+    for ((columnFamily, column) <- columns) {
+      firstGet.addColumn(columnFamily, column)
+    }
+
+    var pastFirst = false
+    for (get <- gets) {
+      if (pastFirst) { // we want to skip the first get as it already has families/columns
+        firstGet.getFamilyMap.foreach((kv: (Array[Byte], NavigableSet[Array[Byte]])) => {
+          get.getFamilyMap.put(kv._1, kv._2)
+        })
+      } else pastFirst = true
+
+      // first try the cache with this filled in get
+      if (!skipCache) {
+        table.cache.getResult(get) match {
+          case Some(result) => {
+            resultMap(result.rowid) = result // got it! place it in our result map
+          }
+          case None => hbaseGets += get // missed it! place the get in the buffer
+        }
+      }
+    }
+
+    if (!hbaseGets.isEmpty) { // only do this if we have something to do
+      table.withTable(tableName) {
+        htable =>
+          htable.get(hbaseGets).foreach(res => {
+            if (res != null && !res.isEmpty) { // ignore empty results
+              val qr = new QueryResult[T, R](res, table, tableName) // construct query result
+
+              // now is where we need to retrive the 'get' used for this result so that we can
+              // pass this 'get' as the key for our local cache
+              if (!skipCache) table.cache.putResult(getsByKey(new String(res.getRow)), qr, ttl)
+              resultMap(qr.rowid) = qr // place it in our result map
+            }
+          })
+      }
+    }
+
+    resultMap // DONE!
   }
 
 }
