@@ -199,6 +199,17 @@ class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTabl
 
   def family[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V])(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]): Map[K, V] = {
 
+//    val fm = family(table.pops)
+//    val kvs = result.raw()
+//    for(kv <- kvs) yield {
+//      if(Bytes.equals(kv.getFamily, fm.familyBytes)) {
+//
+//      }
+//      if(kv.getFamily.equals(fm.familyBytes)) {
+//
+//      }
+//    }
+
     val familyMap = result.getFamilyMap(family(table.pops).familyBytes)
     if (familyMap != null) {
       familyMap.map {
@@ -223,6 +234,7 @@ class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTabl
 class ScanQuery[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
   val scan = new Scan()
   scan.setCaching(100)
+  scan.setMaxVersions(1)
 
   val filterBuffer = scala.collection.mutable.Buffer[Filter]()
 
@@ -528,6 +540,7 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
   def singleOption(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, noneOnEmpty: Boolean = true): Option[QueryResult[T, R]] = {
     require(keys.size == 1, "Calling single() with more than one key")
     val get = new Get(keys(0))
+    get.setMaxVersions(1)
     for (family <- families) {
       get.addFamily(family)
     }

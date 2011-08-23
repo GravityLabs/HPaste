@@ -75,12 +75,6 @@ package object schema {
   implicit object FloatSeqConverter extends SeqConverter[Float]
   implicit object FloatSetConverter extends SetConverter[Float]
 
-  implicit object DateTimeConverter extends ByteConverter[DateTime] {
-    override def toBytes(t:DateTime) = Bytes.toBytes(t.getMillis)
-    override def fromBytes(bytes:Array[Byte]) = new DateTime(Bytes.toLong(bytes))
-  }
-  implicit object DateTimeSeqConverter extends SeqConverter[DateTime]
-  implicit object DateTimeSetConverter extends SetConverter[DateTime]
 
   implicit object CommaSetConverter extends ByteConverter[CommaSet] {
     val SPLITTER = ",".r
@@ -114,6 +108,15 @@ package object schema {
 
     def apply(year:Int, day:Int) = new DateMidnight().withYear(year).withDayOfYear(day)
   }
+
+  implicit object DateTimeConverter extends ComplexByteConverter[DateTime] {
+    override def write(dm:DateTime,output:DataOutputStream) {
+      output.writeLong(dm.getMillis)
+    }
+    override def read(input:DataInputStream) = new DateTime(input.readLong())
+  }
+  implicit object DateTimeSeqConverter extends SeqConverter[DateTime]
+  implicit object DateTimeSetConverter extends SetConverter[DateTime]
 
   implicit object DateMidnightSeqConverter extends SeqConverter[DateMidnight]
   implicit object DateMidnightSetConverter extends SetConverter[DateMidnight]
