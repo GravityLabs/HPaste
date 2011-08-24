@@ -414,7 +414,7 @@ abstract class SettingsJobBase[S <: SettingsBase](name:String)(implicit conf:Con
     super.configure(conf)
   }
 
-  def run(settings:S) {
+  def run(settings:S) = {
     _settings = settings
     super.run()
   }
@@ -442,8 +442,6 @@ abstract class JobBase(name: String)(implicit conf: Configuration) extends JobTr
   def run(): Boolean = {
     init()
     job.waitForCompletion(true)
-
-
   }
 
 }
