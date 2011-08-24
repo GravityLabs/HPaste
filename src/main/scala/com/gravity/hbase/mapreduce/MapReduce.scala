@@ -293,7 +293,7 @@ abstract class PathToTableMRJobBase[T <: HbaseTable[T, R], R, MOK: Manifest, MOV
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
     HadoopScalaShim.registerReducer(job, classOf[PathTableExternReducer[T, R, MOK, MOV,S]])
-    job.setNumReduceTasks(20)
+    job.setNumReduceTasks(60)
     super.configureJob(job)
   }
 
@@ -320,7 +320,7 @@ abstract class TableAnnotationMRJobBase[T <: HbaseTable[T, R], R, TT <: HbaseTab
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
     HadoopScalaShim.registerReducer(job, classOf[FuncTableExternReducer[TT, RR, MOK, MOV,S]])
-    job.setNumReduceTasks(20)
+    job.setNumReduceTasks(60)
 
     super.configureJob(job)
   }
@@ -724,6 +724,28 @@ trait CustomConfig extends JobTrait {
 trait ReuseJVMJob extends JobTrait {
   override def configure(conf: Configuration) {
     conf.setInt("mapred.job.reuse.jvm.num.tasks", -1)
+    super.configure(conf)
+  }
+
+  override def configureJob(job: Job) {
+    super.configureJob(job)
+  }
+}
+
+trait MemoryOverrideJob extends JobTrait {
+  val mapMemory: Int
+  val reduceMemory: Int
+
+  override def configure(conf: Configuration) {
+
+    val memory = mapMemory
+    val reducememory = reduceMemory
+    conf.set("mapred.map.child.java.opts", "-Xmx" + memory + "m" + " -Xms" + memory + "m")
+    //    conf.set("mapred.map.child.java.opts", "-Xmx" + memory + "m")
+    conf.set("mapred.reduce.child.java.opts", "-Xmx" + reducememory + "m")
+    conf.setInt("mapred.job.map.memory.mb", memory + 800)
+    conf.setInt("mapred.job.reduce.memory.mb", reducememory + 800)
+
     super.configure(conf)
   }
 
