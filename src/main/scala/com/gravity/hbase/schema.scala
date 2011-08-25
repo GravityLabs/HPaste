@@ -16,6 +16,15 @@ import java.io._
 */
 package object schema {
 
+  def toBytesWritable[T](item:T)(implicit c:ByteConverter[T]) = {
+    c.toBytesWritable(item)
+  }
+
+  def fromBytesWritable[T](bytes:BytesWritable)(implicit c:ByteConverter[T]) = {
+    c.fromBytesWritable(bytes)
+  }
+
+
   implicit def dow(output:DataOutputStream) = new DataOutputWrapper(output)
   implicit def diw(input:DataInputStream) = new DataInputWrapper(input)
 
