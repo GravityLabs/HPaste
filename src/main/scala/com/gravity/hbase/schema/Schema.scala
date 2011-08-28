@@ -550,7 +550,7 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
 
   def singleOption(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, noneOnEmpty: Boolean = true): Option[QueryResult[T, R]] = {
     require(keys.size == 1, "Calling single() with more than one key")
-    val get = new Get(keys(0))
+    val get = new Get(keys.head)
     get.setMaxVersions(1)
     for (family <- families) {
       get.addFamily(family)
