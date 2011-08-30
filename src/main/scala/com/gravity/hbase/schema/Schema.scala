@@ -183,6 +183,37 @@ class SeqConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter
 
 }
 
+class BufferConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Buffer[T]] {
+  override def write(buf: Buffer[T], output: DataOutputStream) {
+    writeBuf(buf, output)
+  }
+
+  def writeBuf(buf: Buffer[T], output: DataOutputStream) {
+    val length = buf.size
+    output.writeInt(length)
+
+    for (t <- buf) {
+      val bytes = c.toBytes(t)
+      output.writeInt(bytes.size)
+      output.write(bytes)
+    }
+  }
+
+  override def read(input: DataInputStream) = readBuf(input)
+
+  def readBuf(input: DataInputStream) = {
+    val length = input.readInt()
+
+    Buffer((for (i <- 0 until length) yield {
+      val arrLength = input.readInt()
+      val arr = new Array[Byte](arrLength)
+      input.read(arr)
+      c.fromBytes(arr)
+    }):_*)
+  }
+
+}
+
 
 /**
 * When a query comes back, there are a bucket of column families and columns to retrieve.  This class retrieves them.

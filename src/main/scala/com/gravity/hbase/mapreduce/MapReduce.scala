@@ -614,6 +614,8 @@ trait FromTable[T <: HbaseTable[T, _]] extends JobTrait with NoSpeculativeExecut
   val families = Buffer[ColumnFamily[T, _, _, _, _]]()
   val columns = Buffer[Column[T, _, _, _, _]]()
 
+  var startRow: Option[Array[Byte]] = None
+  var endRow: Option[Array[Byte]] = None
 
   //Override to add custom attributes to the scanner
   def createScanner = new Scan
@@ -625,6 +627,10 @@ trait FromTable[T <: HbaseTable[T, _]] extends JobTrait with NoSpeculativeExecut
   def specifyColumn(column: (T) => Column[T, _, _, _, _]) {
     columns += column(fromTable.pops)
   }
+
+  def specifyStartKey[R](key: R)(implicit c: ByteConverter[R]) { startRow = Some(c.toBytes(key)) }
+
+  def specifyEndKey[R](key: R)(implicit c: ByteConverter[R]) { endRow = Some(c.toBytes(key)) }
 
   override def configure(conf: Configuration) {
     println("Configuring FromTable")
@@ -642,6 +648,16 @@ trait FromTable[T <: HbaseTable[T, _]] extends JobTrait with NoSpeculativeExecut
     families.foreach {
       family =>
         scanner.addFamily(family.familyBytes)
+    }
+
+    startRow.foreach {
+      bytes =>
+        scanner.setStartRow(bytes)
+    }
+
+    endRow.foreach {
+      bytes =>
+        scanner.setStopRow(bytes)
     }
 
     val bas = new ByteArrayOutputStream()
