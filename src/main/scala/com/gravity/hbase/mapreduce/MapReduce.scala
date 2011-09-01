@@ -320,7 +320,7 @@ abstract class TableAnnotationMRJobBase[T <: HbaseTable[T, R], R, TT <: HbaseTab
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
     HadoopScalaShim.registerReducer(job, classOf[FuncTableExternReducer[TT, RR, MOK, MOV,S]])
-    job.setNumReduceTasks(50)
+    job.setNumReduceTasks(20)
 
     super.configureJob(job)
   }
@@ -782,7 +782,7 @@ trait BigMemoryJob extends JobTrait {
     //    conf.set("mapred.map.child.java.opts", "-Xmx" + memory + "m")
     conf.set("mapred.reduce.child.java.opts", "-Xmx" + reducememory + "m")
     conf.setInt("mapred.job.map.memory.mb", memory + 2000)
-    conf.setInt("mapred.job.reduce.memory.mb", reducememory + 1000)
+    conf.setInt("mapred.job.reduce.memory.mb", reducememory + 2000)
 
     super.configure(conf)
   }
