@@ -770,6 +770,19 @@ trait MemoryOverrideJob extends JobTrait {
   }
 }
 
+trait LongRunningJob extends JobTrait {
+  val timeoutInSeconds:Int
+
+  override def configure(conf:Configuration){
+    conf.setInt("mapred.task.timeout",timeoutInSeconds)
+    super.configure(conf)
+  }
+
+  override def configureJob(job:Job) {
+    super.configureJob(job)
+  }
+}
+
 trait BigMemoryJob extends JobTrait {
   val mapMemory: Int
   val reduceMemory: Int
