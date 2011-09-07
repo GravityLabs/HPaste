@@ -339,6 +339,8 @@ abstract class TableAnnotationJobBase[T <: HbaseTable[T, R], R,S <: SettingsBase
   val fromTable = mapTable
   val toTable = mapTable
 
+  val mapperThreads = 1
+
 
   override def configure(conf: Configuration) {
     conf.set("mapperholder", getClass.getName)
@@ -346,7 +348,15 @@ abstract class TableAnnotationJobBase[T <: HbaseTable[T, R], R,S <: SettingsBase
   }
 
   override def configureJob(job: Job) {
-    HadoopScalaShim.registerMapper(job, classOf[FuncTableMapper[T, R,S]])
+    if(mapperThreads > 1) {
+      println("Invoking multithreaded mapper and setting mapper threads to " + mapperThreads)
+      MultithreadedMapper.setNumberOfThreads(job,mapperThreads)
+      job.setMapperClass(classOf[MultithreadedMapper[_, _, _, _]])
+      HadoopScalaShim.registerMapper(job, classOf[MultithreadedMapper[_, _, _, _]])
+      HadoopScalaShim.setMultithreadedMapperClass(job, classOf[FuncTableMapper[T, R,S]])
+    }else {
+      HadoopScalaShim.registerMapper(job, classOf[FuncTableMapper[T, R,S]])
+    }
     job.setMapOutputKeyClass(classOf[NullWritable])
     job.setMapOutputValueClass(classOf[Writable])
     job.setNumReduceTasks(0)
@@ -787,6 +797,9 @@ trait BigMemoryJob extends JobTrait {
   val mapMemory: Int
   val reduceMemory: Int
 
+  val mapperBufferMB : Int = 2500
+  val reducerBufferMB : Int = 2000
+
   override def configure(conf: Configuration) {
 
     val memory = mapMemory
@@ -794,8 +807,8 @@ trait BigMemoryJob extends JobTrait {
     conf.set("mapred.map.child.java.opts", "-Xmx" + memory + "m" + " -Xms" + memory + "m")
     //    conf.set("mapred.map.child.java.opts", "-Xmx" + memory + "m")
     conf.set("mapred.reduce.child.java.opts", "-Xmx" + reducememory + "m")
-    conf.setInt("mapred.job.map.memory.mb", memory + 2000)
-    conf.setInt("mapred.job.reduce.memory.mb", reducememory + 2000)
+    conf.setInt("mapred.job.map.memory.mb", memory + mapperBufferMB)
+    conf.setInt("mapred.job.reduce.memory.mb", reducememory + reducerBufferMB)
 
     super.configure(conf)
   }
@@ -923,9 +936,13 @@ abstract class TableWritingMapper[TF <: HbaseTable[TF, TFK], TFK](val name: Stri
 abstract class TableAnnotationMapper[TF <: HbaseTable[TF, TFK], TFK](val table: TF) extends TableMapper[NullWritable, Writable] {
   def row(value: QueryResult[TF, TFK], counter: (String, Long) => Unit, writer: (Writable) => Unit)
 
+  var context : Mapper[ImmutableBytesWritable, Result, NullWritable, Writable]#Context = _
+
   def onStart() {
 
   }
+
+  def getConf = context.getConfiguration
 
   override def setup(context: Mapper[ImmutableBytesWritable, Result, NullWritable, Writable]#Context) {
     onStart()
@@ -935,6 +952,7 @@ abstract class TableAnnotationMapper[TF <: HbaseTable[TF, TFK], TFK](val table: 
     def writer(item: Writable) {context.write(NullWritable.get(), item)}
     def counter(name: String, count: Long = 1) {context.getCounter(table.tableName + " Annotation Job", name).increment(count)}
     val queryResult = new QueryResult[TF, TFK](value, table, table.tableName)
+    this.context = context
     row(queryResult, counter _, writer _)
   }
 
