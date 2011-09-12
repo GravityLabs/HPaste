@@ -897,7 +897,11 @@ class HbaseTable[T <: HbaseTable[T, R], R](val tableName: String, var cache: Que
 
 case class YearDay(year: Int, day: Int)
 
-case class CommaSet(items: Set[String])
+case class CommaSet(items: Set[String]) {
+  def mkString: String = items.mkString
+  def mkString(sep: String): String = items.mkString(sep)
+  def mkString(start: String, sep: String, end: String): String = items.mkString(start, sep, end)
+}
 
 object CommaSet {
   val empty = CommaSet(Set.empty[String])
