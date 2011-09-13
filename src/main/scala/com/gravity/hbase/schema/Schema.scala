@@ -256,12 +256,26 @@ class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTabl
     val fm = family(table.pops)
     val kvs = result.raw()
     val mymap = scala.collection.mutable.Map[K,V]()
+    mymap.sizeHint(kvs.size)
     for(kv <- kvs) yield {
       if(Bytes.equals(kv.getFamily, fm.familyBytes)) {
         mymap.put(d.fromBytes(kv.getQualifier), e.fromBytes(kv.getValue))
       }
     }
     mymap
+  }
+
+  def familyKeySet[F, K](family: (T) => ColumnFamily[T, R, F, K, _])(implicit c: ByteConverter[F], d: ByteConverter[K]): Set[K] = {
+    val fm = family(table.pops)
+    val kvs = result.raw()
+    val myset = scala.collection.mutable.Set[K]()
+    myset.sizeHint(kvs.size)
+    for(kv <- kvs) yield {
+      if(Bytes.equals(kv.getFamily, fm.familyBytes)) {
+        myset.add(d.fromBytes(kv.getQualifier))
+      }
+    }
+    myset
   }
 
   def rowid(implicit c: ByteConverter[R]) = c.fromBytes(result.getRow)
