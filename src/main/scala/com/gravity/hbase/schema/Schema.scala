@@ -537,10 +537,10 @@ class DeleteOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byt
     this
   }
 
-  def values[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], values: Set[K])(implicit vc: ByteConverter[K]) = {
-    for (value <- values) {
-      val fam = family(table.pops)
-      delete.deleteColumns(fam.familyBytes, vc.toBytes(value))
+  def values[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], qualifiers: Set[K])(implicit vc: ByteConverter[K]) = {
+    val fam = family(table.pops)
+    for (q <- qualifiers) {
+      delete.deleteColumns(fam.familyBytes, vc.toBytes(q))
     }
     this
   }
