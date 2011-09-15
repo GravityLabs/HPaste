@@ -255,6 +255,8 @@ abstract class TableToPathMRJobBase[T <: HbaseTable[T, R], R, MOK: Manifest, MOV
         ) extends SettingsJobBase[S](name)(conf) with FromTable[T] with ToPath with JobSettings {
   val fromTable = mapTable
 
+  val reduceTasks = 1
+
   override def configure(conf: Configuration) {
     conf.set("mapperholder", getClass.getName)
     super.configure(conf)
@@ -265,7 +267,7 @@ abstract class TableToPathMRJobBase[T <: HbaseTable[T, R], R, MOK: Manifest, MOV
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
     HadoopScalaShim.registerReducer(job, classOf[TableToPathReducer[MOK, MOV,S]])
-    job.setNumReduceTasks(1)
+    job.setNumReduceTasks(reduceTasks)
     super.configureJob(job)
   }
 }
