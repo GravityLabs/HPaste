@@ -437,7 +437,7 @@ abstract class SettingsJobBase[S <: SettingsBase](name:String)(implicit conf:Con
 /**
  * Base class for Jobs that will be composed using the JobTraits.
  */
-abstract class JobBase(name: String)(implicit conf: Configuration) extends JobTrait {
+abstract class JobBase(val name: String)(implicit conf: Configuration) extends JobTrait {
   var job: Job = _
 
   def init() {
