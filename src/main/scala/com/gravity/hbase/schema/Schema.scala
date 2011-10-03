@@ -229,6 +229,16 @@ class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTabl
     }
   }
 
+  def columnFromFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K)(implicit c: ByteConverter[K], d: ByteConverter[V]): Option[V] = {
+    val fam = family(table.pops)
+    val qual = c.toBytes(columnName)
+    val kvs = result.raw()
+    kvs.find(kv => Bytes.equals(kv.getFamily, fam.familyBytes) && Bytes.equals(kv.getQualifier, qual)) match {
+      case Some(v) => Some(d.fromBytes(v.getValue))
+      case None => None
+    }
+  }
+
   def columnTimestamp[F,K,V](column: (T) => Column[T,R,F,K,V])(implicit c: ByteConverter[V]): Option[DateTime] = {
     val co = column(table.pops)
     val col = result.getColumnLatest(co.familyBytes, co.columnBytes)
