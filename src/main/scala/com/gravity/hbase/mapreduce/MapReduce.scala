@@ -5,7 +5,7 @@ import org.apache.hadoop.mapreduce.lib.input.FileInputFormat
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable
 import org.apache.hadoop.mapreduce.{Mapper, Reducer, Job}
 import com.gravity.hbase.schema._
-import com.gravity.hadoop.{GravityTableOutputFormat, HadoopScalaShim}
+import com.gravity.hadoop.{GravityTableOutputFormat}
 import org.apache.hadoop.mapreduce.lib.map.MultithreadedMapper
 import java.io.{DataOutputStream, ByteArrayOutputStream}
 import org.apache.hadoop.hbase.util.Base64
@@ -263,10 +263,10 @@ abstract class TableToPathMRJobBase[T <: HbaseTable[T, R], R, MOK: Manifest, MOV
   }
 
   override def configureJob(job: Job) {
-    HadoopScalaShim.registerMapper(job, classOf[TableToPathMapper[T, R, MOK, MOV, S]])
+    job.setMapperClass(classOf[TableToPathMapper[T,R,MOK,MOV,S]])
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
-    HadoopScalaShim.registerReducer(job, classOf[TableToPathReducer[MOK, MOV, S]])
+    job.setReducerClass(classOf[TableToPathReducer[MOK,MOV,S]])
     job.setNumReduceTasks(reduceTasks)
     super.configureJob(job)
   }
@@ -328,10 +328,10 @@ abstract class PathToPathMRJobBase[MOK: Manifest, MOV: Manifest, S <: SettingsBa
   val path = toPath
 
   override def configureJob(job: Job) {
-    HadoopScalaShim.registerMapper(job, classOf[PathToPathMapper[MOK, MOV, S]])
+    job.setMapperClass(classOf[PathToPathMapper[MOK,MOV,S]])
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
-    HadoopScalaShim.registerReducer(job, classOf[PathToPathReducer[MOK, MOV, S]])
+    job.setReducerClass(classOf[PathToPathReducer[MOK,MOV,S]])
     job.setNumReduceTasks(reduceTasks)
     super.configureJob(job)
   }
@@ -355,10 +355,10 @@ abstract class PathToTableMRJobBase[T <: HbaseTable[T, R], R, MOK: Manifest, MOV
   }
 
   override def configureJob(job: Job) {
-    HadoopScalaShim.registerMapper(job, classOf[PathMapper[MOK, MOV, S]])
+    job.setMapperClass(classOf[PathMapper[MOK,MOV,S]])
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
-    HadoopScalaShim.registerReducer(job, classOf[PathTableExternReducer[T, R, MOK, MOV, S]])
+    job.setReducerClass(classOf[PathTableExternReducer[T,R,MOK,MOV,S]])
     job.setNumReduceTasks(50)
     super.configureJob(job)
   }
@@ -382,10 +382,10 @@ abstract class TableAnnotationMRJobBase[T <: HbaseTable[T, R], R, TT <: HbaseTab
   }
 
   override def configureJob(job: Job) {
-    HadoopScalaShim.registerMapper(job, classOf[FuncTableExternMapper[T, R, MOK, MOV, S]])
+    job.setMapperClass(classOf[FuncTableExternMapper[T,R,MOK,MOV,S]])
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
-    HadoopScalaShim.registerReducer(job, classOf[FuncTableExternReducer[TT, RR, MOK, MOV, S]])
+    job.setReducerClass(classOf[FuncTableExternReducer[TT,RR,MOK,MOV,S]])
     job.setNumReduceTasks(20)
 
     super.configureJob(job)
@@ -417,10 +417,10 @@ abstract class TableAnnotationJobBase[T <: HbaseTable[T, R], R, S <: SettingsBas
       println("Invoking multithreaded mapper and setting mapper threads to " + mapperThreads)
       MultithreadedMapper.setNumberOfThreads(job, mapperThreads)
       job.setMapperClass(classOf[MultithreadedMapper[_, _, _, _]])
-      HadoopScalaShim.registerMapper(job, classOf[MultithreadedMapper[_, _, _, _]])
-      HadoopScalaShim.setMultithreadedMapperClass(job, classOf[FuncTableMapper[T, R, S]])
+      job.setMapperClass(classOf[MultithreadedMapper[_,_,_,_]])
+      MultithreadedMapper.setMapperClass(job,classOf[FuncTableMapper[T,R,S]])
     } else {
-      HadoopScalaShim.registerMapper(job, classOf[FuncTableMapper[T, R, S]])
+      job.setMapperClass(classOf[FuncTableMapper[T,R,S]])
     }
     job.setMapOutputKeyClass(classOf[NullWritable])
     job.setMapOutputValueClass(classOf[Writable])
@@ -445,12 +445,12 @@ abstract class FunctionalJobBase[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV,
     job.setJobName(name)
     FileInputFormat.addInputPath(job, new Path("/user/gravity/magellan/beacons/**/*.csv"))
 
-    HadoopScalaShim.registerMapper(job, classOf[FuncMapper[MK, MV, MOK, MOV, S]])
+    job.setMapperClass(classOf[FuncMapper[MK,MV,MOK,MOV,S]])
     //    job.setMapperClass(classOf[FuncMapper[MK,MV,MOK,MOV]])
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
 
-    HadoopScalaShim.registerReducer(job, classOf[FuncReducer[MOK, MOV, ROK, ROV, S]])
+    job.setReducerClass(classOf[FuncReducer[MOK,MOV,ROK,ROV,S]])
     //job.setReducerClass(classOf[FuncReducer[MOK,MOV,ROK,ROV]])
 
     FileOutputFormat.setOutputPath(job, new Path("/user/gravity/magellan/output"))
@@ -560,7 +560,7 @@ trait ReducerJob[M <: Reducer[_, _, _, _]] extends JobTrait {
 
   override def configureJob(job: Job) {
     //    job.setReducerClass(reducer)
-    HadoopScalaShim.registerReducer(job, reducer)
+    job.setReducerClass(reducer)
     numReducers.foreach(reducerCount => job.setNumReduceTasks(reducerCount))
     super.configureJob(job)
   }
@@ -582,7 +582,7 @@ trait MapperJob[M <: StandardMapper[MK, MV], MK, MV] extends JobTrait {
 
   override def configureJob(job: Job) {
     //    job.setMapperClass(mapper)
-    HadoopScalaShim.registerMapper(job, mapper)
+    job.setMapperClass(mapper)
     job.setMapOutputKeyClass(mapperOutputKey)
     job.setMapOutputValueClass(mapperOutputValue)
 
@@ -601,7 +601,7 @@ trait TableReducerJob[R <: TableWritingReducer[TF, TFK, MK, MV], TF <: HbaseTabl
 
   override def configureJob(job: Job) {
     //    job.setReducerClass(reducer)
-    HadoopScalaShim.registerReducer(job, reducer)
+    job.setReducerClass(reducer)
     super.configureJob(job)
   }
 
@@ -619,8 +619,7 @@ trait TableMapperJob[M <: TableReadingMapper[TF, TFK, MK, MV], TF <: HbaseTable[
   }
 
   override def configureJob(job: Job) {
-    //    job.setMapperClass(mapper)
-    HadoopScalaShim.registerMapper(job, mapper)
+    job.setMapperClass(mapper)
     job.setMapOutputKeyClass(mapperOutputKey)
     job.setMapOutputValueClass(mapperOutputValue)
     super.configureJob(job)
@@ -747,8 +746,7 @@ trait FromTable[T <: HbaseTable[T, _]] extends JobTrait with NoSpeculativeExecut
 
   override def configureJob(job: Job) {
     println("Configuring FromTable Job")
-    //    job.setInputFormatClass(classOf[TableInputFormat])
-    HadoopScalaShim.registerInputFormat(job, classOf[TableInputFormat])
+    job.setInputFormatClass(classOf[TableInputFormat])
     super.configureJob(job)
   }
 }
@@ -783,8 +781,7 @@ trait ToTable[T <: HbaseTable[T, _]] extends JobTrait with NoSpeculativeExecutio
 
   override def configureJob(job: Job) {
     println("Configuring ToTable Job")
-    //    job.setOutputFormatClass(classOf[GravityTableOutputFormat[ImmutableBytesWritable]])
-    HadoopScalaShim.registerOutputFormat(job, classOf[GravityTableOutputFormat[ImmutableBytesWritable]])
+     job.setOutputFormatClass(classOf[GravityTableOutputFormat[ImmutableBytesWritable]])
     super.configureJob(job)
   }
 }
@@ -896,9 +893,7 @@ trait TableAnnotationMultithreadedMapperJob[M <: TableAnnotationMapper[T, _], T 
     //job.setMapperClass(mapper)
     println("Configuring Job in Annotation Mapper")
     job.setMapperClass(classOf[MultithreadedMapper[_, _, _, _]])
-    HadoopScalaShim.registerMapper(job, classOf[MultithreadedMapper[_, _, _, _]])
-    //    MultithreadedMapper.setMapperClass(job,mapper)
-    HadoopScalaShim.setMultithreadedMapperClass(job, mapper)
+    MultithreadedMapper.setMapperClass(job,mapper)
     //    MultithreadedMapper.setNumberOfThreads(job, 10)
     super.configureJob(job)
   }
@@ -919,10 +914,8 @@ trait TableAnnotationMapperJob[M <: TableAnnotationMapper[T, _], T <: HbaseTable
   }
 
   override def configureJob(job: Job) {
-    //job.setMapperClass(mapper)
     println("Configuring Job in Annotation Mapper")
-    //    job.setMapperClass(mapper)
-    HadoopScalaShim.registerMapper(job, mapper)
+    job.setMapperClass(mapper)
     super.configureJob(job)
   }
 }
