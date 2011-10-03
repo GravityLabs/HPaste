@@ -272,6 +272,66 @@ abstract class TableToPathMRJobBase[T <: HbaseTable[T, R], R, MOK: Manifest, MOV
   }
 }
 
+class PathToPathMapper[MOK, MOV, S <: SettingsBase] extends Mapper[LongWritable,Text,MOK,MOV] with OurMapper[LongWritable,Text,MOK,MOV,S]{
+  var jobBase: PathToPathMRJobBase[MOK,MOV,S] = _
+
+  override def setup(context: Mapper[LongWritable,Text,MOK,MOV]#Context) {
+    jobBase = Class.forName(context.getConfiguration.get("mapperholder")).newInstance().asInstanceOf[PathToPathMRJobBase[MOK,MOV,S]]
+    jobBase.fromSettings(context.getConfiguration)
+
+    setupOurs(context)
+  }
+
+  override def map(key:LongWritable, value:Text, context: Mapper[LongWritable,Text,MOK,MOV]#Context) {
+    def write(key: MOK, value:MOV) {context.write(key,value)}
+    jobBase.mapper(value,write,hcontext)
+  }
+}
+
+class PathToPathReducer[MOK,MOV,S <:SettingsBase] extends Reducer[MOK,MOV, NullWritable,Text] with OurReducer[MOK,MOV,NullWritable,Text,S] {
+  var reducer: (MOK, Iterable[MOV], (String) => Unit, HpasteContext[S]) => Unit = _
+
+  override def setup(context: Reducer[MOK,MOV,NullWritable,Text]#Context) {
+    val jobClass = Class.forName(context.getConfiguration.get("mapperholder")).newInstance.asInstanceOf[PathToPathMRJobBase[MOK,MOV,S]]
+    reducer = jobClass.reducer
+    jobClass.fromSettings(context.getConfiguration)
+    setupOurs(context)
+  }
+
+  override def reduce(key:MOK, values: java.lang.Iterable[MOV], context: Reducer[MOK,MOV,NullWritable,Text]#Context) {
+    def write(value:String) {context.write(NullWritable.get(), new Text(value))}
+
+    reducer(key, values, write, hcontext)
+  }
+}
+
+abstract class PathToPathMRJobBase[MOK: Manifest, MOV: Manifest, S <: SettingsBase](
+  name: String,
+  val fromPaths: Seq[String],
+  val toPath:String,
+  val mapper: (Text, (MOK, MOV) => Unit, HpasteContext[S]) => Unit,
+  val reducer: (MOK, java.lang.Iterable[MOV], (String) => Unit, HpasteContext[S]) => Unit,
+  conf: Configuration
+ ) extends SettingsJobBase[S](name)(conf) with ToPath with FromPaths with JobSettings {
+  override def configure(conf:Configuration) {
+   conf.set("mapperholder",getClass.getName)
+    super.configure(conf)
+  }
+
+  val reduceTasks = 1
+  
+  val paths = fromPaths
+  val path = toPath
+
+  override def configureJob(job:Job) {
+    HadoopScalaShim.registerMapper(job, classOf[PathToPathMapper[MOK,MOV,S]])
+    job.setMapOutputKeyClass(classManifest[MOK].erasure)
+    job.setMapOutputValueClass(classManifest[MOV].erasure)
+    HadoopScalaShim.registerReducer(job, classOf[PathToPathReducer[MOK,MOV,S]])
+    job.setNumReduceTasks(reduceTasks)
+    super.configureJob(job)
+  }
+}
 
 abstract class PathToTableMRJobBase[T <: HbaseTable[T, R], R, MOK: Manifest, MOV: Manifest,S <: SettingsBase]
 (
