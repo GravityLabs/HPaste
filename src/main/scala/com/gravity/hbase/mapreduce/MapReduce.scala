@@ -375,6 +375,7 @@ abstract class TableAnnotationMRJobBase[T <: HbaseTable[T, R], R, TT <: HbaseTab
   val fromTable = mapTable
   val toTable = reduceTable
 
+  val reduceTasks = 1
 
   override def configure(conf: Configuration) {
     conf.set("mapperholder", getClass.getName)
@@ -386,7 +387,7 @@ abstract class TableAnnotationMRJobBase[T <: HbaseTable[T, R], R, TT <: HbaseTab
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
     job.setReducerClass(classOf[FuncTableExternReducer[TT,RR,MOK,MOV,S]])
-    job.setNumReduceTasks(20)
+    job.setNumReduceTasks(reduceTasks)
 
     super.configureJob(job)
   }
