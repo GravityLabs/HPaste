@@ -480,11 +480,21 @@ class SettingsBase {
   def toSettings(conf: Configuration) {
 
   }
+
+  def jobNameQualifier = ""
 }
 
 abstract class SettingsJobBase[S <: SettingsBase](name: String)(implicit conf: Configuration) extends JobBase(name)(conf) {
   var _settings: S = _
 
+
+  override def jobName = {
+    if(_settings.jobNameQualifier.size > 0) {
+      name + "(" + _settings.jobNameQualifier + ")"
+    }else {
+      name
+    }
+  }
 
   override def configure(conf: Configuration) {
     _settings.toSettings(conf)
@@ -506,13 +516,16 @@ abstract class SettingsJobBase[S <: SettingsBase](name: String)(implicit conf: C
 abstract class JobBase(val name: String)(implicit conf: Configuration) extends JobTrait {
   var job: Job = _
 
+
+  def jobName = name
+
   def init() {
     val jobConf = new Configuration(conf)
     configure(jobConf)
 
     job = new Job(jobConf)
     job.setJarByClass(getClass)
-    job.setJobName(name)
+    job.setJobName(jobName)
     configureJob(job)
   }
 
