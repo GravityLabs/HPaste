@@ -386,6 +386,13 @@ class ScanQuery[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     this
   }
 
+  def withColumn[F, K, V](column: ColumnExtractor[T, R, F, K, V]) = {
+    val col = column(table.pops)
+    scan.addColumn(col.familyBytes, col.columnBytes)
+
+    this
+  }
+
   def withFilter(f: () => Filter) = {
     filterBuffer.add(f())
     this
