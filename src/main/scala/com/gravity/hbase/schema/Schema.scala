@@ -219,6 +219,12 @@ class BufferConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConver
 * When a query comes back, there are a bucket of column families and columns to retrieve.  This class retrieves them.
 */
 class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTable[T, R], val tableName: String) extends Serializable {
+  def isColumnPresent[F, K, V](column: (T) => Column[T, R, F, K, V]): Boolean = {
+    val co = column(table.pops)
+    val col = result.getColumnLatest(co.familyBytes, co.columnBytes)
+    col != null
+  }
+
   def column[F, K, V](column: (T) => Column[T, R, F, K, V])(implicit c: ByteConverter[V]): Option[V] = {
     val co = column(table.pops)
     val col = result.getColumnLatest(co.familyBytes, co.columnBytes)
