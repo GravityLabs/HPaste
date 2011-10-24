@@ -55,6 +55,7 @@ class HpasteContext[S <: SettingsBase](conf: Configuration, val counter: (String
   def apply(message: String, count: Long) {counter(message, count)}
 
 
+  //TODO: Make this not optional and refactor clients
   val settings: Option[S] = try {
     val s = Class.forName(conf.get("hpaste.settingsclass")).newInstance().asInstanceOf[S]
     s.fromSettings(conf)
