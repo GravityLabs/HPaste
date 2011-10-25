@@ -18,6 +18,8 @@ import org.apache.hadoop.hbase.mapreduce.{TableReducer, TableMapper, TableInputF
 import scala.collection.JavaConversions._
 import org.apache.hadoop.hbase.client.{Delete, Put, Scan, Result}
 import java.lang.Iterable
+import org.apache.hadoop.hbase.filter.{SingleColumnValueFilter, FilterList, Filter}
+import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -703,6 +705,7 @@ trait FromTable[T <: HbaseTable[T, _]] extends JobTrait with NoSpeculativeExecut
 
   val families = Buffer[ColumnFamily[T, _, _, _, _]]()
   val columns = Buffer[Column[T, _, _, _, _]]()
+  val filterBuffer = scala.collection.mutable.Buffer[Filter]()
 
   var startRow: Option[Array[Byte]] = None
   var endRow: Option[Array[Byte]] = None
@@ -716,6 +719,32 @@ trait FromTable[T <: HbaseTable[T, _]] extends JobTrait with NoSpeculativeExecut
 
   def specifyColumn(column: (T) => Column[T, _, _, _, _]) {
     columns += column(fromTable.pops)
+  }
+
+  def specifyColumnValue[V](column: (T) => Column[T, _, _, _, V], value: V)(implicit c: ByteConverter[V]) {
+    val col = column(fromTable.pops)
+    val filter = new SingleColumnValueFilter(
+      col.familyBytes,
+      col.columnBytes,
+      CompareOp.EQUAL,
+      c.toBytes(value)
+    )
+    filterBuffer += filter
+  }
+
+  def specifyFilter(filter: Filter) {
+    filterBuffer.add(filter)
+  }
+
+  /*
+  Prepares the scanner for use by chaining the filters together.  Should be called immediately before passing the scanner to the table.
+   */
+  def combineFilters(operator: FilterList.Operator = FilterList.Operator.MUST_PASS_ALL): Option[FilterList] = {
+    if (filterBuffer.size > 0) {
+      val filterList = new FilterList(operator)
+      filterBuffer.foreach {filter => filterList.addFilter(filter)}
+      Some(filterList)
+    } else None
   }
 
   def specifyStartKey[R](key: R)(implicit c: ByteConverter[R]) {startRow = Some(c.toBytes(key))}
@@ -748,6 +777,11 @@ trait FromTable[T <: HbaseTable[T, _]] extends JobTrait with NoSpeculativeExecut
     endRow.foreach {
       bytes =>
         scanner.setStopRow(bytes)
+    }
+
+    combineFilters().foreach {
+      filters =>
+        scanner.setFilter(filters)
     }
 
     val bas = new ByteArrayOutputStream()
