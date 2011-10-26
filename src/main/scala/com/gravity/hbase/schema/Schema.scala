@@ -796,6 +796,8 @@ class Column[T <: HbaseTable[T, R], R, F, K, V](table: HbaseTable[T, R], columnF
   val columnBytes = kc.toBytes(columnName)
   val familyBytes = fc.toBytes(columnFamily)
 
+  def getQualifier: K = columnName
+
   def getValue(res: QueryResult[T, R]) = {
     kv.fromBytes(res.result.getColumnLatest(familyBytes, columnBytes).getValue)
   }
