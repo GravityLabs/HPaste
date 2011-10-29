@@ -202,7 +202,7 @@ implements Configurable {
         this.conf.set(HConstants.REGION_SERVER_IMPL, serverImpl);
       }
       this.table = new HTable(this.conf, tableName);
-      this.table.setWriteBufferSize(1024 * 1024 * 12);
+//      this.table.setWriteBufferSize(1024 * 1024 * 12);
       this.table.setAutoFlush(false);
       LOG.info("Created table instance for "  + tableName);
     } catch(IOException e) {
