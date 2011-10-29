@@ -529,9 +529,9 @@ class IncrementOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[
 /**
 * A Put operation.  Can work across multiple columns or entire column families treated as Maps.
 */
-class PutOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) extends OpBase[T, R](table, key, previous) {
+class PutOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]](), writeToWAL:Boolean=true) extends OpBase[T, R](table, key, previous) {
   val put = new Put(key)
-  put.setWriteToWAL(false)
+  put.setWriteToWAL(writeToWAL)
 
   def value[F, K, V](column: (T) => Column[T, R, F, K, V], value: V)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) = {
     val col = column(table.asInstanceOf[T])
@@ -928,7 +928,7 @@ class HbaseTable[T <: HbaseTable[T, R], R](val tableName: String, var cache: Que
 
   def query = new Query(this)
 
-  def put(key: R)(implicit c: ByteConverter[R]) = new PutOp(this, c.toBytes(key))
+  def put(key: R, writeToWAL: Boolean = true)(implicit c: ByteConverter[R]) = new PutOp(this, c.toBytes(key))
 
   def delete(key: R)(implicit c: ByteConverter[R]) = new DeleteOp(this, c.toBytes(key))
 
