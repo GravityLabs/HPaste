@@ -531,6 +531,7 @@ class IncrementOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[
 */
 class PutOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) extends OpBase[T, R](table, key, previous) {
   val put = new Put(key)
+  put.setWriteToWAL(false)
 
   def value[F, K, V](column: (T) => Column[T, R, F, K, V], value: V)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) = {
     val col = column(table.asInstanceOf[T])
