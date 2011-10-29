@@ -26,7 +26,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.client.Delete;
-import org.apache.hadoop.hbase.client.HConnectionManager;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.mapreduce.TableOutputCommitter;
@@ -127,7 +126,11 @@ implements Configurable {
     @Override
     public void write(KEY key, Writable value)
     throws IOException {
-      if (value instanceof Put) this.table.put(new Put((Put)value));
+      if (value instanceof Put) {
+        ((Put)value).setWriteToWAL(false);
+        this.table.put(new Put((Put)value));
+
+      }
       else if (value instanceof Delete) this.table.delete(new Delete((Delete)value));
       else throw new IOException("Pass a Delete or a Put");
     }
@@ -199,6 +202,7 @@ implements Configurable {
         this.conf.set(HConstants.REGION_SERVER_IMPL, serverImpl);
       }
       this.table = new HTable(this.conf, tableName);
+      this.table.setWriteBufferSize(1024 * 1024 * 12);
       this.table.setAutoFlush(false);
       LOG.info("Created table instance for "  + tableName);
     } catch(IOException e) {
