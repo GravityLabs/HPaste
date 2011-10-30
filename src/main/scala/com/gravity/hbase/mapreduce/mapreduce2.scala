@@ -24,7 +24,7 @@ import scala.collection.JavaConversions._
 *
 * To use the job, create a class with a parameterless constructor that inherits HJob, and pass the tasks into the constructor as a sequence.
 */
-class HJob[S <: SettingsBase](input: HInput, tasks: Seq[HTask[_, _, _, _, S]], output: HOutput) {
+class HJob[S <: SettingsBase](input: HInput,output: HOutput, tasks: HTask[_, _, _, _, S]*) {
   def run(settings: S, conf:Configuration) {
     require(tasks.size > 0, "HJob requires at least one task to be defined")
     conf.setStrings("hpaste.jobchain.jobclass", getClass.getName)
@@ -37,7 +37,6 @@ class HJob[S <: SettingsBase](input: HInput, tasks: Seq[HTask[_, _, _, _, S]], o
     var previousTask: HTask[_, _, _, _, S] = null
 
     var idx = 0
-
     val jobs = for (task <- tasks) yield {
       task.settings = settings
       val taskConf = new Configuration(conf)
