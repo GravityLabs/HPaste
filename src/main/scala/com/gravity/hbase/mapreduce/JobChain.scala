@@ -252,7 +252,7 @@ case class HMapCombineReduceTask[MK, MV, MOK : Manifest, MOV : Manifest, ROK, RO
   }
 }
 
-class HMapper[MK, MV, MOK, MOV, S <: SettingsBase] extends Mapper[MK, MV, MOK, MOV] {
+class HMapper[MK, MV, MOK, MOV, S <: SettingsBase]() extends Mapper[MK, MV, MOK, MOV]() {
 
   var mapperFunc: MapperFunc[MK, MV, MOK, MOV, S] = _
 
@@ -279,7 +279,7 @@ class HMapper[MK, MV, MOK, MOV, S <: SettingsBase] extends Mapper[MK, MV, MOK, M
   }
 }
 
-class HReducer[MOK, MOV, ROK, ROV, S <: SettingsBase] extends Reducer[MOK, MOV, ROK, ROV] {
+class HReducer[MOK, MOV, ROK, ROV, S <: SettingsBase]() extends Reducer[MOK, MOV, ROK, ROV]() {
   var hcontext: HReduceContext[MOK, MOV, ROK, ROV, S] = _
   var context: Reducer[MOK, MOV, ROK, ROV]#Context = _
   var reducerFunc: ReducerFunc[MOK, MOV, ROK, ROV, S] = _
