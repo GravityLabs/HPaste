@@ -18,12 +18,6 @@ import scala.collection.JavaConversions._
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
-//Mapper template: HMapper[MK,MV,MOK,MOV,S]
-//Reducer tempmlate: HReducer[MOK,MOV,ROK,ROV,S]
-
-object TryErOut extends App {
-}
-
 
 
 class HJob[S <: SettingsBase](input: HInput, tasks: Seq[HTask[_, _, _, _, S]], output: HOutput) {
@@ -46,7 +40,11 @@ class HJob[S <: SettingsBase](input: HInput, tasks: Seq[HTask[_, _, _, _, S]], o
       taskConf.setInt("hpaste.jobchain.mapper.idx", idx)
       taskConf.setInt("hpaste.jobchain.reducer.idx", idx)
       task.configure(taskConf, previousTask)
+
       val job = task.makeJob(previousTask)
+      job.setJarByClass(getClass)
+      job.setJobName("My Job (" + (idx + 1) + " of " + tasks.size + ")")
+
       previousTask = task
       idx = idx + 1
       job
@@ -166,8 +164,6 @@ abstract class HTask[IK, IV, OK, OV, S <: SettingsBase](var input: HInput = HRan
   def makeJob(previousTask: HTask[_, _, _, _, S]) = {
 
     val job = new Job(configuration)
-    job.setJarByClass(getClass)
-    job.setJobName("My Job")
 
     if (previousTask != null && previousTask.output.isInstanceOf[HRandomSequenceOutput[_, _]] && input.isInstanceOf[HRandomSequenceInput[_, _]]) {
       input.asInstanceOf[HRandomSequenceInput[_, _]].previousPath = previousTask.output.asInstanceOf[HRandomSequenceOutput[_, _]].path
