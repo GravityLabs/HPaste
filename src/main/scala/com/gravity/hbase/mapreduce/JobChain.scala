@@ -1,5 +1,6 @@
 package com.gravity.hbase.mapreduce
 
+import com.gravity.hbase.schema._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.io.{NullWritable, LongWritable, Text, BytesWritable}
 import java.lang.Iterable
@@ -25,22 +26,46 @@ object TryErOut extends App {
 
 class MyJob extends HJob[NoSettings](
   Settings.None,
-  HPathInput("/user/gravity/blah" :: Nil),
-  HMapReduceTask(
+  HPathInput("/user/gravity/magellan/beacons/2011_100" :: Nil),
+  Seq(HMapReduceTask(
     mapper = (ctx: HMapContext[LongWritable, Text, BytesWritable, BytesWritable, NoSettings]) => {
+      val line = ctx.value.toString
+      val splits = line.split("\\^")
+      val date = splits(0)
+      val action = splits(1)
+      val site = splits(2)
+      ctx.write(
+        makeWritable{output=>
+          output.writeUTF(action)
+        },
+        makeWritable{output=>
+          output.writeUTF(site)
+          output.writeUTF(date)
+        }
+      )
+      }
+    , reducer = (ctx: HReduceContext[BytesWritable, BytesWritable, BytesWritable, BytesWritable, NoSettings]) => {
+      val action = readWritable(ctx.key) {input=>input.readUTF()}
+      var count = 0l
+      ctx.values.foreach {value=> count = count + 1l}
 
-    }, reducer = (ctx: HReduceContext[BytesWritable, BytesWritable, BytesWritable, BytesWritable, NoSettings]) => {
-
-    }) ::
+      ctx.write(
+        makeWritable{output=>output.writeLong(count)},
+        makeWritable{output=>output.writeUTF(action)}
+      )
+    }),
   HMapReduceTask(
     mapper = (ctx: HMapContext[BytesWritable,BytesWritable, BytesWritable, BytesWritable, NoSettings]) => {
-      
+      ctx.write(ctx.key, ctx.value)
     }, reducer = (ctx: HReduceContext[BytesWritable,BytesWritable,NullWritable,Text, NoSettings]) => {
-
+      val count = ctx.key
+      ctx.values.foreach{value=>
+        ctx.write(NullWritable.get(), new Text(readWritable(value){input=>input.readUTF()} + " : " + count))
+      }
     })
-   ::
-          Nil,
-  HPathOutput("/user/gravity/blah2")
+  )
+  ,
+  HPathOutput("/user/chris/testhpaste/")
 )
 
 
@@ -48,6 +73,8 @@ class HJob[S <: SettingsBase](settings:S, input:HInput, tasks: Seq[HTask[_,_,_,_
   def run(settings: S) {
     require(tasks.size > 0, "HJob requires at least one task to be defined")
     val conf = new Configuration()
+    conf.setStrings("hpaste.jobchain.jobclass", getClass.getName)
+
 
     tasks.head.input = input
     tasks.last.output = output
@@ -55,15 +82,45 @@ class HJob[S <: SettingsBase](settings:S, input:HInput, tasks: Seq[HTask[_,_,_,_
 
     var previousTask : HTask[_,_,_,_,S] = null
 
+    var idx = 0
+
     val jobs = for(task <- tasks) yield {
       task.settings = settings
-      task.configure(new Configuration(conf), previousTask)
+      val taskConf = new Configuration(conf)
+      taskConf.setInt("hpaste.jobchain.mapper.idx",idx)
+      taskConf.setInt("hpaste.jobchain.reducer.idx",idx)
+      task.configure(taskConf, previousTask)
       val job = task.makeJob(previousTask)
       previousTask = task
+      idx = idx + 1
       job
     }
 
     jobs.foreach {_.waitForCompletion(true)}
+  }
+
+  def getMapperFunc[MK,MV,MOK,MOV](idx : Int) = {
+    val task = tasks(idx)
+    if(task.isInstanceOf[HMapReduceTask[MK,MV,MOK,MOV,_,_,S]]) {
+      val tk = task.asInstanceOf[HMapReduceTask[MK,MV,MOK,MOV,_,_,S]]
+      tk.mapper
+    }
+    else if(task.isInstanceOf[HMapTask[MK,MV,MOK,MOV,S]]) {
+      val tk = task.asInstanceOf[HMapTask[MK,MV,MOK,MOV,S]]
+      tk.mapper
+    }else {
+      throw new RuntimeException("Unable to find mapper for index " + idx)
+    }
+  }
+
+  def getReducerFunc[MOK,MOV,ROK,ROV](idx : Int) = {
+    val task = tasks(idx)
+    if(task.isInstanceOf[HMapReduceTask[_,_,MOK,MOV,ROK,ROV,S]]) {
+      val tk = task.asInstanceOf[HMapReduceTask[_,_,MOK,MOV,ROK,ROV,S]]
+      tk.reducer
+    }else {
+      throw new RuntimeException("Unable to find reducer for index " + idx)
+    }
   }
 }
 
@@ -148,6 +205,7 @@ abstract class HTask[IK,IV,OK,OV,S <: SettingsBase](var input:HInput = HRandomSe
   def decorateJob(conf:Configuration, job:Job)
 
   def makeJob(previousTask: HTask[_,_,_,_,S]) = {
+
     val job = new Job(configuration)
 
     if(previousTask.output.isInstanceOf[HRandomSequenceOutput[_,_]] && input.isInstanceOf[HRandomSequenceInput[_,_]]) {
@@ -201,12 +259,18 @@ class HMapper[MK, MV, MOK, MOV, S <: SettingsBase] extends Mapper[MK, MV, MOK, M
   var hcontext: HMapContext[MK, MV, MOK, MOV, S] = _
   var context: Mapper[MK, MV, MOK, MOV]#Context = _
 
+  var job : HJob[S] = _
+
   def counter(message: String, count: Long) {
     context.getCounter("Custom", message).increment(count)
   }
 
   override def setup(ctx: Mapper[MK, MV, MOK, MOV]#Context) {
     context = ctx
+
+    job = Class.forName(context.getConfiguration.get("hpaste.jobchain.jobclass")).newInstance.asInstanceOf[HJob[S]]
+    mapperFunc = job.getMapperFunc(context.getConfiguration.getInt("hpaste.jobchain.mapper.idx",-1))
+
     hcontext = new HMapContext[MK, MV, MOK, MOV, S](context.getConfiguration, counter, context)
   }
 
@@ -220,12 +284,18 @@ class HReducer[MOK, MOV, ROK, ROV, S <: SettingsBase] extends Reducer[MOK, MOV, 
   var context: Reducer[MOK, MOV, ROK, ROV]#Context = _
   var reducerFunc: ReducerFunc[MOK, MOV, ROK, ROV, S] = _
 
+  var job : HJob[S] = _
+
   def counter(message: String, count: Long) {
     context.getCounter("Custom", message).increment(count)
   }
 
   override def setup(ctx: Reducer[MOK, MOV, ROK, ROV]#Context) {
     context = ctx
+
+    job = Class.forName(context.getConfiguration.get("hpaste.jobchain.jobclass")).newInstance().asInstanceOf[HJob[S]]
+    reducerFunc = job.getReducerFunc(context.getConfiguration.getInt("hpaste.jobchain.reducer.idx",-1))
+
     hcontext = new HReduceContext[MOK, MOV, ROK, ROV, S](context.getConfiguration, counter, context)
   }
 
