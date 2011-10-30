@@ -221,6 +221,14 @@ case class ReducerFx[MOK, MOV, ROK, ROV, S <: SettingsBase](reducer: (HReduceCon
   }
 }
 
+case class FromTableMapper[T <: HbaseTable[T,R],R, MOK, MOV, S <: SettingsBase](table: T, tableMapper: (QueryResult[T,R], HMapContext[ImmutableBytesWritable, Result, MOK, MOV, S])=> Unit)
+  extends MapperFxBase[ImmutableBytesWritable, Result, MOK, MOV, S] {
+
+  override def map(hContext: HMapContext[ImmutableBytesWritable, Result, MOK, MOV, S]) {
+     tableMapper(new QueryResult[T,R](hContext.value,table,table.tableName),hContext)
+  }
+
+}
 
 
 //case class FromTableMapper[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase](table: T, tableMapper: (QueryResult[T, R], HMapContext[ImmutableBytesWritable, Result, MOK, MOV, S]) => Unit)
