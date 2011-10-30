@@ -213,6 +213,7 @@ abstract class HTask[IK, IV, OK, OV, S <: SettingsBase](var input: HInput = HRan
   def makeJob(previousTask: HTask[_, _, _, _, S]) = {
 
     val job = new Job(configuration)
+    job.setJarByClass(getClass)
 
     if (previousTask != null && previousTask.output.isInstanceOf[HRandomSequenceOutput[_, _]] && input.isInstanceOf[HRandomSequenceInput[_, _]]) {
       input.asInstanceOf[HRandomSequenceInput[_, _]].previousPath = previousTask.output.asInstanceOf[HRandomSequenceOutput[_, _]].path
