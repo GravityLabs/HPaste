@@ -85,21 +85,21 @@ class HJob[S <: SettingsBase](name:String, input: HInput,output: HOutput, tasks:
 * Base class for initializing the input to an HJob
 */
 abstract class HInput {
-  def init(conf: Configuration, job: Job)
+  def init(job: Job)
 }
 
 /**
 * Base class for initializing the output from an HJob
 */
 abstract class HOutput {
-  def init(conf: Configuration, job: Job)
+  def init(job: Job)
 }
 
 /**
 * Initializes input from an HPaste Table
 */
 case class HTableInput[T <: HbaseTable[T, R], R](table: T) extends HInput {
-  override def init(conf: Configuration, job: Job) {
+  override def init(job: Job) {
     println("Setting input table to: " + table.tableName)
     job.getConfiguration.set(TableInputFormat.INPUT_TABLE, table.tableName)
     job.setInputFormatClass(classOf[TableInputFormat])
@@ -110,7 +110,7 @@ case class HTableInput[T <: HbaseTable[T, R], R](table: T) extends HInput {
 * Initializes input from a series of paths.
 */
 case class HPathInput(paths: Seq[String]) extends HInput {
-  override def init(conf: Configuration, job: Job) {
+  override def init(job: Job) {
     paths.foreach(path => {
       FileInputFormat.addInputPath(job, new Path(path))
     })
@@ -121,8 +121,8 @@ case class HPathInput(paths: Seq[String]) extends HInput {
 * Outputs to an HPaste Table
 */
 case class HTableOutput[T <: HbaseTable[T, R], R](table: T) extends HOutput {
-  override def init(conf: Configuration, job: Job) {
-    conf.set(GravityTableOutputFormat.OUTPUT_TABLE, table.tableName)
+  override def init(job: Job) {
+    job.getConfiguration.set(GravityTableOutputFormat.OUTPUT_TABLE, table.tableName)
     job.setOutputFormatClass(classOf[GravityTableOutputFormat[ImmutableBytesWritable]])
   }
 }
@@ -131,8 +131,8 @@ case class HTableOutput[T <: HbaseTable[T, R], R](table: T) extends HOutput {
 * Outputs to an HDFS directory
 */
 case class HPathOutput(path: String) extends HOutput {
-  override def init(conf: Configuration, job: Job) {
-    FileSystem.get(conf).delete(new Path(path), true)
+  override def init(job: Job) {
+    FileSystem.get(job.getConfiguration).delete(new Path(path), true)
     FileOutputFormat.setOutputPath(job, new Path(path))
   }
 }
@@ -144,7 +144,7 @@ case class HPathOutput(path: String) extends HOutput {
 case class HRandomSequenceInput[K, V]() extends HInput {
   var previousPath: Path = _
 
-  override def init(conf: Configuration, job: Job) {
+  override def init(job: Job) {
     FileInputFormat.addInputPath(job, previousPath)
 
     job.setInputFormatClass(classOf[SequenceFileInputFormat[K, V]])
@@ -157,7 +157,7 @@ case class HRandomSequenceInput[K, V]() extends HInput {
 case class HRandomSequenceOutput[K, V]() extends HOutput {
   var path = new Path(genTmpFile)
 
-  override def init(conf: Configuration, job: Job) {
+  override def init(job: Job) {
     job.setOutputFormatClass(classOf[SequenceFileOutputFormat[K, V]])
     FileOutputFormat.setOutputPath(job, path)
   }
@@ -176,7 +176,7 @@ abstract class HTask[IK, IV, OK, OV, S <: SettingsBase](var input: HInput = HRan
     configuration = conf
   }
 
-  def decorateJob(conf: Configuration, job: Job)
+  def decorateJob(job: Job)
 
   def makeJob(previousTask: HTask[_, _, _, _, S]) = {
 
@@ -187,10 +187,10 @@ abstract class HTask[IK, IV, OK, OV, S <: SettingsBase](var input: HInput = HRan
       input.asInstanceOf[HRandomSequenceInput[_, _]].previousPath = previousTask.output.asInstanceOf[HRandomSequenceOutput[_, _]].path
     }
 
-    input.init(configuration, job)
-    output.init(configuration, job)
+    input.init(job)
+    output.init(job)
 
-    decorateJob(configuration, job)
+    decorateJob(job)
 
     job
   }
@@ -211,7 +211,7 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV, S <: S
   val reducerClass = classOf[HReducer[MOK,MOV,ROK,ROV,S]]
 
 
-  def decorateJob(conf: Configuration, job: Job) {
+  def decorateJob(job: Job) {
     job.setMapperClass(mapperClass)
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
@@ -229,7 +229,7 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV, S <: S
 * A Task for a mapper-only job
 */
 case class HMapTask[MK, MV, MOK: Manifest, MOV: Manifest, S <: SettingsBase](mapper: MapperFx[MK, MV, MOK, MOV, S]) extends HTask[MK, MV, MOK, MOV, S] {
-  def decorateJob(conf: Configuration, job: Job) {
+  def decorateJob(job: Job) {
     job.setMapperClass(classOf[HMapper[MK, MV, MOK, MOV, S]])
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
@@ -241,7 +241,7 @@ case class HMapTask[MK, MV, MOK: Manifest, MOV: Manifest, S <: SettingsBase](map
 * A task for a Mapper / Combiner / Reducer combo
 */
 case class HMapCombineReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV, S <: SettingsBase](mapper: MapperFx[MK, MV, MOK, MOV, S], combiner: ReducerFx[MOK, MOV, ROK, ROV, S], reducer: ReducerFx[MOK, MOV, ROK, ROV, S]) extends HTask[MK, MV, ROK, ROV, S] {
-  def decorateJob(conf: Configuration, job: Job) {
+  def decorateJob(job: Job) {
     job.setMapperClass(classOf[HMapper[MK, MV, MOK, MOV, S]])
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
