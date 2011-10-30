@@ -6,6 +6,7 @@ import org.apache.hadoop.hbase.io.ImmutableBytesWritable
 import com.gravity.hbase.schema.{ExampleSchema, ClusterTest}
 import org.apache.hadoop.io.{NullWritable, Writable, Text, LongWritable}
 import com.gravity.hbase.schema._
+import org.junit.Test
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -28,3 +29,10 @@ class ExampleTableMapper extends Mapper[LongWritable,Text,NullWritable,Writable]
   }
 }
 
+class MapReduceTest {
+  @Test def testLoading() {
+    val mapperInstance = Class.forName("com.gravity.hbase.mapreduce.HReducer").newInstance()
+    
+    println(mapperInstance.getClass.getName)
+  }
+}

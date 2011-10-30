@@ -74,9 +74,8 @@ class MyJob extends HJob[NoSettings](
 
 
 class HJob[S <: SettingsBase](input: HInput, tasks: Seq[HTask[_, _, _, _, S]], output: HOutput) {
-  def run(settings: S) {
+  def run(settings: S, conf:Configuration) {
     require(tasks.size > 0, "HJob requires at least one task to be defined")
-    val conf = new Configuration()
     conf.setStrings("hpaste.jobchain.jobclass", getClass.getName)
 
 
@@ -263,7 +262,7 @@ case class HMapCombineReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV,
   }
 }
 
-class HMapper[MK, MV, MOK, MOV, S <: SettingsBase]() extends Mapper[MK, MV, MOK, MOV]() {
+class HMapper[MK, MV, MOK, MOV, S <: SettingsBase] extends Mapper[MK, MV, MOK, MOV] {
 
   var mapperFunc: MapperFunc[MK, MV, MOK, MOV, S] = _
 
@@ -290,7 +289,7 @@ class HMapper[MK, MV, MOK, MOV, S <: SettingsBase]() extends Mapper[MK, MV, MOK,
   }
 }
 
-class HReducer[MOK, MOV, ROK, ROV, S <: SettingsBase]() extends Reducer[MOK, MOV, ROK, ROV]() {
+class HReducer[MOK, MOV, ROK, ROV, S <: SettingsBase] extends Reducer[MOK, MOV, ROK, ROV] {
   var hcontext: HReduceContext[MOK, MOV, ROK, ROV, S] = _
   var context: Reducer[MOK, MOV, ROK, ROV]#Context = _
   var reducerFunc: ReducerFunc[MOK, MOV, ROK, ROV, S] = _
