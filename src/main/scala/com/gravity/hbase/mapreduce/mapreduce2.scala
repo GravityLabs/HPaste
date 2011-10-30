@@ -100,6 +100,7 @@ abstract class HOutput {
 */
 case class HTableInput[T <: HbaseTable[T, R], R](table: T) extends HInput {
   override def init(conf: Configuration, job: Job) {
+    println("Setting input table to: " + table.tableName)
     conf.set(TableInputFormat.INPUT_TABLE, table.tableName)
     job.setInputFormatClass(classOf[TableInputFormat])
   }
@@ -197,6 +198,8 @@ abstract class HTask[IK, IV, OK, OV, S <: SettingsBase](var input: HInput = HRan
 case class MapperFx[MK,MV,MOK,MOV,S <: SettingsBase](mapper:(HMapContext[MK,MV,MOK,MOV,S]) => Unit)
 
 case class ReducerFx[MOK,MOV,ROK,ROV,S <: SettingsBase](reducer:(HReduceContext[MOK,MOV,ROK,ROV,S]) => Unit)
+
+
 
 /**
 * An HTask that wraps a standard mapper and reducer function.
