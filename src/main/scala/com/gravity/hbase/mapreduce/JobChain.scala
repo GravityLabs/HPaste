@@ -136,7 +136,7 @@ case class HRandomSequenceInput[K, V]() extends HInput {
   override def init(conf: Configuration, job: Job) {
     FileInputFormat.addInputPath(job, previousPath)
 
-    job.setInputFormatClass(classOf[SequenceFileInputFormat[BytesWritable, BytesWritable]])
+    job.setInputFormatClass(classOf[SequenceFileInputFormat[K, V]])
   }
 }
 
@@ -144,7 +144,7 @@ case class HRandomSequenceOutput[K, V]() extends HOutput {
   var path = new Path(genTmpFile)
 
   override def init(conf: Configuration, job: Job) {
-    job.setOutputFormatClass(classOf[SequenceFileOutputFormat[BytesWritable, BytesWritable]])
+    job.setOutputFormatClass(classOf[SequenceFileOutputFormat[K, V]])
     FileOutputFormat.setOutputPath(job, path)
   }
 
@@ -178,7 +178,7 @@ abstract class HTask[IK, IV, OK, OV, S <: SettingsBase](var input: HInput = HRan
   }
 }
 
-case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV, S <: SettingsBase](mapper: MapperFunc[MK, MV, MOK, MOV, S], reducer: ReducerFunc[MOK, MOV, ROK, ROV, S]) extends HTask[MK, MV, ROK, ROV, S] {
+case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK : Manifest, ROV : Manifest, S <: SettingsBase](mapper: MapperFunc[MK, MV, MOK, MOV, S], reducer: ReducerFunc[MOK, MOV, ROK, ROV, S]) extends HTask[MK, MV, ROK, ROV, S] {
 
   val mapperClass = classOf[HMapper[MK,MV,MOK,MOV,S]]
   val reducerClass = classOf[HReducer[MOK,MOV,ROK,ROV,S]]
@@ -188,6 +188,8 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV, S <: S
     job.setMapperClass(mapperClass)
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
+    job.setOutputKeyClass(classManifest[ROK].erasure)
+    job.setOutputValueClass(classManifest[ROV].erasure)
     job.setReducerClass(reducerClass)
 
   }
