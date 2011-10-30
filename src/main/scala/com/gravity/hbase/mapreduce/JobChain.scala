@@ -178,7 +178,7 @@ abstract class HTask[IK, IV, OK, OV, S <: SettingsBase](var input: HInput = HRan
   }
 }
 
-case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK : Manifest, ROV : Manifest, S <: SettingsBase](mapper: MapperFunc[MK, MV, MOK, MOV, S], reducer: ReducerFunc[MOK, MOV, ROK, ROV, S]) extends HTask[MK, MV, ROK, ROV, S] {
+case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV, S <: SettingsBase](mapper: MapperFunc[MK, MV, MOK, MOV, S], reducer: ReducerFunc[MOK, MOV, ROK, ROV, S]) extends HTask[MK, MV, ROK, ROV, S] {
 
   val mapperClass = classOf[HMapper[MK,MV,MOK,MOV,S]]
   val reducerClass = classOf[HReducer[MOK,MOV,ROK,ROV,S]]
