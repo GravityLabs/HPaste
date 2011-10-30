@@ -136,7 +136,7 @@ case class HRandomSequenceInput[K, V]() extends HInput {
   override def init(conf: Configuration, job: Job) {
     FileInputFormat.addInputPath(job, previousPath)
 
-    job.setInputFormatClass(classOf[SequenceFileInputFormat[K, V]])
+    job.setInputFormatClass(classOf[SequenceFileInputFormat[BytesWritable, BytesWritable]])
   }
 }
 
@@ -144,7 +144,7 @@ case class HRandomSequenceOutput[K, V]() extends HOutput {
   var path = new Path(genTmpFile)
 
   override def init(conf: Configuration, job: Job) {
-    job.setOutputFormatClass(classOf[SequenceFileOutputFormat[K, V]])
+    job.setOutputFormatClass(classOf[SequenceFileOutputFormat[BytesWritable, BytesWritable]])
     FileOutputFormat.setOutputPath(job, path)
   }
 
