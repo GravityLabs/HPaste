@@ -24,7 +24,7 @@ import scala.collection.JavaConversions._
 *
 * To use the job, create a class with a parameterless constructor that inherits HJob, and pass the tasks into the constructor as a sequence.
 */
-class HJob[S <: SettingsBase](input: HInput,output: HOutput, tasks: HTask[_, _, _, _, S]*) {
+class HJob[S <: SettingsBase](name:String, input: HInput,output: HOutput, tasks: HTask[_, _, _, _, S]*) {
   def run(settings: S, conf:Configuration) {
     require(tasks.size > 0, "HJob requires at least one task to be defined")
     conf.setStrings("hpaste.jobchain.jobclass", getClass.getName)
@@ -46,7 +46,7 @@ class HJob[S <: SettingsBase](input: HInput,output: HOutput, tasks: HTask[_, _, 
 
       val job = task.makeJob(previousTask)
       job.setJarByClass(getClass)
-      job.setJobName("My Job (" + (idx + 1) + " of " + tasks.size + ")")
+      job.setJobName(name + " (" + (idx + 1) + " of " + tasks.size + ")")
 
       previousTask = task
       idx = idx + 1
@@ -101,7 +101,7 @@ abstract class HOutput {
 case class HTableInput[T <: HbaseTable[T, R], R](table: T) extends HInput {
   override def init(conf: Configuration, job: Job) {
     println("Setting input table to: " + table.tableName)
-    conf.set(TableInputFormat.INPUT_TABLE, table.tableName)
+    job.getConfiguration.set(TableInputFormat.INPUT_TABLE, table.tableName)
     job.setInputFormatClass(classOf[TableInputFormat])
   }
 }
@@ -172,6 +172,7 @@ abstract class HTask[IK, IV, OK, OV, S <: SettingsBase](var input: HInput = HRan
   var settings: S = _
 
   def configure(conf: Configuration, previousTask: HTask[_, _, _, _, S]) {
+
     configuration = conf
   }
 
