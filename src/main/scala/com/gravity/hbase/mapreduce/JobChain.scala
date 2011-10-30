@@ -188,8 +188,11 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK : Manifest, 
     job.setMapperClass(mapperClass)
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
-    job.setOutputKeyClass(classManifest[ROK].erasure)
-    job.setOutputValueClass(classManifest[ROV].erasure)
+//    job.setOutputKeyClass(classManifest[ROK].erasure)
+//    job.setOutputValueClass(classManifest[ROV].erasure)
+    job.setOutputKeyClass(classOf[BytesWritable])
+    job.setOutputValueClass(classOf[BytesWritable])
+
     job.setReducerClass(reducerClass)
 
   }
