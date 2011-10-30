@@ -209,7 +209,7 @@ abstract class ReducerFxBase[MOK,MOV,ROK,ROV, S<:SettingsBase] {
   }
 }
 
-class MapperFx[MK, MV, MOK, MOV, S <: SettingsBase](val mapper: (HMapContext[MK, MV, MOK, MOV, S]) => Unit) extends MapperFxBase[MK,MV,MOK,MOV,S] {
+case class MapperFx[MK, MV, MOK, MOV, S <: SettingsBase](mapper: (HMapContext[MK, MV, MOK, MOV, S]) => Unit) extends MapperFxBase[MK,MV,MOK,MOV,S] {
   override def map(hContext: HMapContext[MK, MV, MOK, MOV, S]) {
     mapper(hContext)
   }
@@ -220,6 +220,7 @@ case class ReducerFx[MOK, MOV, ROK, ROV, S <: SettingsBase](reducer: (HReduceCon
     reducer(hContext)
   }
 }
+
 
 
 //case class FromTableMapper[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase](table: T, tableMapper: (QueryResult[T, R], HMapContext[ImmutableBytesWritable, Result, MOK, MOV, S]) => Unit)
