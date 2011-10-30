@@ -25,7 +25,7 @@ object TryErOut extends App {
 }
 
 class MyJob extends HJob[NoSettings](
-  HPathInput("/user/gravity/magellan/beacons/2011_100" :: Nil),
+  HPathInput("/user/gravity/magellan/beacons/2011_100/*.csv" :: Nil),
   Seq(HMapReduceTask(
     mapper = (ctx: HMapContext[LongWritable, Text, BytesWritable, BytesWritable, NoSettings]) => {
       val line = ctx.value.toString
