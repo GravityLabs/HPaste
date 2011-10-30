@@ -232,7 +232,7 @@ case class ReducerFx[MOK, MOV, ROK, ROV, S <: SettingsBase](reducer: (HReduceCon
 /**
 * An HTask that wraps a standard mapper and reducer function.
 */
-case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV, S <: SettingsBase](mapper: MapperFxBase[MK, MV, MOK, MOV, S], reducer: ReducerFxBase[MOK, MOV, ROK, ROV, S]) extends HTask[MK, MV, ROK, ROV, S] {
+case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK : Manifest, ROV : Manifest, S <: SettingsBase](mapper: MapperFxBase[MK, MV, MOK, MOV, S], reducer: ReducerFxBase[MOK, MOV, ROK, ROV, S]) extends HTask[MK, MV, ROK, ROV, S] {
 
   val mapperClass = classOf[HMapper[MK, MV, MOK, MOV, S]]
   val reducerClass = classOf[HReducer[MOK, MOV, ROK, ROV, S]]
@@ -242,10 +242,10 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV, S <: S
     job.setMapperClass(mapperClass)
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
-    //    job.setOutputKeyClass(classManifest[ROK].erasure)
-    //    job.setOutputValueClass(classManifest[ROV].erasure)
-    job.setOutputKeyClass(classOf[BytesWritable])
-    job.setOutputValueClass(classOf[BytesWritable])
+    job.setOutputKeyClass(classManifest[ROK].erasure)
+    job.setOutputValueClass(classManifest[ROV].erasure)
+//    job.setOutputKeyClass(classOf[BytesWritable])
+//    job.setOutputValueClass(classOf[BytesWritable])
 
     job.setReducerClass(reducerClass)
 
