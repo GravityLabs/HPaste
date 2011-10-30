@@ -195,10 +195,14 @@ abstract class HTask[IK, IV, OK, OV, S <: SettingsBase](var input: HInput = HRan
   }
 }
 
+case class MapperFx[MK,MV,MOK,MOV,S <: SettingsBase](mapper:(HMapContext[MK,MV,MOK,MOV,S]) => Unit)
+
+case class ReducerFx[MOK,MOV,ROK,ROV,S <: SettingsBase](reducer:(HReduceContext[MOK,MOV,ROK,ROV,S]) => Unit)
+
 /**
 * An HTask that wraps a standard mapper and reducer function.
 */
-case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV, S <: SettingsBase](mapper: MapperFunc[MK, MV, MOK, MOV, S], reducer: ReducerFunc[MOK, MOV, ROK, ROV, S]) extends HTask[MK, MV, ROK, ROV, S] {
+case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV, S <: SettingsBase](mapper: MapperFx[MK, MV, MOK, MOV, S], reducer: ReducerFx[MOK, MOV, ROK, ROV, S]) extends HTask[MK, MV, ROK, ROV, S] {
 
   val mapperClass = classOf[HMapper[MK,MV,MOK,MOV,S]]
   val reducerClass = classOf[HReducer[MOK,MOV,ROK,ROV,S]]
@@ -221,7 +225,7 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV, S <: S
 /**
 * A Task for a mapper-only job
 */
-case class HMapTask[MK, MV, MOK: Manifest, MOV: Manifest, S <: SettingsBase](mapper: MapperFunc[MK, MV, MOK, MOV, S]) extends HTask[MK, MV, MOK, MOV, S] {
+case class HMapTask[MK, MV, MOK: Manifest, MOV: Manifest, S <: SettingsBase](mapper: MapperFx[MK, MV, MOK, MOV, S]) extends HTask[MK, MV, MOK, MOV, S] {
   def decorateJob(conf: Configuration, job: Job) {
     job.setMapperClass(classOf[HMapper[MK, MV, MOK, MOV, S]])
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
@@ -233,7 +237,7 @@ case class HMapTask[MK, MV, MOK: Manifest, MOV: Manifest, S <: SettingsBase](map
 /**
 * A task for a Mapper / Combiner / Reducer combo
 */
-case class HMapCombineReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV, S <: SettingsBase](mapper: MapperFunc[MK, MV, MOK, MOV, S], combiner: ReducerFunc[MOK, MOV, ROK, ROV, S], reducer: ReducerFunc[MOK, MOV, ROK, ROV, S]) extends HTask[MK, MV, ROK, ROV, S] {
+case class HMapCombineReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV, S <: SettingsBase](mapper: MapperFx[MK, MV, MOK, MOV, S], combiner: ReducerFx[MOK, MOV, ROK, ROV, S], reducer: ReducerFx[MOK, MOV, ROK, ROV, S]) extends HTask[MK, MV, ROK, ROV, S] {
   def decorateJob(conf: Configuration, job: Job) {
     job.setMapperClass(classOf[HMapper[MK, MV, MOK, MOV, S]])
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
@@ -264,7 +268,7 @@ class HMapper[MK, MV, MOK, MOV, S <: SettingsBase] extends Mapper[MK, MV, MOK, M
     context = ctx
 
     job = Class.forName(context.getConfiguration.get("hpaste.jobchain.jobclass")).newInstance.asInstanceOf[HJob[S]]
-    mapperFunc = job.getMapperFunc(context.getConfiguration.getInt("hpaste.jobchain.mapper.idx", -1))
+    mapperFunc = job.getMapperFunc(context.getConfiguration.getInt("hpaste.jobchain.mapper.idx", -1)).mapper
 
     hcontext = new HMapContext[MK, MV, MOK, MOV, S](context.getConfiguration, counter, context)
   }
@@ -293,7 +297,7 @@ class HReducer[MOK, MOV, ROK, ROV, S <: SettingsBase] extends Reducer[MOK, MOV, 
     context = ctx
 
     job = Class.forName(context.getConfiguration.get("hpaste.jobchain.jobclass")).newInstance().asInstanceOf[HJob[S]]
-    reducerFunc = job.getReducerFunc(context.getConfiguration.getInt("hpaste.jobchain.reducer.idx", -1))
+    reducerFunc = job.getReducerFunc(context.getConfiguration.getInt("hpaste.jobchain.reducer.idx", -1)).reducer
 
     hcontext = new HReduceContext[MOK, MOV, ROK, ROV, S](context.getConfiguration, counter, context)
   }
