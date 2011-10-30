@@ -24,53 +24,6 @@ import scala.collection.JavaConversions._
 object TryErOut extends App {
 }
 
-class MyJob extends HJob[NoSettings](
-  HPathInput("/user/gravity/magellan/beacons/2011_100/*.csv" :: Nil),
-
-  Seq(
-    HMapReduceTask(
-      mapper = (ctx: HMapContext[LongWritable, Text, BytesWritable, BytesWritable, NoSettings]) => {
-        val line = ctx.value.toString
-        val splits = line.split("\\^")
-        val date = splits(0)
-        val action = splits(1)
-        val site = splits(2)
-        ctx.write(
-          makeWritable {
-            output =>
-              output.writeUTF(action)
-          },
-          makeWritable {
-            output =>
-              output.writeUTF(site)
-              output.writeUTF(date)
-          }
-        )
-      }
-      , reducer = (ctx: HReduceContext[BytesWritable, BytesWritable, BytesWritable, BytesWritable, NoSettings]) => {
-        val action = readWritable(ctx.key) {input => input.readUTF()}
-        var count = 0l
-        ctx.values.foreach {value => count = count + 1l}
-
-        ctx.write(
-          makeWritable {output => output.writeLong(count)},
-          makeWritable {output => output.writeUTF(action)}
-        )
-      }),
-    HMapReduceTask(
-      mapper = (ctx: HMapContext[BytesWritable, BytesWritable, BytesWritable, BytesWritable, NoSettings]) => {
-        ctx.write(ctx.key, ctx.value)
-      }, reducer = (ctx: HReduceContext[BytesWritable, BytesWritable, NullWritable, Text, NoSettings]) => {
-        val count = ctx.key
-        ctx.values.foreach {
-          value =>
-            ctx.write(NullWritable.get(), new Text(readWritable(value) {input => input.readUTF()} + " : " + count))
-        }
-      })
-  )
-  ,
-  HPathOutput("/user/chris/testhpaste/")
-)
 
 
 class HJob[S <: SettingsBase](input: HInput, tasks: Seq[HTask[_, _, _, _, S]], output: HOutput) {
