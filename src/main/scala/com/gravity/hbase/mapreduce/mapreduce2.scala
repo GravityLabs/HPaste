@@ -13,7 +13,10 @@ import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.mapreduce.lib.input.{SequenceFileInputFormat, FileInputFormat}
 import org.apache.hadoop.mapreduce.lib.output.{SequenceFileOutputFormat, FileOutputFormat}
 import scala.collection.JavaConversions._
-import org.apache.hadoop.hbase.client.Result
+import org.apache.hadoop.hbase.client.{Scan, Result}
+import org.apache.hadoop.hbase.filter.{FilterList, Filter}
+import java.io.{DataOutputStream, ByteArrayOutputStream}
+import org.apache.hadoop.hbase.util.Base64
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -99,9 +102,31 @@ abstract class HOutput {
 /**
 * Initializes input from an HPaste Table
 */
-case class HTableInput[T <: HbaseTable[T, R], R](table: T) extends HInput {
+case class HTableInput[T <: HbaseTable[T, R], R](table: T, families:Seq[ColumnFamily[T,_,_,_,_]] = Seq(), columns: Seq[Column[T,_,_,_,_]] = Seq(), filters:Seq[Filter] = Seq(), scan : Scan= new Scan()) extends HInput {
   override def init(job: Job) {
     println("Setting input table to: " + table.tableName)
+
+    val scanner = scan
+    scanner.setCacheBlocks(false)
+    scanner.setCaching(100)
+    scanner.setMaxVersions(1)
+
+    columns.foreach {col => scanner.addColumn(col.familyBytes,col.columnBytes)}
+    families.foreach{fam => scanner.addFamily(fam.familyBytes)}
+
+    if(filters.size > 0) {
+      val filterList = new FilterList(FilterList.Operator.MUST_PASS_ALL)
+      filters.foreach{filter=>filterList.addFilter(filter)}
+      scanner.setFilter(filterList)
+    }
+
+    val bas = new ByteArrayOutputStream()
+    val dos = new DataOutputStream(bas)
+    scanner.write(dos)
+    job.getConfiguration.set(TableInputFormat.SCAN, Base64.encodeBytes(bas.toByteArray))
+
+
+
     job.getConfiguration.set(TableInputFormat.INPUT_TABLE, table.tableName)
     job.setInputFormatClass(classOf[TableInputFormat])
   }
