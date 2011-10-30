@@ -25,7 +25,6 @@ object TryErOut extends App {
 }
 
 class MyJob extends HJob[NoSettings](
-  Settings.None,
   HPathInput("/user/gravity/magellan/beacons/2011_100" :: Nil),
   Seq(HMapReduceTask(
     mapper = (ctx: HMapContext[LongWritable, Text, BytesWritable, BytesWritable, NoSettings]) => {
@@ -69,7 +68,7 @@ class MyJob extends HJob[NoSettings](
 )
 
 
-class HJob[S <: SettingsBase](settings:S, input:HInput, tasks: Seq[HTask[_,_,_,_,S]], output:HOutput) {
+class HJob[S <: SettingsBase](input:HInput, tasks: Seq[HTask[_,_,_,_,S]], output:HOutput) {
   def run(settings: S) {
     require(tasks.size > 0, "HJob requires at least one task to be defined")
     val conf = new Configuration()
