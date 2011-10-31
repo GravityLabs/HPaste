@@ -17,6 +17,7 @@ import org.apache.hadoop.hbase.client.{Scan, Result}
 import org.apache.hadoop.hbase.filter.{FilterList, Filter}
 import java.io.{DataOutputStream, ByteArrayOutputStream}
 import org.apache.hadoop.hbase.util.Base64
+import com.gravity.hbase.schema._
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -99,10 +100,14 @@ abstract class HOutput {
   def init(job: Job)
 }
 
+case class Columns[T <: HbaseTable[T,_]](columns:ColumnExtractor[T,_,_,_,_]*)
+
+case class Families[T <: HbaseTable[T,_]](families:FamilyExtractor[T,_,_,_,_]*)
+
 /**
 * Initializes input from an HPaste Table
 */
-case class HTableInput[T <: HbaseTable[T, R], R](table: T, families:Seq[ColumnFamily[T,_,_,_,_]] = Seq(), columns: Seq[Column[T,_,_,_,_]] = Seq(), filters:Seq[Filter] = Seq(), scan : Scan= new Scan()) extends HInput {
+case class HTableInput[T <: HbaseTable[T, _]](table: T, families:Families[T] = Families[T](), columns: Columns[T] = Columns[T](), filters:Seq[Filter] = Seq(), scan : Scan= new Scan()) extends HInput {
   override def init(job: Job) {
     println("Setting input table to: " + table.tableName)
 
@@ -111,8 +116,14 @@ case class HTableInput[T <: HbaseTable[T, R], R](table: T, families:Seq[ColumnFa
     scanner.setCaching(100)
     scanner.setMaxVersions(1)
 
-    columns.foreach {col => scanner.addColumn(col.familyBytes,col.columnBytes)}
-    families.foreach{fam => scanner.addFamily(fam.familyBytes)}
+    columns.columns.foreach {col =>
+            val column = col(table)
+      scanner.addColumn(column.familyBytes,column.columnBytes)
+    }
+    families.families.foreach{fam =>
+      val family = fam(table)
+      scanner.addFamily(family.familyBytes)
+    }
 
     if(filters.size > 0) {
       val filterList = new FilterList(FilterList.Operator.MUST_PASS_ALL)
