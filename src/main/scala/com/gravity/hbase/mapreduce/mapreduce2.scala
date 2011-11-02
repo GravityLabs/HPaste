@@ -5,7 +5,6 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.io.{NullWritable, LongWritable, Text, BytesWritable}
 import java.lang.Iterable
 import com.gravity.hbase.schema.HbaseTable
-import org.apache.hadoop.mapreduce.{Job, Reducer, Mapper}
 import org.apache.hadoop.hbase.mapreduce.TableInputFormat
 import com.gravity.hadoop.GravityTableOutputFormat
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable
@@ -18,11 +17,15 @@ import org.apache.hadoop.hbase.filter.{FilterList, Filter}
 import java.io.{DataOutputStream, ByteArrayOutputStream}
 import org.apache.hadoop.hbase.util.Base64
 import com.gravity.hbase.schema._
+import org.apache.hadoop.mapreduce.{Partitioner, Job, Reducer, Mapper}
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
+object HJobRegistry {
+  var job : HJob[_] = null
+}
 
 /**
 * A job encompasses a series of tasks that cooperate to build output.  Each task is usually an individual map or map/reduce operation.
@@ -103,6 +106,8 @@ abstract class HOutput {
 case class Columns[T <: HbaseTable[T,_]](columns:ColumnExtractor[T,_,_,_,_]*)
 
 case class Families[T <: HbaseTable[T,_]](families:FamilyExtractor[T,_,_,_,_]*)
+
+case class Filters[T <: HbaseTable[T,_]](filters: Filter *)
 
 /**
 * Initializes input from an HPaste Table
@@ -233,6 +238,7 @@ abstract class HTask[IK, IV, OK, OV, S <: SettingsBase](var input: HInput = HRan
   }
 }
 
+
 abstract class MapperFxBase[MK, MV, MOK, MOV, S <: SettingsBase] {
   def map(hContext: HMapContext[MK,MV,MOK,MOV,S]) {
 
@@ -267,6 +273,7 @@ case class FromTableMapper[T <: HbaseTable[T,R],R, MOK, MOV, S <: SettingsBase](
 }
 
 
+
 //case class FromTableMapper[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase](table: T, tableMapper: (QueryResult[T, R], HMapContext[ImmutableBytesWritable, Result, MOK, MOV, S]) => Unit)
 //        extends MapperFx[ImmutableBytesWritable, Result, MOK, MOV, S]((ctx: HMapContext[ImmutableBytesWritable, Result, MOK, MOV, S]) => {
 //          tableMapper(new QueryResult[T, R](ctx.value, table, table.tableName), ctx)
@@ -280,6 +287,7 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK : Manifest, 
 
   val mapperClass = classOf[HMapper[MK, MV, MOK, MOV, S]]
   val reducerClass = classOf[HReducer[MOK, MOV, ROK, ROV, S]]
+  val partitionersClass = classOf[HPartitioner[MOK,MOV]]
 
 
   def decorateJob(job: Job) {
@@ -288,8 +296,6 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK : Manifest, 
     job.setMapOutputValueClass(classManifest[MOV].erasure)
     job.setOutputKeyClass(classManifest[ROK].erasure)
     job.setOutputValueClass(classManifest[ROV].erasure)
-//    job.setOutputKeyClass(classOf[BytesWritable])
-//    job.setOutputValueClass(classOf[BytesWritable])
 
     job.setReducerClass(reducerClass)
 
@@ -321,11 +327,21 @@ case class HMapCombineReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV,
   }
 }
 
+class HPartitioner[MOK,MOV] extends Partitioner[MOK,MOV] {
+
+  override def getPartition(key:MOK, value: MOV, numPartitions: Int) : Int = {
+    3
+//    val job = HJobRegistry.job
+  }
+}
+
 /**
 * This is the class that gets loaded by Hadoop as a mapper.  It delegates the actual mapper functionality back
 * to the HTask that it represents.
 */
 class HMapper[MK, MV, MOK, MOV, S <: SettingsBase] extends Mapper[MK, MV, MOK, MOV] {
+
+
 
 
   var mapperFx: MapperFxBase[MK,MV,MOK,MOV,S] = _
@@ -343,6 +359,7 @@ class HMapper[MK, MV, MOK, MOV, S <: SettingsBase] extends Mapper[MK, MV, MOK, M
     context = ctx
 
     job = Class.forName(context.getConfiguration.get("hpaste.jobchain.jobclass")).newInstance.asInstanceOf[HJob[S]]
+    HJobRegistry.job = job
     mapperFx = job.getMapperFunc(context.getConfiguration.getInt("hpaste.jobchain.mapper.idx", -1))
 
     hcontext = new HMapContext[MK, MV, MOK, MOV, S](context.getConfiguration, counter, context)
@@ -372,6 +389,8 @@ class HReducer[MOK, MOV, ROK, ROV, S <: SettingsBase] extends Reducer[MOK, MOV, 
     context = ctx
 
     job = Class.forName(context.getConfiguration.get("hpaste.jobchain.jobclass")).newInstance().asInstanceOf[HJob[S]]
+    HJobRegistry.job = job
+
     reducerFx = job.getReducerFunc(context.getConfiguration.getInt("hpaste.jobchain.reducer.idx", -1))
 
     hcontext = new HReduceContext[MOK, MOV, ROK, ROV, S](context.getConfiguration, counter, context)
