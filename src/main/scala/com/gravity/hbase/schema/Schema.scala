@@ -434,8 +434,8 @@ class OpBase[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte]
 
   previous += this
 
-  def put(key: R)(implicit c: ByteConverter[R]) = {
-    val po = new PutOp(table, c.toBytes(key), previous)
+  def put(key: R, writeToWAL: Boolean = true)(implicit c: ByteConverter[R]) = {
+    val po = new PutOp(table, c.toBytes(key), previous, writeToWAL)
     po
   }
 
