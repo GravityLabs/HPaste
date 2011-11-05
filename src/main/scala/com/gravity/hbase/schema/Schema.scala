@@ -510,6 +510,7 @@ case class OpsResult(numDeletes: Int, numPuts: Int, numIncrements: Int)
 */
 class IncrementOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) extends OpBase[T, R](table, key, previous) {
   val increment = new Increment(key)
+  increment.setWriteToWAL(false)
 
   def value[F, K, Long](column: (T) => Column[T, R, F, K, Long], value: java.lang.Long)(implicit c: ByteConverter[F], d: ByteConverter[K]) = {
     val col = column(table.pops)
