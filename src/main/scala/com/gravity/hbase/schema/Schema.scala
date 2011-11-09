@@ -126,28 +126,28 @@ class MapConverter[K, V](implicit c: ByteConverter[K], d: ByteConverter[V]) exte
 }
 
 
-
 class SetConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Set[T]] {
 
   override def write(set: Set[T], output: DataOutputStream) {
     val length = set.size
     output.writeInt(length)
 
-    set.foreach{itm=>
-      val bytes = c.toBytes(itm)
-      output.writeInt(bytes.size)
-      output.write(bytes)
+    set.foreach {
+      itm =>
+        val bytes = c.toBytes(itm)
+        output.writeInt(bytes.size)
+        output.write(bytes)
     }
   }
 
-  override def read(input:DataInputStream) : Set[T] = {
+  override def read(input: DataInputStream): Set[T] = {
     val length = input.readInt()
-    Set((for(i <- 0 until length) yield {
+    Set((for (i <- 0 until length) yield {
       val arrLength = input.readInt()
       val arr = new Array[Byte](arrLength)
       input.read(arr)
       c.fromBytes(arr)
-    }):_*)
+    }): _*)
   }
 }
 
@@ -178,7 +178,7 @@ class SeqConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter
       val arr = new Array[Byte](arrLength)
       input.read(arr)
       c.fromBytes(arr)
-    }):_*)
+    }): _*)
   }
 
 }
@@ -209,7 +209,7 @@ class BufferConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConver
       val arr = new Array[Byte](arrLength)
       input.read(arr)
       c.fromBytes(arr)
-    }):_*)
+    }): _*)
   }
 
 }
@@ -245,12 +245,12 @@ class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTabl
     }
   }
 
-  def columnTimestamp[F,K,V](column: (T) => Column[T,R,F,K,V])(implicit c: ByteConverter[V]): Option[DateTime] = {
+  def columnTimestamp[F, K, V](column: (T) => Column[T, R, F, K, V])(implicit c: ByteConverter[V]): Option[DateTime] = {
     val co = column(table.pops)
     val col = result.getColumnLatest(co.familyBytes, co.columnBytes)
-    if(col != null) {
+    if (col != null) {
       Some(new DateTime(col.getTimestamp))
-    }else {
+    } else {
       None
     }
   }
@@ -258,23 +258,27 @@ class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTabl
   def familyLatestTimestamp[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V])(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]): Option[DateTime] = {
     val fam = family(table.pops)
     var ts = -1l
-    for(kv <- result.raw()) {
-      if(Bytes.equals(kv.getFamily,fam.familyBytes)) {
+    for (kv <- result.raw()) {
+      if (Bytes.equals(kv.getFamily, fam.familyBytes)) {
         val tsn = kv.getTimestamp
-        if(tsn > ts) ts = tsn
+        if (tsn > ts) ts = tsn
       }
     }
-    if(ts >= 0) Some(new DateTime(ts))
-    else None
+    if (ts >= 0) {
+      Some(new DateTime(ts))
+    }
+    else {
+      None
+    }
   }
 
   def family[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V])(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]): Map[K, V] = {
     val fm = family(table.pops)
     val kvs = result.raw()
-    val mymap = scala.collection.mutable.Map[K,V]()
+    val mymap = scala.collection.mutable.Map[K, V]()
     mymap.sizeHint(kvs.size)
-    for(kv <- kvs) yield {
-      if(Bytes.equals(kv.getFamily, fm.familyBytes)) {
+    for (kv <- kvs) yield {
+      if (Bytes.equals(kv.getFamily, fm.familyBytes)) {
         mymap.put(d.fromBytes(kv.getQualifier), e.fromBytes(kv.getValue))
       }
     }
@@ -286,8 +290,8 @@ class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTabl
     val kvs = result.raw()
     val myset = scala.collection.mutable.Set[K]()
     myset.sizeHint(kvs.size)
-    for(kv <- kvs) yield {
-      if(Bytes.equals(kv.getFamily, fm.familyBytes)) {
+    for (kv <- kvs) yield {
+      if (Bytes.equals(kv.getFamily, fm.familyBytes)) {
         myset.add(d.fromBytes(kv.getQualifier))
       }
     }
@@ -471,35 +475,59 @@ class OpBase[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte]
 
   }
 
-  def execute(tableName: String = table.tableName) = {
+  /**
+  * This is an experimental call that utilizes a shared instance of a table to flush writes.
+  */
+  def executeBuffered(tableName: String = table.tableName) = {
+    val bufferTable = table.bufferTable
+
+    val (puts, increments) = prepareOperations
+
+    if (puts.size > 0) {
+      bufferTable.batch(puts)
+    }
+    if (increments.size > 0) {
+      increments.foreach {
+        increment =>
+          bufferTable.increment(increment)
+      }
+    }
+  }
+
+  def prepareOperations = {
     val puts = Buffer[Put]()
     val deletes = Buffer[Delete]()
     val increments = Buffer[Increment]()
+
+    previous.foreach {
+      case put: PutOp[T, R] => {
+        puts += put.put
+      }
+      case delete: DeleteOp[T, R] => {
+        deletes += delete.delete
+      }
+      case increment: IncrementOp[T, R] => {
+        increments += increment.increment
+      }
+    }
+
+    (deletes ++ puts, increments)
+  }
+
+  def execute(tableName: String = table.tableName) = {
+    val (puts, increments) = prepareOperations
     table.withTable(tableName) {
       table =>
-
-        previous.foreach {
-          case put: PutOp[T, R] => {
-            puts += put.put
-          }
-          case delete: DeleteOp[T, R] => {
-            deletes += delete.delete
-          }
-          case increment: IncrementOp[T, R] => {
-            increments += increment.increment
-          }
-        }
-
-        if (deletes.size > 0 || puts.size > 0) {
+        if (puts.size > 0) {
           //IN THEORY, the operations will happen in order.  If not, break this into two different batched calls for deletes and puts
-          table.batch(deletes ++ puts)
+          table.batch(puts)
         }
         if (increments.size > 0) {
           increments.foreach(increment => table.increment(increment))
         }
     }
 
-    OpsResult(deletes.size, puts.size, increments.size)
+    OpsResult(0, puts.size, increments.size)
   }
 }
 
@@ -530,7 +558,7 @@ class IncrementOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[
 /**
 * A Put operation.  Can work across multiple columns or entire column families treated as Maps.
 */
-class PutOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]](), writeToWAL:Boolean=true) extends OpBase[T, R](table, key, previous) {
+class PutOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]](), writeToWAL: Boolean = true) extends OpBase[T, R](table, key, previous) {
   val put = new Put(key)
   put.setWriteToWAL(writeToWAL)
 
@@ -641,7 +669,7 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
               None
             } else {
               val qr = new QueryResult(result, table, tableName)
-              if (!skipCache  && !result.isEmpty) table.cache.putResult(get, qr, ttl)
+              if (!skipCache && !result.isEmpty) table.cache.putResult(get, qr, ttl)
               Some(qr)
             }
           }
@@ -668,20 +696,24 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     val gets = buildGetsAndCheckCache(skipCache) {
       case (get: Get, key: Array[Byte]) => if (!skipCache) getsByKey.put(new String(key), get)
     } {
-      case (qropt: Option[QueryResult[T, R]], get: Get) => if (!skipCache) qropt match {
-        case Some(result) => results += result // got it! place it in our result buffer
-        case None => cacheMisses += get // missed it! place the get in the buffer
+      case (qropt: Option[QueryResult[T, R]], get: Get) => if (!skipCache) {
+        qropt match {
+          case Some(result) => results += result // got it! place it in our result buffer
+          case None => cacheMisses += get // missed it! place the get in the buffer
+        }
       }
     }
 
     // identify what still needs to be `Get'ed ;-}
     val hbaseGets = if (skipCache) gets else cacheMisses
 
-    if (!hbaseGets.isEmpty) { // only do this if we have something to do
+    if (!hbaseGets.isEmpty) {
+      // only do this if we have something to do
       table.withTable(tableName) {
         htable =>
           htable.get(hbaseGets).foreach(res => {
-            if (res != null && !res.isEmpty) { // ignore empty results
+            if (res != null && !res.isEmpty) {
+              // ignore empty results
               val qr = new QueryResult[T, R](res, table, tableName) // construct query result
 
               // now is where we need to retrive the 'get' used for this result so that we can
@@ -714,20 +746,24 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     val gets = buildGetsAndCheckCache(skipCache) {
       case (get: Get, key: Array[Byte]) => if (!skipCache) getsByKey.put(new String(key), get)
     } {
-      case (qropt: Option[QueryResult[T, R]], get: Get) => if (!skipCache) qropt match {
-        case Some(result) => resultMap.put(result.rowid, result) // got it! place it in our result map
-        case None => cacheMisses += get // missed it! place the get in the buffer
+      case (qropt: Option[QueryResult[T, R]], get: Get) => if (!skipCache) {
+        qropt match {
+          case Some(result) => resultMap.put(result.rowid, result) // got it! place it in our result map
+          case None => cacheMisses += get // missed it! place the get in the buffer
+        }
       }
     }
 
     // identify what still needs to be `Get'ed ;-}
     val hbaseGets = if (skipCache) gets else cacheMisses
 
-    if (!hbaseGets.isEmpty) { // only do this if we have something to do
+    if (!hbaseGets.isEmpty) {
+      // only do this if we have something to do
       table.withTable(tableName) {
         htable =>
           htable.get(hbaseGets).foreach(res => {
-            if (res != null && !res.isEmpty) { // ignore empty results
+            if (res != null && !res.isEmpty) {
+              // ignore empty results
               val qr = new QueryResult[T, R](res, table, tableName) // construct query result
 
               // now is where we need to retrive the 'get' used for this result so that we can
@@ -742,7 +778,7 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     resultMap // DONE!
   }
 
-  private def buildGetsAndCheckCache(skipCache: Boolean)(receiveGetAndKey: (Get,Array[Byte]) => Unit = (get, key) => {})(receiveCachedResult: (Option[QueryResult[T, R]], Get) => Unit = (qr, get) => {}): Seq[Get] = {
+  private def buildGetsAndCheckCache(skipCache: Boolean)(receiveGetAndKey: (Get, Array[Byte]) => Unit = (get, key) => {})(receiveCachedResult: (Option[QueryResult[T, R]], Get) => Unit = (qr, get) => {}): Seq[Get] = {
     if (keys.isEmpty) return Seq.empty[Get] // no keys..? nothing to see here... move along... move along.
 
     val gets = Buffer[Get]() // buffer for the raw `Get's
@@ -767,13 +803,16 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
 
     var pastFirst = false
     for (get <- gets) {
-      if (pastFirst) { // we want to skip the first `Get' as it already has families/columns
+      if (pastFirst) {
+        // we want to skip the first `Get' as it already has families/columns
 
         // for all subsequent `Get's, we will build their familyMap from the first `Get'
         firstGet.getFamilyMap.foreach((kv: (Array[Byte], NavigableSet[Array[Byte]])) => {
           get.getFamilyMap.put(kv._1, kv._2)
         })
-      } else pastFirst = true
+      } else {
+        pastFirst = true
+      }
 
       // try the cache with this filled in get
       if (!skipCache) receiveCachedResult(table.cache.getResult(get), get)
@@ -841,12 +880,23 @@ class HbaseTable[T <: HbaseTable[T, R], R](val tableName: String, var cache: Que
   def pops = this.asInstanceOf[T]
 
   val tablePool = new HTablePool(conf, 50)
+
+  //For buffered writes in a fire and forget model
+  lazy val bufferTable = {
+    val table = new HTable(conf, tableName)
+    table.setWriteBufferSize(2000000L)
+    table.setAutoFlush(false)
+    table
+  }
+
+
   private val columns = Buffer[Column[T, R, _, _, _]]()
   val families = Buffer[ColumnFamily[T, R, _, _, _]]()
 
   def familyBytes = families.map(family => family.familyBytes)
 
   val meta = family[String, String, Any]("meta")
+
 
   //alter 'articles', NAME => 'html', VERSIONS =>1, COMPRESSION=>'lzo'
 
@@ -910,7 +960,6 @@ class HbaseTable[T <: HbaseTable[T, R], R](val tableName: String, var cache: Que
     try {
       work(table)
     } finally {
-      table foreach (_.flushCommits())
       table foreach (tbl => tablePool.putTable(tbl))
     }
   }
@@ -940,7 +989,9 @@ case class YearDay(year: Int, day: Int)
 
 case class CommaSet(items: Set[String]) {
   def mkString: String = items.mkString
+
   def mkString(sep: String): String = items.mkString(sep)
+
   def mkString(start: String, sep: String, end: String): String = items.mkString(start, sep, end)
 }
 

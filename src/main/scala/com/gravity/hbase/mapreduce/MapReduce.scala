@@ -756,7 +756,7 @@ trait FromTable[T <: HbaseTable[T, _]] extends JobTrait with NoSpeculativeExecut
     conf.set(TableInputFormat.INPUT_TABLE, fromTable.tableName)
     val scanner = createScanner
     scanner.setCacheBlocks(false)
-    scanner.setCaching(100)
+    scanner.setCaching(1000)
     scanner.setMaxVersions(1)
 
     columns.foreach {
