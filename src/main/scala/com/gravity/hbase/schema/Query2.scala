@@ -99,9 +99,13 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
     this
   }
 
-  def allOfFamily[F,K,V](family: (T) => ColumnFamily[T,R,F,K,V]) = {
-    val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(family(table.pops).familyBytes))
-    currentFilter.addFilter(familyFilter)
+  def allOfFamilies[F](familyList: ((T) => ColumnFamily[T,R,F,_,_])*) = {
+    val filterList = new FilterList(Operator.MUST_PASS_ONE)
+    for(family <- familyList) {
+      val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(family(table.pops).familyBytes))
+      filterList.addFilter(familyFilter)
+    }
+    currentFilter.addFilter(filterList)
     this
   }
 
