@@ -18,11 +18,14 @@ import org.apache.hadoop.hbase.filter.FilterList.Operator
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
 
+
 class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
   val keys = Buffer[Array[Byte]]()
   val families = Buffer[Array[Byte]]()
   val columns = Buffer[(Array[Byte], Array[Byte])]()
   var currentFilter : FilterList = new FilterList(Operator.MUST_PASS_ALL)
+  var startRowBytes : Array[Byte] = null
+  var endRowBytes : Array[Byte] = null
 
   def withKey(key: R)(implicit c: ByteConverter[R]) = {
     keys += c.toBytes(key)
@@ -65,7 +68,7 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
     val andFilter = new FilterList(Operator.MUST_PASS_ALL)
     andFilter.addFilter(familyFilter)
     andFilter.addFilter(valueFilter)
-    currentFilter.addFilter(familyFilter)
+    currentFilter.addFilter(andFilter)
     this
   }
 
@@ -75,7 +78,7 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
     val valueFilter = new QualifierFilter(CompareOp.GREATER_OR_EQUAL, new BinaryComparator(k.toBytes(value)))
     andFilter.addFilter(familyFilter)
     andFilter.addFilter(valueFilter)
-    currentFilter.addFilter(familyFilter)
+    currentFilter.addFilter(andFilter)
     this
   }
 
@@ -99,7 +102,7 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
     this
   }
 
-  def allOfFamilies[F](familyList: ((T) => ColumnFamily[T,R,F,_,_])*) = {
+  def allInFamilies[F](familyList: ((T) => ColumnFamily[T,R,F,_,_])*) = {
     val filterList = new FilterList(Operator.MUST_PASS_ONE)
     for(family <- familyList) {
       val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(family(table.pops).familyBytes))
@@ -133,6 +136,7 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
 
   def singleOption(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, noneOnEmpty: Boolean = true): Option[QueryResult[T, R]] = {
     require(keys.size == 1, "Calling single() with more than one key")
+    require(keys.size >= 1, "Calling a Get operation with no keys specified")
     val get = new Get(keys.head)
     get.setMaxVersions(1)
 
@@ -290,6 +294,10 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
     for ((columnFamily, column) <- columns) {
       firstGet.addColumn(columnFamily, column)
     }
+    if(currentFilter != null && currentFilter.getFilters.size() > 0) {
+      firstGet.setFilter(currentFilter)
+    }
+
 
     var pastFirst = false
     for (get <- gets) {
@@ -300,6 +308,9 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
         firstGet.getFamilyMap.foreach((kv: (Array[Byte], NavigableSet[Array[Byte]])) => {
           get.getFamilyMap.put(kv._1, kv._2)
         })
+        if(currentFilter != null && currentFilter.getFilters.size() > 0) {
+          get.setFilter(currentFilter)
+        }
       } else {
         pastFirst = true
       }
@@ -309,6 +320,69 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
     }
 
     gets
+  }
+
+
+
+  def withStartRow(row:R)(implicit r:ByteConverter[R]) = {
+    startRowBytes = r.toBytes(row)
+    this
+  }
+
+  def withEndRow(row:R)(implicit r:ByteConverter[R]) = {
+    endRowBytes = r.toBytes(row)
+    this
+  }
+
+  def makeScanner(maxVersions:Int =1, cacheBlocks:Boolean=false, cacheSize: Int = 100) = {
+    require(keys.size == 0, "A scanner should not specify keys, use singleOption or execute or executeMap")
+    val scan = new Scan()
+    scan.setMaxVersions(maxVersions)
+    scan.setCaching(cacheSize)
+    scan.setCacheBlocks(cacheBlocks)
+
+    if(startRowBytes != null)
+      scan.setStartRow(startRowBytes)
+    if(endRowBytes != null)
+     scan.setStopRow(endRowBytes)
+
+    for(family <- families) scan.addFamily(family)
+    for(column <- columns) scan.addColumn(column._1, column._2)
+
+    if(currentFilter.getFilters.size > 0) {
+      scan.setFilter(currentFilter)
+    }
+
+    scan
+  }
+
+  def scan(handler: (QueryResult[T, R]) => Unit, maxVersions:Int = 1, cacheBlocks:Boolean = false, cacheSize:Int = 100) {
+    table.withTable() {
+      htable =>
+        val scan = makeScanner(maxVersions,cacheBlocks,cacheSize)
+        val scanner = htable.getScanner(scan)
+
+        try {
+          for (result <- scanner) {
+            handler(new QueryResult[T, R](result, table, table.tableName))
+          }
+        } finally {
+          scanner.close()
+        }
+    }
+  }
+
+  def scanToSeq[I](handler:(QueryResult[T,R]) => I, maxVersions:Int = 1, cacheBlocks:Boolean = false, cacheSize:Int = 100) = {
+    val results2 = table.withTable() {
+      htable => 
+        val scan = makeScanner(maxVersions,cacheBlocks, cacheSize)
+        val scanner = htable.getScanner(scan)
+
+      for(result <- scanner; if(result != null)) yield {
+        handler(new QueryResult[T,R](result,table,table.tableName))
+      }
+    }
+    results2
   }
 
 }
