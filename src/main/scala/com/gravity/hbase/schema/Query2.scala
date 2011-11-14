@@ -23,7 +23,7 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
   val keys = Buffer[Array[Byte]]()
   val families = Buffer[Array[Byte]]()
   val columns = Buffer[(Array[Byte], Array[Byte])]()
-  var currentFilter : FilterList = new FilterList(Operator.MUST_PASS_ALL)
+  var currentFilter : FilterList = _ // new FilterList(Operator.MUST_PASS_ALL)
   var startRowBytes : Array[Byte] = null
   var endRowBytes : Array[Byte] = null
 
