@@ -873,10 +873,10 @@ trait ReuseJVMJob extends JobTrait {
 trait TemporaryMemoryBaseSettings extends JobTrait {
 
   override def configure(conf: Configuration) {
-    conf.set("mapred.map.child.java.opts", "-Xmx800m -server -Djava.net.preferIPv4Stack=true")
-    conf.set("mapred.reduce.child.java.opts", "-Xmx800m -server -Djava.net.preferIPv4Stack=true")
-    conf.setInt("mapred.job.map.memory.mb", 1600)
-    conf.setInt("mapred.job.reduce.memory.mb", 1600)
+    conf.set("mapred.map.child.java.opts", "-Xmx1024m -server -Djava.net.preferIPv4Stack=true")
+    conf.set("mapred.reduce.child.java.opts", "-Xmx1024m -server -Djava.net.preferIPv4Stack=true")
+    conf.setInt("mapred.job.map.memory.mb", 1824)
+    conf.setInt("mapred.job.reduce.memory.mb", 1824)
 
     super.configure(conf)
   }
