@@ -372,7 +372,7 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
     }
   }
 
-  def scanToSeq[I](handler:(QueryResult[T,R]) => I, maxVersions:Int = 1, cacheBlocks:Boolean = false, cacheSize:Int = 100) = {
+  def scanToIterable[I](handler:(QueryResult[T,R]) => I, maxVersions:Int = 1, cacheBlocks:Boolean = false, cacheSize:Int = 100) = {
     val results2 = table.withTable() {
       htable => 
         val scan = makeScanner(maxVersions,cacheBlocks, cacheSize)
