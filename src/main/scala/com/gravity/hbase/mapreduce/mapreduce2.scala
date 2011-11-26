@@ -35,6 +35,32 @@ class HJobND[S <: SettingsBase](name:String) {
 
 }
 
+abstract class HConfigLet() {
+  def configure(job:Job) {
+
+  }
+}
+
+case class ReuseJVMConf(reuse:Boolean=true) extends HConfigLet {
+  override def configure(job:Job) {
+    if(reuse) {
+      job.getConfiguration.setInt("mapred.job.reuse.jvm.num.tasks", -1)
+    }
+  }
+}
+
+case class BigMemoryConf(mapMemoryMB:Int, reduceMemoryMB:Int, mapBufferMB:Int, reduceBufferMB:Int) extends HConfigLet {
+  override def configure(job:Job) {
+    val memory = mapMemoryMB
+    val reducememory = reduceMemoryMB
+    job.getConfiguration.set("mapred.map.child.java.opts", "-Xmx" + memory + "m" + " -Xms" + memory + "m")
+    //    conf.set("mapred.map.child.java.opts", "-Xmx" + memory + "m")
+    job.getConfiguration.set("mapred.reduce.child.java.opts", "-Xmx" + reducememory + "m")
+    job.getConfiguration.setInt("mapred.job.map.memory.mb", memory + mapBufferMB)
+    job.getConfiguration.setInt("mapred.job.reduce.memory.mb", reducememory + reduceBufferMB)
+  }
+}
+
 /**
 * A job encompasses a series of tasks that cooperate to build output.  Each task is usually an individual map or map/reduce operation.
 *
@@ -177,6 +203,7 @@ case class HPathInput(paths: Seq[String]) extends HInput {
 */
 case class HTableOutput[T <: HbaseTable[T, _]](table: T) extends HOutput {
   override def init(job: Job) {
+    println("Initializing output table to: " + table.tableName)
     job.getConfiguration.set(GravityTableOutputFormat.OUTPUT_TABLE, table.tableName)
     job.setOutputFormatClass(classOf[GravityTableOutputFormat[ImmutableBytesWritable]])
   }
@@ -222,9 +249,11 @@ case class HRandomSequenceOutput[K, V]() extends HOutput {
 /**
 * This is a single task in an HJob.  It is usually a single hadoop job (an HJob being composed of several).
 */
-abstract class HTask[IK, IV, OK, OV, S <: SettingsBase](val name:String, var previousTaskName:String= null, var input: HInput = HRandomSequenceInput[IK, IV](), var output: HOutput = HRandomSequenceOutput[OK, OV]()) {
+abstract class HTask[IK, IV, OK, OV, S <: SettingsBase](val name:String, var previousTaskName:String= null,  val configLets: Seq[HConfigLet] = Seq()) {
   var configuration: Configuration = _
   var settings: S = _
+  var input: HInput = HRandomSequenceInput[IK, IV]()
+  var output: HOutput = HRandomSequenceOutput[OK, OV]()
 
   def configure(conf: Configuration, previousTask: HTask[_, _, _, _, S]) {
 
@@ -246,6 +275,10 @@ abstract class HTask[IK, IV, OK, OV, S <: SettingsBase](val name:String, var pre
     output.init(job)
 
     decorateJob(job)
+
+    for(config <- configLets) {
+      config.configure(job)
+    }
 
     job
   }
@@ -296,7 +329,7 @@ case class FromTableMapper[T <: HbaseTable[T,R],R, MOK, MOV, S <: SettingsBase](
 /**
 * An HTask that wraps a standard mapper and reducer function.
 */
-case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK : Manifest, ROV : Manifest, S <: SettingsBase](taskname:String, mapper: MapperFxBase[MK, MV, MOK, MOV, S], reducer: ReducerFxBase[MOK, MOV, ROK, ROV, S], previous:String=null) extends HTask[MK, MV, ROK, ROV, S](taskname, previous) {
+case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK : Manifest, ROV : Manifest, S <: SettingsBase](taskname:String, mapper: MapperFxBase[MK, MV, MOK, MOV, S], reducer: ReducerFxBase[MOK, MOV, ROK, ROV, S], previous:String=null, configs:Seq[HConfigLet] = Seq()) extends HTask[MK, MV, ROK, ROV, S](taskname, previous,configs) {
 
   val mapperClass = classOf[HMapper[MK, MV, MOK, MOV, S]]
   val reducerClass = classOf[HReducer[MOK, MOV, ROK, ROV, S]]
@@ -318,11 +351,12 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK : Manifest, 
 /**
 * A Task for a mapper-only job
 */
-case class HMapTask[MK, MV, MOK: Manifest, MOV: Manifest, S <: SettingsBase](taskname:String,mapper: MapperFxBase[MK, MV, MOK, MOV, S], previous:String=null) extends HTask[MK, MV, MOK, MOV, S](taskname,previous) {
+case class HMapTask[MK, MV, MOK: Manifest, MOV: Manifest, S <: SettingsBase](taskname:String,mapper: MapperFxBase[MK, MV, MOK, MOV, S], previous:String=null, configs:Seq[HConfigLet] = Seq()) extends HTask[MK, MV, MOK, MOV, S](taskname,previous,configs) {
   def decorateJob(job: Job) {
     job.setMapperClass(classOf[HMapper[MK, MV, MOK, MOV, S]])
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
+    job.setNumReduceTasks(0)
   }
 
 }
@@ -330,7 +364,7 @@ case class HMapTask[MK, MV, MOK: Manifest, MOV: Manifest, S <: SettingsBase](tas
 /**
 * A task for a Mapper / Combiner / Reducer combo
 */
-case class HMapCombineReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV, S <: SettingsBase](taskname:String, mapper: MapperFxBase[MK, MV, MOK, MOV, S], combiner: ReducerFxBase[MOK, MOV, ROK, ROV, S], reducer: ReducerFxBase[MOK, MOV, ROK, ROV, S],previous:String=null) extends HTask[MK, MV, ROK, ROV, S](taskname,previous) {
+case class HMapCombineReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV, S <: SettingsBase](taskname:String, mapper: MapperFxBase[MK, MV, MOK, MOV, S], combiner: ReducerFxBase[MOK, MOV, ROK, ROV, S], reducer: ReducerFxBase[MOK, MOV, ROK, ROV, S],previous:String=null, configs:Seq[HConfigLet] = Seq()) extends HTask[MK, MV, ROK, ROV, S](taskname,previous,configs) {
   def decorateJob(job: Job) {
     job.setMapperClass(classOf[HMapper[MK, MV, MOK, MOV, S]])
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
@@ -443,13 +477,7 @@ class HReduceContext[MOK, MOV, ROK, ROV, S <: SettingsBase](conf: Configuration,
 class HContext[S <: SettingsBase](conf: Configuration, val counter: (String, Long) => Unit) {
   def apply(message: String, count: Long) {counter(message, count)}
 
-  val settings: Option[S] = try {
-    val s = Class.forName(conf.get("hpaste.settingsclass")).newInstance().asInstanceOf[S]
-    s.fromSettings(conf)
-    Some(s)
-  } catch {
-    case ex: Throwable => None
-  }
+  val settings = Class.forName(conf.get("hpaste.settingsclass")).newInstance().asInstanceOf[S]
 
 }
 
