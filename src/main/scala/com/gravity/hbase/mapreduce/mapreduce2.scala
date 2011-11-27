@@ -213,6 +213,10 @@ case class Filters[T <: HbaseTable[T, _]](filters: Filter*)
 * Initializes input from an HPaste Table
 */
 case class HTableInput[T <: HbaseTable[T, _]](table: T, families: Families[T] = Families[T](), columns: Columns[T] = Columns[T](), filters: Seq[Filter] = Seq(), scan: Scan = new Scan()) extends HInput {
+
+
+  override def toString = "Input: From table: \"" + table.tableName + "\""
+
   override def init(job: Job) {
     println("Setting input table to: " + table.tableName)
 
@@ -254,6 +258,9 @@ case class HTableInput[T <: HbaseTable[T, _]](table: T, families: Families[T] = 
 * Initializes input from a series of paths.
 */
 case class HPathInput(paths: Seq[String]) extends HInput {
+
+  override def toString = "Input: Paths: " + paths.mkString("{",",","}")
+
   override def init(job: Job) {
     paths.foreach(path => {
       FileInputFormat.addInputPath(job, new Path(path))
@@ -265,6 +272,9 @@ case class HPathInput(paths: Seq[String]) extends HInput {
 * Outputs to an HPaste Table
 */
 case class HTableOutput[T <: HbaseTable[T, _]](table: T) extends HOutput {
+
+  override def toString = "Output: Table: " + table.tableName
+
   override def init(job: Job) {
     println("Initializing output table to: " + table.tableName)
     job.getConfiguration.set(GravityTableOutputFormat.OUTPUT_TABLE, table.tableName)
@@ -276,6 +286,10 @@ case class HTableOutput[T <: HbaseTable[T, _]](table: T) extends HOutput {
 * Outputs to an HDFS directory
 */
 case class HPathOutput(path: String) extends HOutput {
+
+
+  override def toString = "Output: File: " + path
+
   override def init(job: Job) {
     FileSystem.get(job.getConfiguration).delete(new Path(path), true)
     FileOutputFormat.setOutputPath(job, new Path(path))
@@ -289,6 +303,9 @@ case class HPathOutput(path: String) extends HOutput {
 case class HRandomSequenceInput[K, V]() extends HInput {
   var previousPath: Path = _
 
+
+  override def toString = "Input: Random Sequence File at " + previousPath.toUri.toString
+
   override def init(job: Job) {
     FileInputFormat.addInputPath(job, previousPath)
 
@@ -300,6 +317,9 @@ case class HRandomSequenceInput[K, V]() extends HInput {
 * This is the output from a task in the middle of a job.  It writes to a sequence temp file
 */
 case class HRandomSequenceOutput[K, V]() extends HOutput {
+
+  override def toString = "Output: Random Sequence File at " + path.toUri.toString
+
   var path = new Path(genTmpFile)
 
   override def init(job: Job) {
