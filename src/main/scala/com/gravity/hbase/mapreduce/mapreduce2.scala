@@ -2,7 +2,6 @@ package com.gravity.hbase.mapreduce
 
 import com.gravity.hbase.schema._
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.io.{NullWritable, LongWritable, Text, BytesWritable}
 import java.lang.Iterable
 import com.gravity.hbase.schema.HbaseTable
 import org.apache.hadoop.hbase.mapreduce.TableInputFormat
@@ -19,6 +18,7 @@ import org.apache.hadoop.hbase.util.Base64
 import com.gravity.hbase.schema._
 import org.apache.hadoop.mapreduce.{Partitioner, Job, Reducer, Mapper}
 import scala.collection.mutable.Buffer
+import org.apache.hadoop.io._
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -51,7 +51,7 @@ case class ReuseJVMConf(reuse: Boolean = true) extends HConfigLet {
   }
 }
 
-case class BigMemoryConf(mapMemoryMB: Int, reduceMemoryMB: Int, mapBufferMB: Int, reduceBufferMB: Int) extends HConfigLet {
+case class BigMemoryConf(mapMemoryMB: Int, reduceMemoryMB: Int, mapBufferMB: Int = 800, reduceBufferMB: Int=800) extends HConfigLet {
   override def configure(job: Job) {
     val memory = mapMemoryMB
     val reducememory = reduceMemoryMB
@@ -417,6 +417,19 @@ case class FromTableMapper[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase
 
 }
 
+case class ToTableReducer[T <: HbaseTable[T,R], R, MOK, MOV, S <: SettingsBase](table:T, tableReducer: ToTableReduceContext[MOK,MOV,T,R,S] => Unit)
+  extends ReducerFxBase[MOK,MOV,NullWritable,Writable,S] {
+
+  var toTableContext : ToTableReduceContext[MOK,MOV,T,R,S] = _
+
+  override def reduce(hContext: HReduceContext[MOK, MOV, NullWritable, Writable, S]) {
+    if(toTableContext == null) {
+      toTableContext = new ToTableReduceContext[MOK,MOV,T,R,S](hContext.conf, hContext.counter, hContext.context)
+    }
+    tableReducer(toTableContext)
+  }
+}
+
 
 //case class FromTableMapper[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase](table: T, tableMapper: (QueryResult[T, R], HMapContext[ImmutableBytesWritable, Result, MOK, MOV, S]) => Unit)
 //        extends MapperFx[ImmutableBytesWritable, Result, MOK, MOV, S]((ctx: HMapContext[ImmutableBytesWritable, Result, MOK, MOV, S]) => {
@@ -550,7 +563,7 @@ class HReducer[MOK, MOV, ROK, ROV, S <: SettingsBase] extends Reducer[MOK, MOV, 
 * This is the context object for a Map function.  It gets passed into the mapper function defined in an HTask.
 * It contains simplified functions for writing values and incrementing counters.
 */
-class HMapContext[MK, MV, MOK, MOV, S <: SettingsBase](conf: Configuration, counter: (String, Long) => Unit, context: Mapper[MK, MV, MOK, MOV]#Context) extends HContext[S](conf, counter) {
+class HMapContext[MK, MV, MOK, MOV, S <: SettingsBase](conf: Configuration, counter: (String, Long) => Unit, val context: Mapper[MK, MV, MOK, MOV]#Context) extends HContext[S](conf, counter) {
   def key = context.getCurrentKey
 
   def value = context.getCurrentValue
@@ -561,7 +574,7 @@ class HMapContext[MK, MV, MOK, MOV, S <: SettingsBase](conf: Configuration, coun
 /**
 * This is the context object for a Reduce function.  It gets passed into the reducer defined in an HTask.
 */
-class HReduceContext[MOK, MOV, ROK, ROV, S <: SettingsBase](conf: Configuration, counter: (String, Long) => Unit, context: Reducer[MOK, MOV, ROK, ROV]#Context) extends HContext[S](conf, counter) {
+class HReduceContext[MOK, MOV, ROK, ROV, S <: SettingsBase](conf: Configuration, counter: (String, Long) => Unit, val context: Reducer[MOK, MOV, ROK, ROV]#Context) extends HContext[S](conf, counter) {
   def key = context.getCurrentKey
 
   def values = context.getValues
@@ -569,10 +582,16 @@ class HReduceContext[MOK, MOV, ROK, ROV, S <: SettingsBase](conf: Configuration,
   def write(key: ROK, value: ROV) {context.write(key, value)}
 }
 
+class ToTableReduceContext[MOK, MOV, T <: HbaseTable[T,R],R, S <: SettingsBase](conf:Configuration, counter: (String,Long)=>Unit, context: Reducer[MOK,MOV,NullWritable,Writable]#Context) extends HReduceContext[MOK,MOV,NullWritable,Writable,S](conf, counter, context) {
+  def write(operation: OpBase[T,R]) {
+    operation.getOperations.foreach{op=>write(NullWritable.get(),op)}
+  }
+}
+
 /**
 * Base class for contextual objects.  It handles the business for initializing a context properly.
 */
-class HContext[S <: SettingsBase](conf: Configuration, val counter: (String, Long) => Unit) {
+class HContext[S <: SettingsBase](val conf: Configuration, val counter: (String, Long) => Unit) {
   def apply(message: String, count: Long) {counter(message, count)}
 
   val settings = Class.forName(conf.get("hpaste.settingsclass")).newInstance().asInstanceOf[S]
