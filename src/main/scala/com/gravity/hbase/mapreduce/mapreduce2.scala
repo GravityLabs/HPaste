@@ -69,8 +69,8 @@ case class BigMemoryConf(mapMemoryMB: Int, reduceMemoryMB: Int, mapBufferMB: Int
 *
 * To use the job, create a class with a parameterless constructor that inherits HJob, and pass the tasks into the constructor as a sequence.
 */
-class HJob[S <: SettingsBase](name: String, tasks: HTask[_, _, _, _, S]*) {
-  def run(settings: S, conf: Configuration, dryRun:Boolean = false) {
+class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _, S]*) {
+  def run(settings: S, conf: Configuration, dryRun: Boolean = false) = {
     require(tasks.size > 0, "HJob requires at least one task to be defined")
     conf.setStrings("hpaste.jobchain.jobclass", getClass.getName)
 
@@ -83,7 +83,13 @@ class HJob[S <: SettingsBase](name: String, tasks: HTask[_, _, _, _, S]*) {
         val previousTask = taskByName(task.taskId.previousTaskName).get
         task.previousTask = previousTask
         previousTask.nextTasks += task
-//        task.hio.input = previousTask.hio.output
+
+        //If there is a previous HTask, then initialize the input of this task as the output of that task.
+        if (previousTask.hio.output.isInstanceOf[HRandomSequenceOutput[_, _]] && task.hio.input.isInstanceOf[HRandomSequenceInput[_, _]]) {
+          task.hio.input.asInstanceOf[HRandomSequenceInput[_, _]].previousPath = previousTask.hio.output.asInstanceOf[HRandomSequenceOutput[_, _]].path
+        }
+
+        //        task.hio.input = previousTask.hio.output
       }
     }
 
@@ -111,44 +117,48 @@ class HJob[S <: SettingsBase](name: String, tasks: HTask[_, _, _, _, S]*) {
       job
     }
 
-    def declare(tasks: Seq[HTask[_,_,_,_,S]], level:String = "\t") {
-      tasks.map{task=>
-        println(level + "Task: " + task.taskId.name)
-        println(level + "Input: " + task.hio.input)
-        println(level + "Output: " + task.hio.output)
+    def declare(tasks: Seq[HTask[_, _, _, _, S]], level: String = "\t") {
+      tasks.map {
+        task =>
+          println(level + "Task: " + task.taskId.name)
+          println(level + "\twill run after " + (if (task.previousTask == null) "nothing" else task.taskId.previousTaskName))
+          println(level + "Input: " + task.hio.input)
+          println(level + "Output: " + task.hio.output)
 
-        declare(task.nextTasks, level + "\t")
+          declare(task.nextTasks, level + "\t")
       }
     }
 
-    def runrecursively(tasks: Seq[HTask[_,_,_,_,S]]) : Boolean = {
-      val jobs = tasks.map{task =>
-        makeJob(task)
+    def runrecursively(tasks: Seq[HTask[_, _, _, _, S]]): Boolean = {
+      val jobs = tasks.map {
+        task =>
+          makeJob(task)
       }
 
-      jobs.foreach{job=>
-        if(!job.waitForCompletion(true)) {
-          return false
-        }
-//        job.submit()
+      jobs.foreach {
+        job =>
+          if (!job.waitForCompletion(true)) {
+            return false
+          }
+        //        job.submit()
       }
-//      var allDone = false
-//      while(!allDone) {
-//        Thread.sleep(500)
-//        if(jobs.exists(_.isComplete == false)) {
-//          allDone = false
-//        }else {
-//          allDone = true
-//        }
-//      }
+      //      var allDone = false
+      //      while(!allDone) {
+      //        Thread.sleep(500)
+      //        if(jobs.exists(_.isComplete == false)) {
+      //          allDone = false
+      //        }else {
+      //          allDone = true
+      //        }
+      //      }
 
-      if(jobs.exists(_.isSuccessful == false)) {
+      if (jobs.exists(_.isSuccessful == false)) {
         false
-      }else {
+      } else {
         val nextTasks = tasks.flatMap(_.nextTasks)
-        if(nextTasks.size == 0) {
+        if (nextTasks.size == 0) {
           true
-        }else {
+        } else {
           runrecursively(nextTasks)
 
         }
@@ -157,10 +167,14 @@ class HJob[S <: SettingsBase](name: String, tasks: HTask[_, _, _, _, S]*) {
 
     val firstTasks = tasks.filter(_.previousTask == null)
 
+    println("Job: " + name + " has " + tasks.size + " tasks")
     declare(firstTasks)
 
-    if(!dryRun)
+    if (!dryRun) {
       runrecursively(firstTasks)
+    }else {
+      true
+    }
   }
 
   def getMapperFunc[MK, MV, MOK, MOV](idx: Int) = {
@@ -259,7 +273,7 @@ case class HTableInput[T <: HbaseTable[T, _]](table: T, families: Families[T] = 
 */
 case class HPathInput(paths: Seq[String]) extends HInput {
 
-  override def toString = "Input: Paths: " + paths.mkString("{",",","}")
+  override def toString = "Input: Paths: " + paths.mkString("{", ",", "}")
 
   override def init(job: Job) {
     paths.foreach(path => {
@@ -354,10 +368,6 @@ abstract class HTask[IK, IV, OK, OV, S <: SettingsBase](val taskId: HTaskID, val
 
     val job = new Job(configuration)
 
-    //If there is a previous HTask, then initialize the input of this task as the output of that task.
-    if (previousTask != null && previousTask.hio.output.isInstanceOf[HRandomSequenceOutput[_, _]] && hio.input.isInstanceOf[HRandomSequenceInput[_, _]]) {
-      hio.input.asInstanceOf[HRandomSequenceInput[_, _]].previousPath = previousTask.hio.output.asInstanceOf[HRandomSequenceOutput[_, _]].path
-    }
 
     hio.input.init(job)
     hio.output.init(job)
@@ -396,6 +406,7 @@ case class ReducerFx[MOK, MOV, ROK, ROV, S <: SettingsBase](reducer: (HReduceCon
     reducer(hContext)
   }
 }
+
 
 case class FromTableMapper[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase](table: T, tableMapper: (QueryResult[T, R], HMapContext[ImmutableBytesWritable, Result, MOK, MOV, S]) => Unit)
         extends MapperFxBase[ImmutableBytesWritable, Result, MOK, MOV, S] {
