@@ -576,6 +576,7 @@ class HContext[S <: SettingsBase](conf: Configuration, val counter: (String, Lon
   def apply(message: String, count: Long) {counter(message, count)}
 
   val settings = Class.forName(conf.get("hpaste.settingsclass")).newInstance().asInstanceOf[S]
+  settings.fromSettings(conf)
 
 }
 
