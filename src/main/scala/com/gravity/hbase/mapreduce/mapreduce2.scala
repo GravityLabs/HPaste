@@ -408,6 +408,19 @@ case class ReducerFx[MOK, MOV, ROK, ROV, S <: SettingsBase](reducer: (HReduceCon
 }
 
 
+case class FromTableBinaryMapper[T <: HbaseTable[T,R],R, S <: SettingsBase](table:T, tableMapper: (TableToBinaryMapContext[T,R,S])=>Unit)
+  extends MapperFxBase[ImmutableBytesWritable,Result, BytesWritable,BytesWritable,S] {
+
+  var fromTBMContext : TableToBinaryMapContext[T,R,S] = _
+
+  override def map(hContext: HMapContext[ImmutableBytesWritable,Result,BytesWritable,BytesWritable,S]) {
+    if(fromTBMContext == null) {
+      fromTBMContext = new TableToBinaryMapContext[T,R,S](table,hContext.conf,hContext.counter,hContext.context)
+    }
+    tableMapper(fromTBMContext)
+  }
+}
+
 case class FromTableMapper[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase](table: T, tableMapper: (QueryResult[T, R], HMapContext[ImmutableBytesWritable, Result, MOK, MOV, S]) => Unit)
         extends MapperFxBase[ImmutableBytesWritable, Result, MOK, MOV, S] {
 
@@ -416,6 +429,7 @@ case class FromTableMapper[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase
   }
 
 }
+
 
 case class ToTableReducer[T <: HbaseTable[T,R], R, MOK, MOV, S <: SettingsBase](table:T, tableReducer: ToTableReduceContext[MOK,MOV,T,R,S] => Unit)
   extends ReducerFxBase[MOK,MOV,NullWritable,Writable,S] {
@@ -557,6 +571,12 @@ class HReducer[MOK, MOV, ROK, ROV, S <: SettingsBase] extends Reducer[MOK, MOV, 
   override def reduce(key: MOK, values: java.lang.Iterable[MOV], context: Reducer[MOK, MOV, ROK, ROV]#Context) {
     reducerFx.reduce(hcontext)
   }
+}
+
+class TableToBinaryMapContext[T <: HbaseTable[T,R],R, S <: SettingsBase](table:T, conf:Configuration, counter: (String,Long)=>Unit, context: Mapper[ImmutableBytesWritable,Result,BytesWritable,BytesWritable]#Context)
+  extends HMapContext[ImmutableBytesWritable,Result,BytesWritable,BytesWritable,S](conf, counter, context)
+{
+  def row = new QueryResult[T,R](context.getCurrentValue,table,table.tableName)
 }
 
 /**
