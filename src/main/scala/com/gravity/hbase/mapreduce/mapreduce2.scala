@@ -24,10 +24,16 @@ import org.apache.hadoop.io._
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
+/*
+Where the currently running job gets registered in the mapper or reducer process.  This is how mapper/reducer functions get wired up.
+ */
 object HJobRegistry {
   var job: HJob[_] = null
 }
 
+/*
+Experimental support for a non declarative constructor for hjobs.
+ */
 class HJobND[S <: SettingsBase](name: String) {
   val tasks = Buffer[HTask[_, _, _, _, S]]()
 
@@ -35,8 +41,14 @@ class HJobND[S <: SettingsBase](name: String) {
 
 }
 
+/*
+Holds a list of configuration objects.  Each object should encapsulate a particular set of configuration options (for example, whether or not to reuse the JVM)
+ */
 case class HTaskConfigs(configs: HConfigLet*)
 
+/*
+The base class for a single configuration object.
+ */
 abstract class HConfigLet() {
   def configure(job: Job) {
 
@@ -454,7 +466,7 @@ case class ToTableReducer[T <: HbaseTable[T,R], R, MOK, MOV, S <: SettingsBase](
 /**
 * An HTask that wraps a standard mapper and reducer function.
 */
-case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, ROV: Manifest, S <: SettingsBase](id: HTaskID, configs: HTaskConfigs = HTaskConfigs(), io: HIO[MK, MV, ROK, ROV, S] = HIO(), mapper: MapperFxBase[MK, MV, MOK, MOV, S], reducer: ReducerFxBase[MOK, MOV, ROK, ROV, S]) extends HTask[MK, MV, ROK, ROV, S](id, configs, io) {
+case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, ROV: Manifest, S <: SettingsBase](id: HTaskID, configs: HTaskConfigs = HTaskConfigs(), io: HIO[MK, MV, ROK, ROV, S] = HIO(), mapper: MapperFxBase[MK, MV, MOK, MOV, S], reducer: ReducerFxBase[MOK, MOV, ROK, ROV, S], partitioner: HPartitioner[MOK,MOV] = null) extends HTask[MK, MV, ROK, ROV, S](id, configs, io) {
 
   val mapperClass = classOf[HMapper[MK, MV, MOK, MOV, S]]
   val reducerClass = classOf[HReducer[MOK, MOV, ROK, ROV, S]]
@@ -467,8 +479,11 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, R
     job.setMapOutputValueClass(classManifest[MOV].erasure)
     job.setOutputKeyClass(classManifest[ROK].erasure)
     job.setOutputValueClass(classManifest[ROV].erasure)
-
     job.setReducerClass(reducerClass)
+    if(partitioner != null)
+      job.setPartitionerClass(partitioner.getClass)
+//    job.setGroupingComparatorClass()
+//    job.setSortComparatorClass()
 
   }
 }
@@ -501,13 +516,8 @@ case class HMapCombineReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV,
   }
 }
 
-class HPartitioner[MOK, MOV] extends Partitioner[MOK, MOV] {
+abstract class HPartitioner[MOK, MOV] extends Partitioner[MOK, MOV]
 
-  override def getPartition(key: MOK, value: MOV, numPartitions: Int): Int = {
-    3
-    //    val job = HJobRegistry.job
-  }
-}
 
 /**
 * This is the class that gets loaded by Hadoop as a mapper.  It delegates the actual mapper functionality back
