@@ -466,11 +466,11 @@ case class ToTableReducer[T <: HbaseTable[T,R], R, MOK, MOV, S <: SettingsBase](
 /**
 * An HTask that wraps a standard mapper and reducer function.
 */
-case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, ROV: Manifest, S <: SettingsBase](id: HTaskID, configs: HTaskConfigs = HTaskConfigs(), io: HIO[MK, MV, ROK, ROV, S] = HIO(), mapper: MapperFxBase[MK, MV, MOK, MOV, S], reducer: ReducerFxBase[MOK, MOV, ROK, ROV, S], partitioner: HPartitioner[MOK,MOV] = null) extends HTask[MK, MV, ROK, ROV, S](id, configs, io) {
+case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, ROV: Manifest, S <: SettingsBase](id: HTaskID, configs: HTaskConfigs = HTaskConfigs(), io: HIO[MK, MV, ROK, ROV, S] = HIO(), mapper: MapperFxBase[MK, MV, MOK, MOV, S], reducer: ReducerFxBase[MOK, MOV, ROK, ROV, S], partitioner: PartitionerFxBase[MOK,MOV] = null) extends HTask[MK, MV, ROK, ROV, S](id, configs, io) {
 
   val mapperClass = classOf[HMapper[MK, MV, MOK, MOV, S]]
   val reducerClass = classOf[HReducer[MOK, MOV, ROK, ROV, S]]
-  val partitionersClass = classOf[HPartitioner[MOK, MOV]]
+  val partitionerClass = classOf[HPartitioner[MOK, MOV]]
 
 
   def decorateJob(job: Job) {
@@ -481,7 +481,7 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, R
     job.setOutputValueClass(classManifest[ROV].erasure)
     job.setReducerClass(reducerClass)
     if(partitioner != null)
-      job.setPartitionerClass(partitioner.getClass)
+      job.setPartitionerClass(partitionerClass)
 //    job.setGroupingComparatorClass()
 //    job.setSortComparatorClass()
 
@@ -516,7 +516,28 @@ case class HMapCombineReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV,
   }
 }
 
-abstract class HPartitioner[MOK, MOV] extends Partitioner[MOK, MOV]
+class HPartitioner[MOK, MOV] extends Partitioner[MOK, MOV] {
+  override def getPartition(key:MOK,value:MOV,numPartitioners:Int) = {
+    if(HJobRegistry.job != null) {
+      println("Partitioner sees job " + HJobRegistry.job.name)
+//      HJobRegistry.job.getPartitionerFunc
+    }else {
+      println("Partitioner sees null job")
+    }
+    0
+  }
+}
+
+abstract class PartitionerFxBase[MOK,MOV] {
+  def getPartition(key:MOK,value:MOV,numPartitioners:Int) : Int
+}
+
+case class PartitionerFx[MOK,MOV](partitionFx:(MOK,MOV,Int)=>Int) extends PartitionerFxBase[MOK,MOV] {
+  override def getPartition(key:MOK,value:MOV,partitionCount:Int) = {
+    partitionFx(key,value,partitionCount)
+  }
+}
+
 
 
 /**
