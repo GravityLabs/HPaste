@@ -55,6 +55,15 @@ abstract class HConfigLet() {
   }
 }
 
+case class SpeculativeExecutionConf(on:Boolean=false) extends HConfigLet {
+  override def configure(job: Job) {
+    if(!on) {
+      job.getConfiguration.set("mapred.map.tasks.speculative.execution", "false")
+      job.getConfiguration.set("mapred.reduce.tasks.speculative.execution", "false")
+    }
+  }
+}
+
 case class ReuseJVMConf(reuse: Boolean = true) extends HConfigLet {
   override def configure(job: Job) {
     if (reuse) {
