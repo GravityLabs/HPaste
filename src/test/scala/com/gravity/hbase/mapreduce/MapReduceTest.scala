@@ -29,10 +29,3 @@ class ExampleTableMapper extends Mapper[LongWritable,Text,NullWritable,Writable]
   }
 }
 
-class MapReduceTest {
-  @Test def testLoading() {
-    val mapperInstance = Class.forName("com.gravity.hbase.mapreduce.HReducer").newInstance()
-    
-    println(mapperInstance.getClass.getName)
-  }
-}
