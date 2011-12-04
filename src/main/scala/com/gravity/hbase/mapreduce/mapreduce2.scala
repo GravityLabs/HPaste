@@ -55,9 +55,9 @@ abstract class HConfigLet() {
   }
 }
 
-case class SpeculativeExecutionConf(on:Boolean=false) extends HConfigLet {
+case class SpeculativeExecutionConf(on: Boolean = false) extends HConfigLet {
   override def configure(job: Job) {
-    if(!on) {
+    if (!on) {
       job.getConfiguration.set("mapred.map.tasks.speculative.execution", "false")
       job.getConfiguration.set("mapred.reduce.tasks.speculative.execution", "false")
     }
@@ -72,7 +72,7 @@ case class ReuseJVMConf(reuse: Boolean = true) extends HConfigLet {
   }
 }
 
-case class BigMemoryConf(mapMemoryMB: Int, reduceMemoryMB: Int, mapBufferMB: Int = 800, reduceBufferMB: Int=800) extends HConfigLet {
+case class BigMemoryConf(mapMemoryMB: Int, reduceMemoryMB: Int, mapBufferMB: Int = 800, reduceBufferMB: Int = 800) extends HConfigLet {
   override def configure(job: Job) {
     val memory = mapMemoryMB
     val reducememory = reduceMemoryMB
@@ -193,7 +193,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _, S]*) {
 
     if (!dryRun) {
       runrecursively(firstTasks)
-    }else {
+    } else {
       true
     }
   }
@@ -404,66 +404,37 @@ abstract class HTask[IK, IV, OK, OV, S <: SettingsBase](val taskId: HTaskID, val
 }
 
 
-abstract class MapperFxBase[MK, MV, MOK, MOV, S <: SettingsBase] {
-  def map(hContext: HMapContext[MK, MV, MOK, MOV, S]) {
 
-  }
-}
 
-abstract class ReducerFxBase[MOK, MOV, ROK, ROV, S <: SettingsBase] {
-  def reduce(hContext: HReduceContext[MOK, MOV, ROK, ROV, S]) {
-
-  }
-}
-
-case class MapperFx[MK, MV, MOK, MOV, S <: SettingsBase](mapper: (HMapContext[MK, MV, MOK, MOV, S]) => Unit) extends MapperFxBase[MK, MV, MOK, MOV, S] {
-  override def map(hContext: HMapContext[MK, MV, MOK, MOV, S]) {
-    mapper(hContext)
-  }
-}
-
-case class ReducerFx[MOK, MOV, ROK, ROV, S <: SettingsBase](reducer: (HReduceContext[MOK, MOV, ROK, ROV, S]) => Unit) extends ReducerFxBase[MOK, MOV, ROK, ROV, S] {
-  override def reduce(hContext: HReduceContext[MOK, MOV, ROK, ROV, S]) {
-    reducer(hContext)
-  }
+abstract class FromTableBinaryMapper[T <: HbaseTable[T, R], R, S <: SettingsBase](table: T)
+        extends HMapper[ImmutableBytesWritable, Result, BytesWritable, BytesWritable, S] {
+  def row = new QueryResult[T,R](context.getCurrentValue, table, table.tableName)
 }
 
 
-case class FromTableBinaryMapper[T <: HbaseTable[T,R],R, S <: SettingsBase](table:T, tableMapper: (TableToBinaryMapContext[T,R,S])=>Unit)
-  extends MapperFxBase[ImmutableBytesWritable,Result, BytesWritable,BytesWritable,S] {
+abstract class FromTableMapper[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase](table: T)
+        extends HMapper[ImmutableBytesWritable, Result, MOK, MOV, S] {
 
-  var fromTBMContext : TableToBinaryMapContext[T,R,S] = _
-
-  override def map(hContext: HMapContext[ImmutableBytesWritable,Result,BytesWritable,BytesWritable,S]) {
-    if(fromTBMContext == null) {
-      fromTBMContext = new TableToBinaryMapContext[T,R,S](table,hContext.conf,hContext.counter,hContext.context)
-    }
-    tableMapper(fromTBMContext)
-  }
-}
-
-case class FromTableMapper[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase](table: T, tableMapper: (QueryResult[T, R], HMapContext[ImmutableBytesWritable, Result, MOK, MOV, S]) => Unit)
-        extends MapperFxBase[ImmutableBytesWritable, Result, MOK, MOV, S] {
-
-  override def map(hContext: HMapContext[ImmutableBytesWritable, Result, MOK, MOV, S]) {
-    tableMapper(new QueryResult[T, R](hContext.value, table, table.tableName), hContext)
-  }
-
+  def row = new QueryResult[T,R](context.getCurrentValue, table, table.tableName)
 }
 
 
-case class ToTableReducer[T <: HbaseTable[T,R], R, MOK, MOV, S <: SettingsBase](table:T, tableReducer: ToTableReduceContext[MOK,MOV,T,R,S] => Unit)
-  extends ReducerFxBase[MOK,MOV,NullWritable,Writable,S] {
+abstract class ToTableReducer[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase](table: T)
+        extends HReducer[MOK, MOV, NullWritable, Writable, S] {
 
-  var toTableContext : ToTableReduceContext[MOK,MOV,T,R,S] = _
-
-  override def reduce(hContext: HReduceContext[MOK, MOV, NullWritable, Writable, S]) {
-    if(toTableContext == null) {
-      toTableContext = new ToTableReduceContext[MOK,MOV,T,R,S](hContext.conf, hContext.counter, hContext.context)
-    }
-    tableReducer(toTableContext)
+  def write(operation: OpBase[T, R]) {
+    operation.getOperations.foreach {op => write(NullWritable.get(), op)}
   }
 }
+
+abstract class ToTableBinaryReducer[T <: HbaseTable[T, R], R, S <: SettingsBase](table: T)
+        extends HReducer[BytesWritable, BytesWritable, NullWritable, Writable, S] {
+
+  def write(operation: OpBase[T, R]) {
+    operation.getOperations.foreach {op => write(NullWritable.get(), op)}
+  }
+}
+
 
 
 //case class FromTableMapper[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase](table: T, tableMapper: (QueryResult[T, R], HMapContext[ImmutableBytesWritable, Result, MOK, MOV, S]) => Unit)
@@ -471,28 +442,90 @@ case class ToTableReducer[T <: HbaseTable[T,R], R, MOK, MOV, S <: SettingsBase](
 //          tableMapper(new QueryResult[T, R](ctx.value, table, table.tableName), ctx)
 //        })
 
+abstract class HMapper[MK,MV,MOK,MOV,S<:SettingsBase] extends Mapper[MK,MV,MOK,MOV] {
+
+  var context : Mapper[MK,MV,MOK,MOV]#Context = null
+
+  var settings : S = _
+
+  override def setup(context: Mapper[MK,MV,MOK,MOV]#Context) {
+    this.context = context
+    settings = Class.forName(context.getConfiguration.get("hpaste.settingsclass")).newInstance().asInstanceOf[S]
+    settings.fromSettings(context.getConfiguration)
+  }
+
+  def ctr(message:String, count:Long) {counter(message,count)}
+
+  def counter(message: String, count: Long) {
+    context.getCounter("Custom", message).increment(count)
+  }
+
+  def write(key:MOK, value:MOV) {context.write(key,value)}
+  def key = context.getCurrentKey
+  def value = context.getCurrentValue
+
+  def map()
+
+  override def map(key: MK, value: MV, context: Mapper[MK,MV,MOK,MOV]#Context) {
+    map()
+  }
+}
+
+abstract class HReducer[MOK,MOV,ROK,ROV, S<:SettingsBase] extends Reducer[MOK,MOV,ROK,ROV] {
+  var context : Reducer[MOK,MOV,ROK,ROV]#Context = null
+  var settings : S = _
+
+  def counter(message: String, count: Long) {
+    context.getCounter("Custom", message).increment(count)
+  }
+
+  def ctr(message:String, count:Long) {counter(message,count)}
+
+  def write(key:ROK, value:ROV) {context.write(key,value)}
+
+  def key = context.getCurrentKey
+  def values = context.getValues
+
+  override def setup(context: Reducer[MOK,MOV,ROK,ROV]#Context) {
+    this.context = context
+    settings = Class.forName(context.getConfiguration.get("hpaste.settingsclass")).newInstance().asInstanceOf[S]
+    settings.fromSettings(context.getConfiguration)
+  }
+
+  override def reduce(key: MOK, values: Iterable[MOV], context: Reducer[MOK,MOV,ROK,ROV]#Context) {
+    reduce()
+  }
+
+  def reduce()
+
+}
 
 /**
 * An HTask that wraps a standard mapper and reducer function.
 */
-case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, ROV: Manifest, S <: SettingsBase](id: HTaskID, configs: HTaskConfigs = HTaskConfigs(), io: HIO[MK, MV, ROK, ROV, S] = HIO(), mapper: MapperFxBase[MK, MV, MOK, MOV, S], reducer: ReducerFxBase[MOK, MOV, ROK, ROV, S], partitioner: PartitionerFxBase[MOK,MOV] = null) extends HTask[MK, MV, ROK, ROV, S](id, configs, io) {
+case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, ROV: Manifest, S <: SettingsBase](
+                                                                                                                        id: HTaskID,
+                                                                                                                        configs: HTaskConfigs = HTaskConfigs(),
+                                                                                                                        io: HIO[MK, MV, ROK, ROV, S] = HIO(),
+                                                                                                                        mapper: HMapper[MK, MV, MOK, MOV, S],
+                                                                                                                        reducer: HReducer[MOK, MOV, ROK, ROV, S],
+                                                                                                                        partitioner: HPartitioner[MOK, MOV] = null)
+        extends HTask[MK, MV, ROK, ROV, S](id, configs, io) {
 
-  val mapperClass = classOf[HMapper[MK, MV, MOK, MOV, S]]
-  val reducerClass = classOf[HReducer[MOK, MOV, ROK, ROV, S]]
-  val partitionerClass = classOf[HPartitioner[MOK, MOV]]
 
 
   def decorateJob(job: Job) {
-    job.setMapperClass(mapperClass)
+    job.setMapperClass(mapper.getClass)
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
     job.setOutputKeyClass(classManifest[ROK].erasure)
     job.setOutputValueClass(classManifest[ROV].erasure)
-    job.setReducerClass(reducerClass)
-    if(partitioner != null)
-      job.setPartitionerClass(partitionerClass)
-//    job.setGroupingComparatorClass()
-//    job.setSortComparatorClass()
+    job.setReducerClass(reducer.getClass)
+    if (partitioner != null) {
+      job.setPartitionerClass(partitioner.getClass)
+    }
+    //    job.setGroupingComparatorClass()
+    //    job.setSortComparatorClass()
 
   }
 }
@@ -502,9 +535,9 @@ case class HTaskID(name: String, previousTaskName: String = null)
 /**
 * A Task for a mapper-only job
 */
-case class HMapTask[MK, MV, MOK: Manifest, MOV: Manifest, S <: SettingsBase](id: HTaskID, configs: HTaskConfigs = HTaskConfigs(), io: HIO[MK, MV, MOK, MOV, S] = HIO(), mapper: MapperFxBase[MK, MV, MOK, MOV, S]) extends HTask[MK, MV, MOK, MOV, S](id, configs, io) {
+case class HMapTask[MK, MV, MOK: Manifest, MOV: Manifest, S <: SettingsBase](id: HTaskID, configs: HTaskConfigs = HTaskConfigs(), io: HIO[MK, MV, MOK, MOV, S] = HIO(), mapper: HMapper[MK, MV, MOK, MOV, S]) extends HTask[MK, MV, MOK, MOV, S](id, configs, io) {
   def decorateJob(job: Job) {
-    job.setMapperClass(classOf[HMapper[MK, MV, MOK, MOV, S]])
+    job.setMapperClass(mapper.getClass)
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
     job.setNumReduceTasks(0)
@@ -515,108 +548,89 @@ case class HMapTask[MK, MV, MOK: Manifest, MOV: Manifest, S <: SettingsBase](id:
 /**
 * A task for a Mapper / Combiner / Reducer combo
 */
-case class HMapCombineReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV, S <: SettingsBase](id: HTaskID, configs: HTaskConfigs = HTaskConfigs(), io: HIO[MK, MV, ROK, ROV, S] = HIO(), mapper: MapperFxBase[MK, MV, MOK, MOV, S], combiner: ReducerFxBase[MOK, MOV, ROK, ROV, S], reducer: ReducerFxBase[MOK, MOV, ROK, ROV, S]) extends HTask[MK, MV, ROK, ROV, S](id, configs, io) {
+case class HMapCombineReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV, S <: SettingsBase](id: HTaskID, configs: HTaskConfigs = HTaskConfigs(), io: HIO[MK, MV, ROK, ROV, S] = HIO(), mapper: HMapper[MK, MV, MOK, MOV, S], combiner: HReducer[MOK, MOV, ROK, ROV, S], reducer: HReducer[MOK, MOV, ROK, ROV, S]) extends HTask[MK, MV, ROK, ROV, S](id, configs, io) {
   def decorateJob(job: Job) {
-    job.setMapperClass(classOf[HMapper[MK, MV, MOK, MOV, S]])
+    job.setMapperClass(mapper.getClass)
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
-    job.setReducerClass(classOf[HReducer[MOK, MOV, ROK, ROV, S]])
-    job.setCombinerClass(classOf[HReducer[MOK, MOV, ROK, ROV, S]])
+    job.setReducerClass(reducer.getClass)
+    job.setCombinerClass(combiner.getClass)
   }
 }
 
-class HPartitioner[MOK, MOV] extends Partitioner[MOK, MOV] {
-  override def getPartition(key:MOK,value:MOV,numPartitioners:Int) = {
-    if(HJobRegistry.job != null) {
-      println("Partitioner sees job " + HJobRegistry.job.name)
-//      HJobRegistry.job.getPartitionerFunc
-    }else {
-      println("Partitioner sees null job")
-    }
-    0
-  }
-}
 
-abstract class PartitionerFxBase[MOK,MOV] {
-  def getPartition(key:MOK,value:MOV,numPartitioners:Int) : Int
-}
 
-case class PartitionerFx[MOK,MOV](partitionFx:(MOK,MOV,Int)=>Int) extends PartitionerFxBase[MOK,MOV] {
-  override def getPartition(key:MOK,value:MOV,partitionCount:Int) = {
-    partitionFx(key,value,partitionCount)
-  }
+abstract class HPartitioner[MOK, MOV](partitionFx: (MOK, MOV, Int) => Int) extends Partitioner[MOK, MOV] {
 }
-
 
 
 /**
 * This is the class that gets loaded by Hadoop as a mapper.  It delegates the actual mapper functionality back
 * to the HTask that it represents.
 */
-class HMapper[MK, MV, MOK, MOV, S <: SettingsBase] extends Mapper[MK, MV, MOK, MOV] {
-
-
-  var mapperFx: MapperFxBase[MK, MV, MOK, MOV, S] = _
-
-  var hcontext: HMapContext[MK, MV, MOK, MOV, S] = _
-  var context: Mapper[MK, MV, MOK, MOV]#Context = _
-
-  var job: HJob[S] = _
-
-  def counter(message: String, count: Long) {
-    context.getCounter("Custom", message).increment(count)
-  }
-
-  override def setup(ctx: Mapper[MK, MV, MOK, MOV]#Context) {
-    context = ctx
-
-    job = Class.forName(context.getConfiguration.get("hpaste.jobchain.jobclass")).newInstance.asInstanceOf[HJob[S]]
-    HJobRegistry.job = job
-    mapperFx = job.getMapperFunc(context.getConfiguration.getInt("hpaste.jobchain.mapper.idx", -1))
-
-    hcontext = new HMapContext[MK, MV, MOK, MOV, S](context.getConfiguration, counter, context)
-  }
-
-  override def map(key: MK, value: MV, context: Mapper[MK, MV, MOK, MOV]#Context) {
-    mapperFx.map(hcontext)
-  }
-}
+//class HMapper[MK, MV, MOK, MOV, S <: SettingsBase] extends Mapper[MK, MV, MOK, MOV] {
+//
+//
+//  var mapperFx: MapperFxBase[MK, MV, MOK, MOV, S] = _
+//
+//  var hcontext: HMapContext[MK, MV, MOK, MOV, S] = _
+//  var context: Mapper[MK, MV, MOK, MOV]#Context = _
+//
+//  var job: HJob[S] = _
+//
+//  def counter(message: String, count: Long) {
+//    context.getCounter("Custom", message).increment(count)
+//  }
+//
+//  override def setup(ctx: Mapper[MK, MV, MOK, MOV]#Context) {
+//    context = ctx
+//
+//    job = Class.forName(context.getConfiguration.get("hpaste.jobchain.jobclass")).newInstance.asInstanceOf[HJob[S]]
+//    HJobRegistry.job = job
+//    mapperFx = job.getMapperFunc(context.getConfiguration.getInt("hpaste.jobchain.mapper.idx", -1))
+//
+//    hcontext = new HMapContext[MK, MV, MOK, MOV, S](context.getConfiguration, counter, context)
+//  }
+//
+//  override def map(key: MK, value: MV, context: Mapper[MK, MV, MOK, MOV]#Context) {
+//    mapperFx.map(hcontext)
+//  }
+//}
 
 /**
 * This is the actual Reducer that gets loaded by Hadoop.  It delegates the actual reduce functionality back to the
 * HTask that it represents.
 */
-class HReducer[MOK, MOV, ROK, ROV, S <: SettingsBase] extends Reducer[MOK, MOV, ROK, ROV] {
-  var hcontext: HReduceContext[MOK, MOV, ROK, ROV, S] = _
-  var context: Reducer[MOK, MOV, ROK, ROV]#Context = _
-  var reducerFx: ReducerFxBase[MOK, MOV, ROK, ROV, S] = _
+//class HReducer[MOK, MOV, ROK, ROV, S <: SettingsBase] extends Reducer[MOK, MOV, ROK, ROV] {
+//  var hcontext: HReduceContext[MOK, MOV, ROK, ROV, S] = _
+//  var context: Reducer[MOK, MOV, ROK, ROV]#Context = _
+//  var reducerFx: ReducerFxBase[MOK, MOV, ROK, ROV, S] = _
+//
+//  var job: HJob[S] = _
+//
+//  def counter(message: String, count: Long) {
+//    context.getCounter("Custom", message).increment(count)
+//  }
+//
+//  override def setup(ctx: Reducer[MOK, MOV, ROK, ROV]#Context) {
+//    context = ctx
+//
+//    job = Class.forName(context.getConfiguration.get("hpaste.jobchain.jobclass")).newInstance().asInstanceOf[HJob[S]]
+//    HJobRegistry.job = job
+//
+//    reducerFx = job.getReducerFunc(context.getConfiguration.getInt("hpaste.jobchain.reducer.idx", -1))
+//
+//    hcontext = new HReduceContext[MOK, MOV, ROK, ROV, S](context.getConfiguration, counter, context)
+//  }
+//
+//  override def reduce(key: MOK, values: java.lang.Iterable[MOV], context: Reducer[MOK, MOV, ROK, ROV]#Context) {
+//    reducerFx.reduce(hcontext)
+//  }
+//}
 
-  var job: HJob[S] = _
-
-  def counter(message: String, count: Long) {
-    context.getCounter("Custom", message).increment(count)
-  }
-
-  override def setup(ctx: Reducer[MOK, MOV, ROK, ROV]#Context) {
-    context = ctx
-
-    job = Class.forName(context.getConfiguration.get("hpaste.jobchain.jobclass")).newInstance().asInstanceOf[HJob[S]]
-    HJobRegistry.job = job
-
-    reducerFx = job.getReducerFunc(context.getConfiguration.getInt("hpaste.jobchain.reducer.idx", -1))
-
-    hcontext = new HReduceContext[MOK, MOV, ROK, ROV, S](context.getConfiguration, counter, context)
-  }
-
-  override def reduce(key: MOK, values: java.lang.Iterable[MOV], context: Reducer[MOK, MOV, ROK, ROV]#Context) {
-    reducerFx.reduce(hcontext)
-  }
-}
-
-class TableToBinaryMapContext[T <: HbaseTable[T,R],R, S <: SettingsBase](table:T, conf:Configuration, counter: (String,Long)=>Unit, context: Mapper[ImmutableBytesWritable,Result,BytesWritable,BytesWritable]#Context)
-  extends HMapContext[ImmutableBytesWritable,Result,BytesWritable,BytesWritable,S](conf, counter, context)
-{
-  def row = new QueryResult[T,R](context.getCurrentValue,table,table.tableName)
+class TableToBinaryMapContext[T <: HbaseTable[T, R], R, S <: SettingsBase](table: T, conf: Configuration, counter: (String, Long) => Unit, context: Mapper[ImmutableBytesWritable, Result, BytesWritable, BytesWritable]#Context)
+        extends HMapContext[ImmutableBytesWritable, Result, BytesWritable, BytesWritable, S](conf, counter, context) {
+  def row = new QueryResult[T, R](context.getCurrentValue, table, table.tableName)
 }
 
 /**
@@ -642,9 +656,9 @@ class HReduceContext[MOK, MOV, ROK, ROV, S <: SettingsBase](conf: Configuration,
   def write(key: ROK, value: ROV) {context.write(key, value)}
 }
 
-class ToTableReduceContext[MOK, MOV, T <: HbaseTable[T,R],R, S <: SettingsBase](conf:Configuration, counter: (String,Long)=>Unit, context: Reducer[MOK,MOV,NullWritable,Writable]#Context) extends HReduceContext[MOK,MOV,NullWritable,Writable,S](conf, counter, context) {
-  def write(operation: OpBase[T,R]) {
-    operation.getOperations.foreach{op=>write(NullWritable.get(),op)}
+class ToTableReduceContext[MOK, MOV, T <: HbaseTable[T, R], R, S <: SettingsBase](conf: Configuration, counter: (String, Long) => Unit, context: Reducer[MOK, MOV, NullWritable, Writable]#Context) extends HReduceContext[MOK, MOV, NullWritable, Writable, S](conf, counter, context) {
+  def write(operation: OpBase[T, R]) {
+    operation.getOperations.foreach {op => write(NullWritable.get(), op)}
   }
 }
 
