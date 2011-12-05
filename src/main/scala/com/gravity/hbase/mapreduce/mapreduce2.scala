@@ -67,6 +67,12 @@ abstract class HConfigLet() {
   }
 }
 
+case class ReducerCountConf(reducers:Int = 1) extends HConfigLet {
+  override def configure(job:Job) {
+    job.setNumReduceTasks(reducers)
+  }
+}
+
 case class SpeculativeExecutionConf(on: Boolean = false) extends HConfigLet {
   override def configure(job: Job) {
     if (!on) {
