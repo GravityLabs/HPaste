@@ -29,17 +29,29 @@ Where the currently running job gets registered in the mapper or reducer process
  */
 object HJobRegistry {
   var job: HJob[_] = null
-}
 
-/*
-Experimental support for a non declarative constructor for hjobs.
- */
-class HJobND[S <: SettingsBase](name: String) {
-  val tasks = Buffer[HTask[_, _, _, _, S]]()
 
-  def addTask(task: HTask[_, _, _, _, S], previous: HTask[_, _, _, _, S]) {tasks += task}
 
 }
+
+///*
+//Experimental support for a non declarative constructor for hjobs.
+// */
+//class HJobND[S <: SettingsBase](name: String) {
+//  val tasks = Buffer[HTask[_, _, _, _, S]]()
+//
+//  def addMR(name:String) {
+//    HMapReduceTask(
+//      HTaskID(name),
+//      HTaskConfigs(),
+//      HIO(),
+//
+//    )
+//
+//    tasks += task
+//  }
+//
+//}
 
 /*
 Holds a list of configuration objects.  Each object should encapsulate a particular set of configuration options (for example, whether or not to reuse the JVM)
@@ -409,6 +421,11 @@ abstract class HTask[IK, IV, OK, OV, S <: SettingsBase](val taskId: HTaskID, val
 abstract class FromTableBinaryMapper[T <: HbaseTable[T, R], R, S <: SettingsBase](table: T)
         extends HMapper[ImmutableBytesWritable, Result, BytesWritable, BytesWritable, S] {
   def row = new QueryResult[T,R](context.getCurrentValue, table, table.tableName)
+
+  def write(keyWriter:(DataOutputStream)=>Unit, valueWriter:(DataOutputStream)=>Unit) {
+    write(makeWritable(keyWriter), makeWritable(valueWriter))
+  }
+
 }
 
 
@@ -430,11 +447,26 @@ abstract class ToTableReducer[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsB
 abstract class ToTableBinaryReducer[T <: HbaseTable[T, R], R, S <: SettingsBase](table: T)
         extends HReducer[BytesWritable, BytesWritable, NullWritable, Writable, S] {
 
+  
+
   def write(operation: OpBase[T, R]) {
     operation.getOperations.foreach {op => write(NullWritable.get(), op)}
   }
 }
 
+abstract class BinaryMapper[S <: SettingsBase] extends HMapper[BytesWritable,BytesWritable,BytesWritable,BytesWritable,S] {
+  def write(keyWriter:(DataOutputStream)=>Unit, valueWriter:(DataOutputStream)=>Unit) {
+    write(makeWritable(keyWriter), makeWritable(valueWriter))
+  }
+
+}
+
+abstract class BinaryReducer[S <: SettingsBase] extends HReducer[BytesWritable,BytesWritable,BytesWritable,BytesWritable,S] {
+  def write(keyWriter:(DataOutputStream)=>Unit, valueWriter:(DataOutputStream)=>Unit) {
+    write(makeWritable(keyWriter), makeWritable(valueWriter))
+  }
+
+}
 
 
 //case class FromTableMapper[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase](table: T, tableMapper: (QueryResult[T, R], HMapContext[ImmutableBytesWritable, Result, MOK, MOV, S]) => Unit)
@@ -483,6 +515,7 @@ abstract class HReducer[MOK,MOV,ROK,ROV, S<:SettingsBase] extends Reducer[MOK,MO
 
   def write(key:ROK, value:ROV) {context.write(key,value)}
 
+
   def key = context.getCurrentKey
   def values = context.getValues
 
@@ -500,6 +533,17 @@ abstract class HReducer[MOK,MOV,ROK,ROV, S<:SettingsBase] extends Reducer[MOK,MO
 
 }
 
+object HMapReduceTask {
+  def apply[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, ROV: Manifest, S <: SettingsBase](name:String, mapper: HMapper[MK,MV,MOK,MOV, S], reducer: HReducer[MOK,MOV,ROK,ROV,S]) : HMapReduceTask[MK,MV,MOK,MOV,ROK,ROV,S] = {
+    HMapReduceTask(
+      HTaskID(name),
+      HTaskConfigs(),
+      HIO(),
+      mapper,
+      reducer
+    )
+  }
+}
 /**
 * An HTask that wraps a standard mapper and reducer function.
 */
