@@ -494,6 +494,8 @@ abstract class HMapper[MK,MV,MOK,MOV,S<:SettingsBase] extends Mapper[MK,MV,MOK,M
 
   def ctr(message:String, count:Long) {counter(message,count)}
 
+  def ctr(message:String){counter(message,1l)}
+
   def counter(message: String, count: Long) {
     context.getCounter("Custom", message).increment(count)
   }
