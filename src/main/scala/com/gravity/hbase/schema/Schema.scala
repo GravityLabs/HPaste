@@ -470,7 +470,7 @@ case class CommaSet(items: Set[String]) {
 object CommaSet {
   val empty = CommaSet(Set.empty[String])
 
-  def apply(item: String): CommaSet = CommaSet(Set(item))
+  def apply(items: String*): CommaSet = CommaSet(items.toSet)
 }
 
 class DataInputWrapper(input: DataInputStream) {
