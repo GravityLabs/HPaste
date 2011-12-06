@@ -561,7 +561,8 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, R
                                                                                                                         io: HIO[MK, MV, ROK, ROV, S] = HIO(),
                                                                                                                         mapper: HMapper[MK, MV, MOK, MOV, S],
                                                                                                                         reducer: HReducer[MOK, MOV, ROK, ROV, S],
-                                                                                                                        partitioner: HPartitioner[MOK, MOV] = null)
+                                                                                                                        partitioner: HPartitioner[MOK, MOV] = null,
+                                                                                                                        groupingComparator: HBinaryComparator = null)
         extends HTask[MK, MV, ROK, ROV, S](id, configs, io) {
 
 
@@ -576,10 +577,23 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, R
     if (partitioner != null) {
       job.setPartitionerClass(partitioner.getClass)
     }
+    if(groupingComparator != null) {
+      job.setGroupingComparatorClass(groupingComparator.getClass)
+    }
     //    job.setGroupingComparatorClass()
     //    job.setSortComparatorClass()
 
   }
+}
+
+abstract class HBinaryComparator extends WritableComparator(classOf[BytesWritable],true) {
+  override def compare(a: WritableComparable[_], b: WritableComparable[_]) = {
+    val ab = a.asInstanceOf[BytesWritable]
+    val bb = b.asInstanceOf[BytesWritable]
+    compareBytes(ab,bb)
+  }
+
+  def compareBytes(a: BytesWritable, b: BytesWritable) : Int = 0
 }
 
 case class HTaskID(name: String, previousTaskName: String = null)
@@ -612,7 +626,10 @@ case class HMapCombineReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV,
 
 
 
-abstract class HPartitioner[MOK, MOV](partitionFx: (MOK, MOV, Int) => Int) extends Partitioner[MOK, MOV] {
+abstract class HPartitioner[MOK, MOV]() extends Partitioner[MOK, MOV] {
+  override def getPartition(key:MOK, value: MOV, numPartitions: Int) : Int = {
+    0
+  }
 }
 
 
