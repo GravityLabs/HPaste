@@ -1,3 +1,20 @@
+/** Licensed to Gravity.com under one
+  * or more contributor license agreements. See the NOTICE file
+  * distributed with this work for additional information
+  * regarding copyright ownership. Gravity.com licenses this file
+  * to you under the Apache License, Version 2.0 (the
+  * "License"); you may not use this file except in compliance
+  * with the License. You may obtain a copy of the License at
+  *
+  * http://www.apache.org/licenses/LICENSE-2.0
+  *
+  * Unless required by applicable law or agreed to in writing, software
+  * distributed under the License is distributed on an "AS IS" BASIS,
+  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
+
 package com.gravity.hbase.schema
 
 import org.apache.hadoop.hbase.client._
@@ -18,12 +35,29 @@ import org.joda.time.DateTime
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
 
-
-
-/**
-* When a query comes back, there are a bucket of column families and columns to retrieve.  This class retrieves them.
-*/
+/** When a query comes back, there are a bucket of column families and columns to retrieve.  This class retrieves them.
+  *
+  * @tparam T the source [[com.gravity.hbase.schema.HbaseTable]] this result came from
+  * @tparam R the `type` of the table's rowid
+  *
+  * @param result the raw [[org.apache.hadoop.hbase.client.Result]] returned from the `hbase` [[org.apache.hadoop.hbase.client.Get]]
+  * @param table the underlying [[com.gravity.hbase.schema.HbaseTable]]
+  * @param tableName the name of the actual table
+  */
 class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTable[T, R], val tableName: String) extends Serializable {
+
+  /** This is a convenience method to allow consumers to check
+    * if a column has a value present in the result without
+    * invoking the deserialization of the value
+    *
+    * @tparam F the type of the column family name
+    * @tparam K the type of the column family qualifier
+    * @tparam V the type of the column family value
+    *
+    * @param column the underlying table's column `val`
+    *
+    * @return `true` if the column value is present and otherwise `false`
+    */
   def isColumnPresent[F, K, V](column: (T) => Column[T, R, F, K, V]): Boolean = {
     val co = column(table.pops)
     val col = result.getColumnLatest(co.familyBytes, co.columnBytes)
