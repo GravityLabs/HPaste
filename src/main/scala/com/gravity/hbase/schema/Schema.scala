@@ -1,19 +1,19 @@
-/** Licensed to Gravity.com under one
-  * or more contributor license agreements. See the NOTICE file
-  * distributed with this work for additional information
-  * regarding copyright ownership. Gravity.com licenses this file
-  * to you under the Apache License, Version 2.0 (the
-  * "License"); you may not use this file except in compliance
-  * with the License. You may obtain a copy of the License at
-  *
-  * http://www.apache.org/licenses/LICENSE-2.0
-  *
-  * Unless required by applicable law or agreed to in writing, software
-  * distributed under the License is distributed on an "AS IS" BASIS,
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  */
+/**Licensed to Gravity.com under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. Gravity.com licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package com.gravity.hbase.schema
 
@@ -35,29 +35,29 @@ import org.joda.time.DateTime
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
 
-/** When a query comes back, there are a bucket of column families and columns to retrieve.  This class retrieves them.
-  *
-  * @tparam T the source [[com.gravity.hbase.schema.HbaseTable]] this result came from
-  * @tparam R the `type` of the table's rowid
-  *
-  * @param result the raw [[org.apache.hadoop.hbase.client.Result]] returned from the `hbase` [[org.apache.hadoop.hbase.client.Get]]
-  * @param table the underlying [[com.gravity.hbase.schema.HbaseTable]]
-  * @param tableName the name of the actual table
-  */
+/**When a query comes back, there are a bucket of column families and columns to retrieve.  This class retrieves them.
+ *
+ * @tparam T the source [[com.gravity.hbase.schema.HbaseTable]] this result came from
+ * @tparam R the `type` of the table's rowid
+ *
+ * @param result the raw [[org.apache.hadoop.hbase.client.Result]] returned from the `hbase` [[org.apache.hadoop.hbase.client.Get]]
+ * @param table the underlying [[com.gravity.hbase.schema.HbaseTable]]
+ * @param tableName the name of the actual table
+ */
 class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTable[T, R], val tableName: String) extends Serializable {
 
-  /** This is a convenience method to allow consumers to check
-    * if a column has a value present in the result without
-    * invoking the deserialization of the value
-    *
-    * @tparam F the type of the column family name
-    * @tparam K the type of the column family qualifier
-    * @tparam V the type of the column family value
-    *
-    * @param column the underlying table's column `val`
-    *
-    * @return `true` if the column value is present and otherwise `false`
-    */
+  /**This is a convenience method to allow consumers to check
+   * if a column has a value present in the result without
+   * invoking the deserialization of the value
+   *
+   * @tparam F the type of the column family name
+   * @tparam K the type of the column family qualifier
+   * @tparam V the type of the column family value
+   *
+   * @param column the underlying table's column `val`
+   *
+   * @return `true` if the column value is present and otherwise `false`
+   */
   def isColumnPresent[F, K, V](column: (T) => Column[T, R, F, K, V]): Boolean = {
     val co = column(table.pops)
     val col = result.getColumnLatest(co.familyBytes, co.columnBytes)
@@ -143,15 +143,15 @@ class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTabl
 }
 
 /**
-* A query for setting up a scanner across the whole table or key subsets.
-* There is a lot of room for expansion in this class -- caching parameters, scanner specs, key-only, etc.
-*/
+ * A query for setting up a scanner across the whole table or key subsets.
+ * There is a lot of room for expansion in this class -- caching parameters, scanner specs, key-only, etc.
+ */
 
 
 /**
-* An individual data modification operation (put, increment, or delete usually)
-* These operations are chained together by the client, and then executed in bulk.
-*/
+ * An individual data modification operation (put, increment, or delete usually)
+ * These operations are chained together by the client, and then executed in bulk.
+ */
 class OpBase[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) {
 
   previous += this
@@ -194,28 +194,27 @@ class OpBase[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte]
   }
 
   /**
-  * This is an experimental call that utilizes a shared instance of a table to flush writes.
-  */
+   * This is an experimental call that utilizes a shared instance of a table to flush writes.
+   */
   def executeBuffered(tableName: String = table.tableName) = {
-    val bufferTable = table.bufferTable
 
     val (deletes, puts, increments) = prepareOperations
 
-    synchronized {
+    table.withBufferedTable(tableName){bufferTable=>
       if (puts.size > 0) {
-        bufferTable.put(puts.toSeq)
+        bufferTable.put(puts)
       }
-      if(deletes.size > 0) {
+      if (deletes.size > 0) {
         bufferTable.delete(deletes)
+      }
+      if (increments.size > 0) {
+        increments.foreach {
+          increment =>
+            bufferTable.increment(increment)
+        }
       }
     }
 
-    if (increments.size > 0) {
-      increments.foreach {
-        increment =>
-          bufferTable.increment(increment)
-      }
-    }
   }
 
   def prepareOperations = {
@@ -242,9 +241,12 @@ class OpBase[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte]
     val (deletes, puts, increments) = prepareOperations
     table.withTable(tableName) {
       table =>
-        if (puts.size > 0 || deletes.size > 0) {
+        if (puts.size > 0) {
+          table.put(puts)
           //IN THEORY, the operations will happen in order.  If not, break this into two different batched calls for deletes and puts
-          table.batch(puts ++ deletes)
+        }
+        if (deletes.size > 0) {
+          table.delete(deletes)
         }
         if (increments.size > 0) {
           increments.foreach(increment => table.increment(increment))
@@ -258,8 +260,8 @@ class OpBase[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte]
 case class OpsResult(numDeletes: Int, numPuts: Int, numIncrements: Int)
 
 /**
-* An increment operation -- can increment multiple columns in a single go.
-*/
+ * An increment operation -- can increment multiple columns in a single go.
+ */
 class IncrementOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) extends OpBase[T, R](table, key, previous) {
   val increment = new Increment(key)
   increment.setWriteToWAL(false)
@@ -280,8 +282,8 @@ class IncrementOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[
 }
 
 /**
-* A Put operation.  Can work across multiple columns or entire column families treated as Maps.
-*/
+ * A Put operation.  Can work across multiple columns or entire column families treated as Maps.
+ */
 class PutOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]](), writeToWAL: Boolean = true) extends OpBase[T, R](table, key, previous) {
   val put = new Put(key)
   put.setWriteToWAL(writeToWAL)
@@ -302,9 +304,9 @@ class PutOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte],
 }
 
 /**
-* A deletion operation.  If nothing is specified but a key, will delete the whole row.  If a family is specified, will just delete the values in
-* that family.
-*/
+ * A deletion operation.  If nothing is specified but a key, will delete the whole row.  If a family is specified, will just delete the values in
+ * that family.
+ */
 class DeleteOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) extends OpBase[T, R](table, key, previous) {
   val delete = new Delete(key)
 
@@ -324,25 +326,25 @@ class DeleteOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byt
 }
 
 /**
-* A query for retrieving values.  It works somewhat differently than the data modification operations, in that you do the following:
-* 1. Specify one or more keys
-* 2. Specify columns and families to scan in for ALL the specified keys
-*
-* In other words there's no concept of having multiple rows fetched with different columns for each row (that seems to be a rare use-case and
-* would make the API very complex).
-*/
+ * A query for retrieving values.  It works somewhat differently than the data modification operations, in that you do the following:
+ * 1. Specify one or more keys
+ * 2. Specify columns and families to scan in for ALL the specified keys
+ *
+ * In other words there's no concept of having multiple rows fetched with different columns for each row (that seems to be a rare use-case and
+ * would make the API very complex).
+ */
 
 
 /**
-* Represents the specification of a Column Family
-*/
+ * Represents the specification of a Column Family
+ */
 class ColumnFamily[T <: HbaseTable[T, R], R, F, K, V](val table: HbaseTable[T, R], val familyName: F, val compressed: Boolean = false, val versions: Int = 1)(implicit c: ByteConverter[F]) {
   val familyBytes = c.toBytes(familyName)
 }
 
 /**
-* Represents the specification of a Column.
-*/
+ * Represents the specification of a Column.
+ */
 class Column[T <: HbaseTable[T, R], R, F, K, V](table: HbaseTable[T, R], columnFamily: F, columnName: K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) {
   val columnBytes = kc.toBytes(columnName)
   val familyBytes = fc.toBytes(columnFamily)
@@ -380,24 +382,35 @@ trait Schema {
 }
 
 /**
-* Represents a Table.  Expects an instance of HBaseConfiguration to be present.
-* A parameter-type T should be the actual table that is implementing this one (this is to allow syntactic sugar for easily specifying columns during
-* queries).
-* A parameter-type R should be the type of the key for the table.  
-*/
+ * Represents a Table.  Expects an instance of HBaseConfiguration to be present.
+ * A parameter-type T should be the actual table that is implementing this one (this is to allow syntactic sugar for easily specifying columns during
+ * queries).
+ * A parameter-type R should be the type of the key for the table.
+ */
 class HbaseTable[T <: HbaseTable[T, R], R](val tableName: String, var cache: QueryResultCache[T, R] = new NoOpCache[T, R]())(implicit conf: Configuration) {
 
   def pops = this.asInstanceOf[T]
 
   val tablePool = new HTablePool(conf, 50)
 
-  //For buffered writes in a fire and forget model
-  lazy val bufferTable = {
-    val table = new HTable(conf, tableName)
-    table.setWriteBufferSize(2000000L)
-    table.setAutoFlush(false)
-    table
-  }
+  val bufferTablePool = new HTablePool(conf, 1, new HTableInterfaceFactory {
+    def createHTableInterface(config: Configuration, tableName: Array[Byte]): HTableInterface = {
+      val table = new HTable(conf,tableName)
+      table.setWriteBufferSize(2000000L)
+      table.setAutoFlush(false)
+      table
+    }
+
+    def releaseHTableInterface(table: HTableInterface) {
+      try {
+        table.close()
+      }catch {
+        case ex:IOException => throw new RuntimeException(ex)
+      }
+    }
+  })
+
+
 
 
   private val columns = Buffer[Column[T, R, _, _, _]]()
@@ -444,6 +457,8 @@ class HbaseTable[T <: HbaseTable[T, R], R](val tableName: String, var cache: Que
 
   def getTable(name: String) = tablePool.getTable(name)
 
+  def getBufferedTable(name:String) = bufferTablePool.getTable(name)
+
   def column[F, K, V](columnFamily: ColumnFamily[T, R, F, K, _], columnName: K, valueClass: Class[V])(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) = {
     val c = new Column[T, R, F, K, V](this, columnFamily.familyName, columnName)
     columns += c
@@ -474,6 +489,14 @@ class HbaseTable[T <: HbaseTable[T, R], R](val tableName: String, var cache: Que
     }
   }
 
+  def withBufferedTable[Q](mytableName:String = tableName)(work:(HTableInterface) => Q) : Q = {
+    val table = getBufferedTable(mytableName)
+    try {
+      work(table)
+    }finally {
+      bufferTablePool.putTable(table)
+    }
+  }
 
   def withTable[Q](mytableName: String = tableName)(funct: (HTableInterface) => Q): Q = {
     withTableOption(mytableName) {
