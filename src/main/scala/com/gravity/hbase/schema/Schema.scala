@@ -203,7 +203,7 @@ class OpBase[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte]
 
     synchronized {
       if (puts.size > 0) {
-        bufferTable.put(puts)
+        bufferTable.put(puts.toSeq)
       }
       if(deletes.size > 0) {
         bufferTable.delete(deletes)
