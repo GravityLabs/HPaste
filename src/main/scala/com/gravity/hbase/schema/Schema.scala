@@ -201,12 +201,15 @@ class OpBase[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte]
 
     val (deletes, puts, increments) = prepareOperations
 
-    if (puts.size > 0) {
-      bufferTable.put(puts)
+    synchronized {
+      if (puts.size > 0) {
+        bufferTable.put(puts)
+      }
+      if(deletes.size > 0) {
+        bufferTable.delete(deletes)
+      }
     }
-    if(deletes.size > 0) {
-      bufferTable.delete(deletes)
-    }
+
     if (increments.size > 0) {
       increments.foreach {
         increment =>
