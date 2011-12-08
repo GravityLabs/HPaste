@@ -199,10 +199,13 @@ class OpBase[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte]
   def executeBuffered(tableName: String = table.tableName) = {
     val bufferTable = table.bufferTable
 
-    val (puts, increments) = prepareOperations
+    val (deletes, puts, increments) = prepareOperations
 
     if (puts.size > 0) {
-      bufferTable.batch(puts)
+      bufferTable.put(puts)
+    }
+    if(deletes.size > 0) {
+      bufferTable.delete(deletes)
     }
     if (increments.size > 0) {
       increments.foreach {
@@ -229,16 +232,16 @@ class OpBase[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte]
       }
     }
 
-    (deletes ++ puts, increments)
+    (deletes, puts, increments)
   }
 
   def execute(tableName: String = table.tableName) = {
-    val (puts, increments) = prepareOperations
+    val (deletes, puts, increments) = prepareOperations
     table.withTable(tableName) {
       table =>
-        if (puts.size > 0) {
+        if (puts.size > 0 || deletes.size > 0) {
           //IN THEORY, the operations will happen in order.  If not, break this into two different batched calls for deletes and puts
-          table.batch(puts)
+          table.batch(puts ++ deletes)
         }
         if (increments.size > 0) {
           increments.foreach(increment => table.increment(increment))
