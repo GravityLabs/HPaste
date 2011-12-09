@@ -124,15 +124,15 @@ class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTabl
     }
   }
 
-  /** Extracts column timestamp of the specified `column`
+  /** Extracts most recent column timestamp of the specified `family`
     *
     * @tparam F the type of the column family name
     * @tparam K the type of the column family qualifier
     * @tparam V the type of the column family value
     *
-    * @param column the underlying table's column `val`
+    * @param family the underlying table's family `val`
     *
-    * @return `Some` [[org.joda.time.DateTime]] if the column value is present, otherwise `None`
+    * @return `Some` [[org.joda.time.DateTime]] if at least one column value is present, otherwise `None`
     */
   def familyLatestTimestamp[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V])(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]): Option[DateTime] = {
     val fam = family(table.pops)
@@ -151,6 +151,15 @@ class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTabl
     }
   }
 
+  /** Extracts and deserializes the entire family as a `Map[K, V]`
+    *
+    * @tparam F the type of the column family name
+    * @tparam K the type of the column family qualifier
+    * @tparam V the type of the column family value
+    *
+    * @param family the underlying table's family `val`
+    *
+    */
   def family[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V])(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]): Map[K, V] = {
     val fm = family(table.pops)
     val kvs = result.raw()
@@ -164,6 +173,15 @@ class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTabl
     mymap
   }
 
+  /** Extracts and deserializes only the keys (qualifiers) of the family as a `Set[K]`
+    *
+    * @tparam F the type of the column family name
+    * @tparam K the type of the column family qualifier
+    * @tparam V the type of the column family value
+    *
+    * @param family the underlying table's family `val`
+    *
+    */
   def familyKeySet[F, K](family: (T) => ColumnFamily[T, R, F, K, _])(implicit c: ByteConverter[F], d: ByteConverter[K]): Set[K] = {
     val fm = family(table.pops)
     val kvs = result.raw()
@@ -177,6 +195,9 @@ class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTabl
     myset
   }
 
+  /** The row identifier deserialized as type `R`
+    * 
+    */
   def rowid(implicit c: ByteConverter[R]) = c.fromBytes(result.getRow)
 
   def getTableName = tableName
