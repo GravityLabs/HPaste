@@ -282,7 +282,7 @@ case class Filters[T <: HbaseTable[T, _]](filters: Filter*)
 /**
 * Initializes input from an HPaste Table
 */
-case class HTableInput[T <: HbaseTable[T, _]](table: T, families: Families[T] = Families[T](), columns: Columns[T] = Columns[T](), filters: Seq[Filter] = Seq(), scan: Scan = new Scan()) extends HInput {
+case class HTableInput[T <: HbaseTable[T, _]](table: T, families: Families[T] = Families[T](), columns: Columns[T] = Columns[T](), filters: Seq[Filter] = Seq(), scan: Scan = new Scan(), scanCache:Int=100) extends HInput {
 
 
   override def toString = "Input: From table: \"" + table.tableName + "\""
@@ -292,7 +292,7 @@ case class HTableInput[T <: HbaseTable[T, _]](table: T, families: Families[T] = 
 
     val scanner = scan
     scanner.setCacheBlocks(false)
-    scanner.setCaching(100)
+    scanner.setCaching(scanCache)
     scanner.setMaxVersions(1)
 
     columns.columns.foreach {
@@ -320,6 +320,7 @@ case class HTableInput[T <: HbaseTable[T, _]](table: T, families: Families[T] = 
 
 
     job.getConfiguration.set(TableInputFormat.INPUT_TABLE, table.tableName)
+    job.getConfiguration.setInt(TableInputFormat.SCAN_CACHEDROWS,scanCache)
     job.setInputFormatClass(classOf[TableInputFormat])
   }
 }
