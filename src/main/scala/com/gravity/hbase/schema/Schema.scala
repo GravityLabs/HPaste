@@ -31,6 +31,10 @@ import org.joda.time.DateTime
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
+/**It is expensive to deserialize column values in tight loops.  This construct provides temporary caches for such a scenario.  This introduces its own overhead
+ * and should be factored out.  Essentially, a result object is needed that allows the user to assign vals where needed.
+ *
+ */
 trait ContextCache {
   var cache = HashMap[String, Any]()
   val famCache = HashMap[ColumnFamily[_,_,_,_,_], Any]()
