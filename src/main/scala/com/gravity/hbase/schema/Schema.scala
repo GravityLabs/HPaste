@@ -1,19 +1,19 @@
-/** Licensed to Gravity.com under one
-  * or more contributor license agreements. See the NOTICE file
-  * distributed with this work for additional information
-  * regarding copyright ownership. Gravity.com licenses this file
-  * to you under the Apache License, Version 2.0 (the
-  * "License"); you may not use this file except in compliance
-  * with the License. You may obtain a copy of the License at
-  *
-  * http://www.apache.org/licenses/LICENSE-2.0
-  *
-  * Unless required by applicable law or agreed to in writing, software
-  * distributed under the License is distributed on an "AS IS" BASIS,
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  */
+/**Licensed to Gravity.com under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. Gravity.com licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package com.gravity.hbase.schema
 
@@ -24,76 +24,88 @@ import org.apache.hadoop.conf.Configuration
 import java.io._
 import org.apache.hadoop.io.Writable
 import scala.collection._
-import scala.collection.mutable.Buffer
+import mutable.{HashMap, Buffer}
 import org.joda.time.DateTime
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
+trait ContextCache {
+  var cache = HashMap[String, Any]()
+  val famCache = HashMap[ColumnFamily[_,_,_,_,_], Any]()
+  val colCache = HashMap[Column[_,_,_,_,_],Any]()
 
-/** When a query comes back, there are a bucket of column families and columns to retrieve.  This class retrieves them.
-  *
-  * @tparam T the source [[com.gravity.hbase.schema.HbaseTable]] this result came from
-  * @tparam R the `type` of the table's rowid
-  *
-  * @param result the raw [[org.apache.hadoop.hbase.client.Result]] returned from the `hbase` [[org.apache.hadoop.hbase.client.Get]]
-  * @param table the underlying [[com.gravity.hbase.schema.HbaseTable]]
-  * @param tableName the name of the actual table
-  */
-class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTable[T, R], val tableName: String) extends Serializable {
+  def getOrUpdateFam[T](key: ColumnFamily[_,_,_,_,_])(value: => T): T = famCache.getOrElseUpdate(key, value).asInstanceOf[T]
+  def getOrUpdateCol[T](key: Column[_,_,_,_,_])(value: => T): T = colCache.getOrElseUpdate(key, value).asInstanceOf[T]
 
-  /** This is a convenience method to allow consumers to check
-    * if a column has a value present in the result without
-    * invoking the deserialization of the value
-    *
-    * @tparam F the type of the column family name
-    * @tparam K the type of the column family qualifier
-    * @tparam V the type of the column family value
-    *
-    * @param column the underlying table's column `val`
-    *
-    * @return `true` if the column value is present and otherwise `false`
-    */
+  def getOrUpdate[T](key: String)(value: => T): T = cache.getOrElseUpdate(key, value).asInstanceOf[T]
+}
+
+/**When a query comes back, there are a bucket of column families and columns to retrieve.  This class retrieves them.
+ *
+ * @tparam T the source [[com.gravity.hbase.schema.HbaseTable]] this result came from
+ * @tparam R the `type` of the table's rowid
+ *
+ * @param result the raw [[org.apache.hadoop.hbase.client.Result]] returned from the `hbase` [[org.apache.hadoop.hbase.client.Get]]
+ * @param table the underlying [[com.gravity.hbase.schema.HbaseTable]]
+ * @param tableName the name of the actual table
+ */
+class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTable[T, R], val tableName: String) extends Serializable with ContextCache {
+
+  /**This is a convenience method to allow consumers to check
+   * if a column has a value present in the result without
+   * invoking the deserialization of the value
+   *
+   * @tparam F the type of the column family name
+   * @tparam K the type of the column family qualifier
+   * @tparam V the type of the column family value
+   *
+   * @param column the underlying table's column `val`
+   *
+   * @return `true` if the column value is present and otherwise `false`
+   */
   def isColumnPresent[F, K, V](column: (T) => Column[T, R, F, K, V]): Boolean = {
     val co = column(table.pops)
     val col = result.getColumnLatest(co.familyBytes, co.columnBytes)
     col != null
   }
 
-  /** Extracts and deserializes the value of the `column` specified
-    *
-    * @tparam F the type of the column family name
-    * @tparam K the type of the column family qualifier
-    * @tparam V the type of the column family value
-    *
-    * @param column the underlying table's column `val`
-    *
-    * @return `Some` value of type `V` if the column value is present, otherwise `None`
-    *
-    * @note if there is no explicitly defined `val` for the desired column, use `columnFromFamily`
-    */
+  /**Extracts and deserializes the value of the `column` specified
+   *
+   * @tparam F the type of the column family name
+   * @tparam K the type of the column family qualifier
+   * @tparam V the type of the column family value
+   *
+   * @param column the underlying table's column `val`
+   *
+   * @return `Some` value of type `V` if the column value is present, otherwise `None`
+   *
+   * @note if there is no explicitly defined `val` for the desired column, use `columnFromFamily`
+   */
   def column[F, K, V](column: (T) => Column[T, R, F, K, V])(implicit c: ByteConverter[V]): Option[V] = {
     val co = column(table.pops)
-    val col = result.getColumnLatest(co.familyBytes, co.columnBytes)
-    if (col != null) {
-      Some(c.fromBytes(col.getValue))
-    } else {
-      None
+    getOrUpdateCol(co) {
+      val col = result.getColumnLatest(co.familyBytes, co.columnBytes)
+      if (col != null) {
+        Some(c.fromBytes(col.getValue))
+      } else {
+        None
+      }
     }
   }
 
-  /** Extracts and deserializes the value of the `family` + `columnName` specified
-    *
-    * @tparam F the type of the column family name
-    * @tparam K the type of the column family qualifier
-    * @tparam V the type of the column family value
-    *
-    * @param family the underlying table's family `val`
-    * @param columnName value of the desired column's qualifier
-    *
-    * @return `Some` value of type `V` if the column value is present, otherwise `None`
-    */
+  /**Extracts and deserializes the value of the `family` + `columnName` specified
+   *
+   * @tparam F the type of the column family name
+   * @tparam K the type of the column family qualifier
+   * @tparam V the type of the column family value
+   *
+   * @param family the underlying table's family `val`
+   * @param columnName value of the desired column's qualifier
+   *
+   * @return `Some` value of type `V` if the column value is present, otherwise `None`
+   */
   def columnFromFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K)(implicit c: ByteConverter[K], d: ByteConverter[V]): Option[V] = {
     val fam = family(table.pops)
     val qual = c.toBytes(columnName)
@@ -104,16 +116,16 @@ class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTabl
     }
   }
 
-  /** Extracts column timestamp of the specified `column`
-    *
-    * @tparam F the type of the column family name
-    * @tparam K the type of the column family qualifier
-    * @tparam V the type of the column family value
-    *
-    * @param column the underlying table's column `val`
-    *
-    * @return `Some` [[org.joda.time.DateTime]] if the column value is present, otherwise `None`
-    */
+  /**Extracts column timestamp of the specified `column`
+   *
+   * @tparam F the type of the column family name
+   * @tparam K the type of the column family qualifier
+   * @tparam V the type of the column family value
+   *
+   * @param column the underlying table's column `val`
+   *
+   * @return `Some` [[org.joda.time.DateTime]] if the column value is present, otherwise `None`
+   */
   def columnTimestamp[F, K, V](column: (T) => Column[T, R, F, K, V])(implicit c: ByteConverter[V]): Option[DateTime] = {
     val co = column(table.pops)
     val col = result.getColumnLatest(co.familyBytes, co.columnBytes)
@@ -124,16 +136,16 @@ class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTabl
     }
   }
 
-  /** Extracts most recent column timestamp of the specified `family`
-    *
-    * @tparam F the type of the column family name
-    * @tparam K the type of the column family qualifier
-    * @tparam V the type of the column family value
-    *
-    * @param family the underlying table's family `val`
-    *
-    * @return `Some` [[org.joda.time.DateTime]] if at least one column value is present, otherwise `None`
-    */
+  /**Extracts most recent column timestamp of the specified `family`
+   *
+   * @tparam F the type of the column family name
+   * @tparam K the type of the column family qualifier
+   * @tparam V the type of the column family value
+   *
+   * @param family the underlying table's family `val`
+   *
+   * @return `Some` [[org.joda.time.DateTime]] if at least one column value is present, otherwise `None`
+   */
   def familyLatestTimestamp[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V])(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]): Option[DateTime] = {
     val fam = family(table.pops)
     var ts = -1l
@@ -151,37 +163,39 @@ class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTabl
     }
   }
 
-  /** Extracts and deserializes the entire family as a `Map[K, V]`
-    *
-    * @tparam F the type of the column family name
-    * @tparam K the type of the column family qualifier
-    * @tparam V the type of the column family value
-    *
-    * @param family the underlying table's family `val`
-    *
-    */
+  /**Extracts and deserializes the entire family as a `Map[K, V]`
+   *
+   * @tparam F the type of the column family name
+   * @tparam K the type of the column family qualifier
+   * @tparam V the type of the column family value
+   *
+   * @param family the underlying table's family `val`
+   *
+   */
   def family[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V])(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]): Map[K, V] = {
     val fm = family(table.pops)
-    val kvs = result.raw()
-    val mymap = scala.collection.mutable.Map[K, V]()
-    mymap.sizeHint(kvs.size)
-    for (kv <- kvs) yield {
-      if (Bytes.equals(kv.getFamily, fm.familyBytes)) {
-        mymap.put(d.fromBytes(kv.getQualifier), e.fromBytes(kv.getValue))
+    getOrUpdateFam(fm) {
+      val kvs = result.raw()
+      val mymap = scala.collection.mutable.Map[K, V]()
+      mymap.sizeHint(kvs.size)
+      for (kv <- kvs) yield {
+        if (Bytes.equals(kv.getFamily, fm.familyBytes)) {
+          mymap.put(d.fromBytes(kv.getQualifier), e.fromBytes(kv.getValue))
+        }
       }
+      mymap
     }
-    mymap
   }
 
-  /** Extracts and deserializes only the keys (qualifiers) of the family as a `Set[K]`
-    *
-    * @tparam F the type of the column family name
-    * @tparam K the type of the column family qualifier
-    * @tparam V the type of the column family value
-    *
-    * @param family the underlying table's family `val`
-    *
-    */
+  /**Extracts and deserializes only the keys (qualifiers) of the family as a `Set[K]`
+   *
+   * @tparam F the type of the column family name
+   * @tparam K the type of the column family qualifier
+   * @tparam V the type of the column family value
+   *
+   * @param family the underlying table's family `val`
+   *
+   */
   def familyKeySet[F, K](family: (T) => ColumnFamily[T, R, F, K, _])(implicit c: ByteConverter[F], d: ByteConverter[K]): Set[K] = {
     val fm = family(table.pops)
     val kvs = result.raw()
@@ -195,24 +209,24 @@ class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTabl
     myset
   }
 
-  /** The row identifier deserialized as type `R`
-    * 
-    */
+  /**The row identifier deserialized as type `R`
+   *
+   */
   def rowid(implicit c: ByteConverter[R]) = c.fromBytes(result.getRow)
 
   def getTableName = tableName
 }
 
 /**
-  * A query for setting up a scanner across the whole table or key subsets.
-  * There is a lot of room for expansion in this class -- caching parameters, scanner specs, key-only, etc.
-  */
+ * A query for setting up a scanner across the whole table or key subsets.
+ * There is a lot of room for expansion in this class -- caching parameters, scanner specs, key-only, etc.
+ */
 
 
 /**
-  * An individual data modification operation (put, increment, or delete usually)
-  * These operations are chained together by the client, and then executed in bulk.
-  */
+ * An individual data modification operation (put, increment, or delete usually)
+ * These operations are chained together by the client, and then executed in bulk.
+ */
 class OpBase[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) {
 
   previous += this
@@ -255,8 +269,8 @@ class OpBase[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte]
   }
 
   /**
-    * This is an experimental call that utilizes a shared instance of a table to flush writes.
-    */
+   * This is an experimental call that utilizes a shared instance of a table to flush writes.
+   */
   def executeBuffered(tableName: String = table.tableName) = {
 
     val (deletes, puts, increments) = prepareOperations
@@ -322,8 +336,8 @@ class OpBase[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte]
 case class OpsResult(numDeletes: Int, numPuts: Int, numIncrements: Int)
 
 /**
-  * An increment operation -- can increment multiple columns in a single go.
-  */
+ * An increment operation -- can increment multiple columns in a single go.
+ */
 class IncrementOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) extends OpBase[T, R](table, key, previous) {
   val increment = new Increment(key)
   increment.setWriteToWAL(false)
@@ -344,8 +358,8 @@ class IncrementOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[
 }
 
 /**
-  * A Put operation.  Can work across multiple columns or entire column families treated as Maps.
-  */
+ * A Put operation.  Can work across multiple columns or entire column families treated as Maps.
+ */
 class PutOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]](), writeToWAL: Boolean = true) extends OpBase[T, R](table, key, previous) {
   val put = new Put(key)
   put.setWriteToWAL(writeToWAL)
@@ -366,9 +380,9 @@ class PutOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte],
 }
 
 /**
-  * A deletion operation.  If nothing is specified but a key, will delete the whole row.  If a family is specified, will just delete the values in
-  * that family.
-  */
+ * A deletion operation.  If nothing is specified but a key, will delete the whole row.  If a family is specified, will just delete the values in
+ * that family.
+ */
 class DeleteOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) extends OpBase[T, R](table, key, previous) {
   val delete = new Delete(key)
 
@@ -388,30 +402,31 @@ class DeleteOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byt
 }
 
 /**
-  * A query for retrieving values.  It works somewhat differently than the data modification operations, in that you do the following:
-  * 1. Specify one or more keys
-  * 2. Specify columns and families to scan in for ALL the specified keys
-  *
-  * In other words there's no concept of having multiple rows fetched with different columns for each row (that seems to be a rare use-case and
-  * would make the API very complex).
-  */
+ * A query for retrieving values.  It works somewhat differently than the data modification operations, in that you do the following:
+ * 1. Specify one or more keys
+ * 2. Specify columns and families to scan in for ALL the specified keys
+ *
+ * In other words there's no concept of having multiple rows fetched with different columns for each row (that seems to be a rare use-case and
+ * would make the API very complex).
+ */
 
 
 /**
-  * Represents the specification of a Column Family
-  */
+ * Represents the specification of a Column Family
+ */
 class ColumnFamily[T <: HbaseTable[T, R], R, F, K, V](val table: HbaseTable[T, R], val familyName: F, val compressed: Boolean = false, val versions: Int = 1)(implicit c: ByteConverter[F]) {
   val familyBytes = c.toBytes(familyName)
 }
 
 /**
-  * Represents the specification of a Column.
-  */
+ * Represents the specification of a Column.
+ */
 class Column[T <: HbaseTable[T, R], R, F, K, V](table: HbaseTable[T, R], columnFamily: F, columnName: K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) {
   val columnBytes = kc.toBytes(columnName)
   val familyBytes = fc.toBytes(columnFamily)
 
   def getQualifier: K = columnName
+
 
   def getValue(res: QueryResult[T, R]) = {
     kv.fromBytes(res.result.getColumnLatest(familyBytes, columnBytes).getValue)
@@ -444,11 +459,11 @@ trait Schema {
 }
 
 /**
-  * Represents a Table.  Expects an instance of HBaseConfiguration to be present.
-  * A parameter-type T should be the actual table that is implementing this one (this is to allow syntactic sugar for easily specifying columns during
-  * queries).
-  * A parameter-type R should be the type of the key for the table.
-  */
+ * Represents a Table.  Expects an instance of HBaseConfiguration to be present.
+ * A parameter-type T should be the actual table that is implementing this one (this is to allow syntactic sugar for easily specifying columns during
+ * queries).
+ * A parameter-type R should be the type of the key for the table.
+ */
 class HbaseTable[T <: HbaseTable[T, R], R](val tableName: String, var cache: QueryResultCache[T, R] = new NoOpCache[T, R]())(implicit conf: Configuration) {
 
   def pops = this.asInstanceOf[T]
