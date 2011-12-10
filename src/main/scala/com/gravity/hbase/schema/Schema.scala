@@ -617,14 +617,3 @@ object CommaSet {
   def apply(items: String*): CommaSet = CommaSet(items.toSet)
 }
 
-class PrimitiveInputStream(input: InputStream) extends DataInputStream(input) {
-  def readObj[T](implicit c: ComplexByteConverter[T]) = {
-    c.read(this)
-  }
-}
-
-class PrimitiveOutputStream(output: OutputStream) extends DataOutputStream(output){
-  def writeObj[T](obj: T)(implicit c: ByteConverter[T]) {
-    output.write(c.toBytes(obj))
-  }
-}
