@@ -148,6 +148,14 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
     columns += (col.familyBytes -> col.columnBytes)
     this
   }
+  
+  def withColumns[F, K, V](columnList: ((T) => Column[T, R, F, K, V])*) = {
+    for (column <- columnList) {
+      val col = column(table.pops)
+      columns += (col.familyBytes -> col.columnBytes)
+    }
+    this
+  }
 
   def single(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true) = singleOption(tableName, ttl, skipCache, false).get
 
