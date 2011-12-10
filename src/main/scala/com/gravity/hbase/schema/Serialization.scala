@@ -30,25 +30,40 @@ import scala.collection._
 import java.util.NavigableSet
 import scala.collection.mutable.Buffer
 import org.joda.time.DateTime
+
 /*             )\._.,--....,'``.
- .b--.        /;   _.. \   _\  (`._ ,.
+.b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
+/** Expresses an input stream that can read ordered primitives from a binary input, and can also use the ByteConverter[T] interface to read serializable objects.
+  *
+  */
 class PrimitiveInputStream(input: InputStream) extends DataInputStream(input) {
+  /**
+    * Read an object, assuming the existence of a ComplexByteConverter[T] implementation
+    * The byte converter is stateless and should be therefore defined somewhere as an implicit object
+    */
   def readObj[T](implicit c: ComplexByteConverter[T]) = {
     c.read(this)
   }
 }
 
-class PrimitiveOutputStream(output: OutputStream) extends DataOutputStream(output){
-  def writeObj[T](obj: T)(implicit c: ByteConverter[T]) {
-    output.write(c.toBytes(obj))
+/** Expresses an output stream that can write ordered primitives into a binary output, and can also use the ByteConverter[T] interface to write serializable objects.
+  */
+class PrimitiveOutputStream(output: OutputStream) extends DataOutputStream(output) {
+
+  /**
+    * Write an object, assuming the existence of a ComplexByteConverter[T] implementation.
+    * The byte converter is stateless and should be therefore defined somewhere as an implicit object
+    */
+  def writeObj[T](obj: T)(implicit c: ComplexByteConverter[T]) {
+    c.write(obj, this)
   }
 }
 
 /**
-* Class to be implemented by custom converters
-*/
+  * Class to be implemented by custom converters
+  */
 abstract class ByteConverter[T] {
   def toBytes(t: T): Array[Byte]
 
@@ -72,8 +87,8 @@ abstract class ByteConverter[T] {
 }
 
 /**
-* Simple high performance conversions from complex types to bytes
-*/
+  * Simple high performance conversions from complex types to bytes
+  */
 abstract class ComplexByteConverter[T] extends ByteConverter[T] {
   override def toBytes(t: T): Array[Byte] = {
     val bos = new ByteArrayOutputStream()
