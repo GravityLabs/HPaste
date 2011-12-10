@@ -42,8 +42,6 @@ package object schema {
   }
 
 
-  implicit def dow(output:DataOutputStream) = new DataOutputWrapper(output)
-  implicit def diw(input:DataInputStream) = new DataInputWrapper(input)
 
   type FamilyExtractor[T <: HbaseTable[T,R],R,F,K,V] = (T) => ColumnFamily[T,R,F,K,V]
   type ColumnExtractor[T <: HbaseTable[T,R],R,F,K,V] = (T) => Column[T, R, F, K, V]
@@ -126,20 +124,20 @@ package object schema {
   implicit object YearDaySetConverter extends SetConverter[YearDay]
 
   implicit object DateMidnightConverter extends ComplexByteConverter[DateMidnight] {
-    override def write(dm:DateMidnight,output:DataOutputStream) {
+    override def write(dm:DateMidnight,output:PrimitiveOutputStream) {
       output.writeLong(dm.getMillis)
     }
-    override def read(input:DataInputStream) = new DateMidnight(input.readLong())
+    override def read(input:PrimitiveInputStream) = new DateMidnight(input.readLong())
 
 
     def apply(year:Int, day:Int) = new DateMidnight().withYear(year).withDayOfYear(day)
   }
 
   implicit object DateTimeConverter extends ComplexByteConverter[DateTime] {
-    override def write(dm:DateTime,output:DataOutputStream) {
+    override def write(dm:DateTime,output:PrimitiveOutputStream) {
       output.writeLong(dm.getMillis)
     }
-    override def read(input:DataInputStream) = new DateTime(input.readLong())
+    override def read(input:PrimitiveInputStream) = new DateTime(input.readLong())
   }
   implicit object DateTimeSeqConverter extends SeqConverter[DateTime]
   implicit object DateTimeSetConverter extends SetConverter[DateTime]
@@ -152,23 +150,23 @@ package object schema {
   /*
   Helper function to make byte arrays out of arbitrary values.
    */
-  def makeBytes(writer:(DataOutputStream)=>Unit) : Array[Byte] = {
+  def makeBytes(writer:(PrimitiveOutputStream)=>Unit) : Array[Byte] = {
     val bos = new ByteArrayOutputStream()
-    val dataOutput = new DataOutputStream(bos)
+    val dataOutput = new PrimitiveOutputStream(bos)
     writer(dataOutput)
     bos.toByteArray  
   }
 
-  def makeWritable(writer:(DataOutputStream)=>Unit) : BytesWritable = new BytesWritable(makeBytes(writer))
+  def makeWritable(writer:(PrimitiveOutputStream)=>Unit) : BytesWritable = new BytesWritable(makeBytes(writer))
 
-  def readBytes[T](bytes:Array[Byte])(reader:(DataInputStream)=>T) : T = {
+  def readBytes[T](bytes:Array[Byte])(reader:(PrimitiveInputStream)=>T) : T = {
     val bis = new ByteArrayInputStream(bytes)
-    val dis = new DataInputStream(bis)
+    val dis = new PrimitiveInputStream(bis)
     val results = reader(dis)
     dis.close()
     results
   }
 
-  def readWritable[T](bytesWritable:BytesWritable)(reader:(DataInputStream)=>T) : T = readBytes(bytesWritable.getBytes)(reader)
+  def readWritable[T](bytesWritable:BytesWritable)(reader:(PrimitiveInputStream)=>T) : T = readBytes(bytesWritable.getBytes)(reader)
 
 }

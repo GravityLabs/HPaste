@@ -50,13 +50,13 @@ case class Kitten(name:String, age:Int, height:Double)
  */
 object CustomTypes {
   implicit object KittenConverter extends ComplexByteConverter[Kitten] {
-    override def write(kitten:Kitten, output:DataOutputStream)  {
+    override def write(kitten:Kitten, output:PrimitiveOutputStream)  {
       output.writeUTF(kitten.name)
       output.writeInt(kitten.age)
       output.writeDouble(kitten.height)
     }
 
-    override def read(input:DataInputStream) = {
+    override def read(input:PrimitiveInputStream) = {
       Kitten(input.readUTF(), input.readInt(), input.readDouble())
     }
   }

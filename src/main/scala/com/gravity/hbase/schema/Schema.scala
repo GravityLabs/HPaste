@@ -36,6 +36,7 @@ import org.joda.time.DateTime
   *
   */
 trait ContextCache {
+
   val cache = new HashMap[String, Any]() with SynchronizedMap[String,Any]
   val famCache = new HashMap[ColumnFamily[_, _, _, _, _], Any]() with SynchronizedMap[ColumnFamily[_, _, _, _, _], Any]
   val colCache = new HashMap[Column[_, _, _, _, _], Any]() with SynchronizedMap[Column[_, _, _, _, _], Any]
@@ -616,13 +617,13 @@ object CommaSet {
   def apply(items: String*): CommaSet = CommaSet(items.toSet)
 }
 
-class DataInputWrapper(input: DataInputStream) {
+class PrimitiveInputStream(input: InputStream) extends DataInputStream(input) {
   def readObj[T](implicit c: ComplexByteConverter[T]) = {
-    c.read(input)
+    c.read(this)
   }
 }
 
-class DataOutputWrapper(output: DataOutputStream) {
+class PrimitiveOutputStream(output: OutputStream) extends DataOutputStream(output){
   def writeObj[T](obj: T)(implicit c: ByteConverter[T]) {
     output.write(c.toBytes(obj))
   }

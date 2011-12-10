@@ -66,25 +66,25 @@ abstract class ComplexByteConverter[T] extends ByteConverter[T] {
   override def toBytes(t: T): Array[Byte] = {
     val bos = new ByteArrayOutputStream()
 
-    val dout = new DataOutputStream(bos)
+    val dout = new PrimitiveOutputStream(bos)
     write(t, dout)
 
     bos.toByteArray
   }
 
-  def write(data: T, output: DataOutputStream)
+  def write(data: T, output: PrimitiveOutputStream)
 
   override def fromBytes(bytes: Array[Byte]): T = {
-    val din = new DataInputStream(new ByteArrayInputStream(bytes))
+    val din = new PrimitiveInputStream(new ByteArrayInputStream(bytes))
     read(din)
   }
 
-  def read(input: DataInputStream): T
+  def read(input: PrimitiveInputStream): T
 }
 
 
 class MapConverter[K, V](implicit c: ByteConverter[K], d: ByteConverter[V]) extends ComplexByteConverter[Map[K, V]] {
-  override def write(map: Map[K, V], output: DataOutputStream) {
+  override def write(map: Map[K, V], output: PrimitiveOutputStream) {
     val length = map.size
     output.writeInt(length)
 
@@ -98,7 +98,7 @@ class MapConverter[K, V](implicit c: ByteConverter[K], d: ByteConverter[V]) exte
     }
   }
 
-  override def read(input: DataInputStream) = {
+  override def read(input: PrimitiveInputStream) = {
     val length = input.readInt()
     //    val map = mutable.Map[K,V]()
     Map[K, V]((for (i <- 0 until length) yield {
@@ -120,7 +120,7 @@ class MapConverter[K, V](implicit c: ByteConverter[K], d: ByteConverter[V]) exte
 
 class SetConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Set[T]] {
 
-  override def write(set: Set[T], output: DataOutputStream) {
+  override def write(set: Set[T], output: PrimitiveOutputStream) {
     val length = set.size
     output.writeInt(length)
 
@@ -132,7 +132,7 @@ class SetConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter
     }
   }
 
-  override def read(input: DataInputStream): Set[T] = {
+  override def read(input: PrimitiveInputStream): Set[T] = {
     val length = input.readInt()
     Set((for (i <- 0 until length) yield {
       val arrLength = input.readInt()
@@ -145,11 +145,11 @@ class SetConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter
 
 
 class SeqConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Seq[T]] {
-  override def write(seq: Seq[T], output: DataOutputStream) {
+  override def write(seq: Seq[T], output: PrimitiveOutputStream) {
     writeSeq(seq, output)
   }
 
-  def writeSeq(seq: Seq[T], output: DataOutputStream) {
+  def writeSeq(seq: Seq[T], output: PrimitiveOutputStream) {
     val length = seq.size
     output.writeInt(length)
 
@@ -160,9 +160,9 @@ class SeqConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter
     }
   }
 
-  override def read(input: DataInputStream) = readSeq(input)
+  override def read(input: PrimitiveInputStream) = readSeq(input)
 
-  def readSeq(input: DataInputStream) = {
+  def readSeq(input: PrimitiveInputStream) = {
     val length = input.readInt()
 
     Seq((for (i <- 0 until length) yield {
@@ -176,11 +176,11 @@ class SeqConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter
 }
 
 class BufferConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Buffer[T]] {
-  override def write(buf: Buffer[T], output: DataOutputStream) {
+  override def write(buf: Buffer[T], output: PrimitiveOutputStream) {
     writeBuf(buf, output)
   }
 
-  def writeBuf(buf: Buffer[T], output: DataOutputStream) {
+  def writeBuf(buf: Buffer[T], output: PrimitiveOutputStream) {
     val length = buf.size
     output.writeInt(length)
 
@@ -191,9 +191,9 @@ class BufferConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConver
     }
   }
 
-  override def read(input: DataInputStream) = readBuf(input)
+  override def read(input: PrimitiveInputStream) = readBuf(input)
 
-  def readBuf(input: DataInputStream) = {
+  def readBuf(input: PrimitiveInputStream) = {
     val length = input.readInt()
 
     Buffer((for (i <- 0 until length) yield {
