@@ -26,25 +26,25 @@ import org.apache.hadoop.hbase.client.{Get, Scan}
 
 case class ScanCachePolicy(ttlMinutes: Int)
 
-trait QueryResultCache[T <: HbaseTable[T, R], R] {
+trait QueryResultCache[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,R,RR]] {
 
-  def getScanResult(key: Scan): Option[Seq[QueryResult[T, R]]]
+  def getScanResult(key: Scan): Option[Seq[RR]]
 
-  def putScanResult(key: Scan, value: Seq[QueryResult[T, R]], ttl: Int)
+  def putScanResult(key: Scan, value: Seq[RR], ttl: Int)
 
-  def getResult(key: Get): Option[QueryResult[T, R]]
+  def getResult(key: Get): Option[RR]
 
-  def putResult(key: Get, value: QueryResult[T, R], ttl: Int)
+  def putResult(key: Get, value: RR, ttl: Int)
 }
 
-class NoOpCache[T <: HbaseTable[T, R], R] extends QueryResultCache[T, R] {
+class NoOpCache[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R,RR]] extends QueryResultCache[T, R, RR] {
 
-  override def getScanResult(key: Scan): Option[Seq[QueryResult[T, R]]] = None
+  override def getScanResult(key: Scan): Option[Seq[RR]] = None
 
-  override def putScanResult(key: Scan, value: Seq[QueryResult[T, R]], ttl: Int) {}
+  override def putScanResult(key: Scan, value: Seq[RR], ttl: Int) {}
 
-  override def getResult(key: Get): Option[QueryResult[T, R]] = None
+  override def getResult(key: Get): Option[RR] = None
 
 
-  override def putResult(key: Get, value: QueryResult[T, R], ttl: Int) {}
+  override def putResult(key: Get, value: RR, ttl: Int) {}
 }

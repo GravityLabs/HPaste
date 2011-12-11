@@ -36,7 +36,7 @@ import org.apache.hadoop.hbase.filter.FilterList.Operator
 
 
 
-class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
+class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,RR]) {
   val keys = Buffer[Array[Byte]]()
   val families = Buffer[Array[Byte]]()
   val columns = Buffer[(Array[Byte], Array[Byte])]()
@@ -159,7 +159,7 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
 
   def single(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true) = singleOption(tableName, ttl, skipCache, false).get
 
-  def singleOption(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, noneOnEmpty: Boolean = true): Option[QueryResult[T, R]] = {
+  def singleOption(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, noneOnEmpty: Boolean = true): Option[RR] = {
     require(keys.size == 1, "Calling single() with more than one key")
     require(keys.size >= 1, "Calling a Get operation with no keys specified")
     val get = new Get(keys.head)
@@ -187,7 +187,7 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
             if (noneOnEmpty && result.isEmpty) {
               None
             } else {
-              val qr = new QueryResult(result, table, tableName)
+              val qr = table.buildRow(result)
               if (!skipCache && !result.isEmpty) table.cache.putResult(get, qr, ttl)
               Some(qr)
             }
@@ -199,10 +199,10 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
 
   }
 
-  def execute(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true): Seq[QueryResult[T, R]] = {
-    if (keys.isEmpty) return Seq.empty[QueryResult[T, R]] // no keys..? nothing to see here... move along... move along.
+  def execute(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true): Seq[RR] = {
+    if (keys.isEmpty) return Seq.empty[RR] // no keys..? nothing to see here... move along... move along.
 
-    val results = Buffer[QueryResult[T, R]]() // buffer for storing all results retrieved
+    val results = Buffer[RR]() // buffer for storing all results retrieved
 
     // if we are utilizing cache, we'll need to be able to recall the `Get' later to use as the cache key
     val getsByKey = if (skipCache) mutable.Map.empty[String, Get] else mutable.Map[String, Get]()
@@ -215,7 +215,7 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
     val gets = buildGetsAndCheckCache(skipCache) {
       case (get: Get, key: Array[Byte]) => if (!skipCache) getsByKey.put(new String(key), get)
     } {
-      case (qropt: Option[QueryResult[T, R]], get: Get) => if (!skipCache) {
+      case (qropt: Option[RR], get: Get) => if (!skipCache) {
         qropt match {
           case Some(result) => results += result // got it! place it in our result buffer
           case None => cacheMisses += get // missed it! place the get in the buffer
@@ -233,7 +233,7 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
           htable.get(hbaseGets).foreach(res => {
             if (res != null && !res.isEmpty) {
               // ignore empty results
-              val qr = new QueryResult[T, R](res, table, tableName) // construct query result
+              val qr = table.buildRow(res) // construct query result
 
               // now is where we need to retrive the 'get' used for this result so that we can
               // pass this 'get' as the key for our local cache
@@ -247,11 +247,11 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
     results.toSeq // DONE!
   }
 
-  def executeMap(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true)(implicit c: ByteConverter[R]): Map[R, QueryResult[T, R]] = {
-    if (keys.isEmpty) return Map.empty[R, QueryResult[T, R]] // don't get all started with nothing to do
+  def executeMap(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true)(implicit c: ByteConverter[R]): Map[R, RR] = {
+    if (keys.isEmpty) return Map.empty[R, RR] // don't get all started with nothing to do
 
     // init our result map and give it a hint of the # of keys we have
-    val resultMap = mutable.Map[R, QueryResult[T, R]]()
+    val resultMap = mutable.Map[R, RR]()
     resultMap.sizeHint(keys.size) // perf optimization
 
     // if we are utilizing cache, we'll need to be able to recall the `Get' later to use as the cache key
@@ -265,7 +265,7 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
     val gets = buildGetsAndCheckCache(skipCache) {
       case (get: Get, key: Array[Byte]) => if (!skipCache) getsByKey.put(new String(key), get)
     } {
-      case (qropt: Option[QueryResult[T, R]], get: Get) => if (!skipCache) {
+      case (qropt: Option[RR], get: Get) => if (!skipCache) {
         qropt match {
           case Some(result) => resultMap.put(result.rowid, result) // got it! place it in our result map
           case None => cacheMisses += get // missed it! place the get in the buffer
@@ -283,7 +283,7 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
           htable.get(hbaseGets).foreach(res => {
             if (res != null && !res.isEmpty) {
               // ignore empty results
-              val qr = new QueryResult[T, R](res, table, tableName) // construct query result
+              val qr = table.buildRow(res) // construct query result
 
               // now is where we need to retrive the 'get' used for this result so that we can
               // pass this 'get' as the key for our local cache
@@ -297,7 +297,7 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
     resultMap // DONE!
   }
 
-  private def buildGetsAndCheckCache(skipCache: Boolean)(receiveGetAndKey: (Get, Array[Byte]) => Unit = (get, key) => {})(receiveCachedResult: (Option[QueryResult[T, R]], Get) => Unit = (qr, get) => {}): Seq[Get] = {
+  private def buildGetsAndCheckCache(skipCache: Boolean)(receiveGetAndKey: (Get, Array[Byte]) => Unit = (get, key) => {})(receiveCachedResult: (Option[RR], Get) => Unit = (qr, get) => {}): Seq[Get] = {
     if (keys.isEmpty) return Seq.empty[Get] // no keys..? nothing to see here... move along... move along.
 
     val gets = Buffer[Get]() // buffer for the raw `Get's
@@ -381,7 +381,7 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
     scan
   }
 
-  def scan(handler: (QueryResult[T, R]) => Unit, maxVersions:Int = 1, cacheBlocks:Boolean = false, cacheSize:Int = 100) {
+  def scan(handler: (RR) => Unit, maxVersions:Int = 1, cacheBlocks:Boolean = false, cacheSize:Int = 100) {
     table.withTable() {
       htable =>
         val scan = makeScanner(maxVersions,cacheBlocks,cacheSize)
@@ -389,7 +389,7 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
 
         try {
           for (result <- scanner) {
-            handler(new QueryResult[T, R](result, table, table.tableName))
+            handler(table.buildRow(result))
           }
         } finally {
           scanner.close()
@@ -397,14 +397,14 @@ class Query2[T <: HbaseTable[T,R],R](table:HbaseTable[T,R]) {
     }
   }
 
-  def scanToIterable[I](handler:(QueryResult[T,R]) => I, maxVersions:Int = 1, cacheBlocks:Boolean = false, cacheSize:Int = 100) = {
+  def scanToIterable[I](handler:(RR) => I, maxVersions:Int = 1, cacheBlocks:Boolean = false, cacheSize:Int = 100) = {
     val results2 = table.withTable() {
       htable => 
         val scan = makeScanner(maxVersions,cacheBlocks, cacheSize)
         val scanner = htable.getScanner(scan)
 
       for(result <- scanner; if(result != null)) yield {
-        handler(new QueryResult[T,R](result,table,table.tableName))
+        handler(table.buildRow(result))
       }
     }
     results2

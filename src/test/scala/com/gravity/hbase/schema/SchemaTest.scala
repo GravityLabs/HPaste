@@ -27,6 +27,8 @@ import org.junit._
 import org.joda.time.DateTime
 import java.io.{DataInputStream, DataOutputStream}
 import CustomTypes._
+import org.apache.hadoop.hbase.client.Result
+import com.gravity.hbase.schema.ExampleSchema.ExampleTable
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -64,6 +66,8 @@ object CustomTypes {
   implicit object KittenSeqConverter extends SeqConverter[Kitten]
 }
 
+class ExampleTableRow extends HRow[ExampleTable,String,ExampleTableRow]
+
 object ExampleSchema extends Schema {
 
   //There should only be one HBaseConfiguration object per process.  You'll probably want to manage that
@@ -72,7 +76,7 @@ object ExampleSchema extends Schema {
   implicit val conf = ClusterTest.htest.getConfiguration
 
   //A table definition, where the row keys are Strings
-  class ExampleTable extends HbaseTable[ExampleTable,String](tableName = "schema_example")
+  class ExampleTable extends HbaseTable[ExampleTable,String, ExampleTableRow](tableName = "schema_example",rowKeyClass=classOf[String],rowBuilder = new ExampleTableRow())
   {
     //Column family definition
     //Inside meta, assume a column called title whose value is a string

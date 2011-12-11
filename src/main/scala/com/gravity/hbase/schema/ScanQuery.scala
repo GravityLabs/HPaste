@@ -34,14 +34,14 @@ import org.joda.time.DateTime
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
-class ScanQuery[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
+class ScanQuery[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R,RR]](table: HbaseTable[T, R,RR]) {
   val scan = new Scan()
   scan.setCaching(100)
   scan.setMaxVersions(1)
 
   val filterBuffer = scala.collection.mutable.Buffer[Filter]()
 
-  def executeWithCaching(operator: FilterList.Operator = FilterList.Operator.MUST_PASS_ALL, ttl: Int = 30): Seq[QueryResult[T, R]] = {
+  def executeWithCaching(operator: FilterList.Operator = FilterList.Operator.MUST_PASS_ALL, ttl: Int = 30): Seq[RR] = {
     completeScanner(operator)
     val results = table.cache.getScanResult(scan) match {
       case Some(result) => {
@@ -50,13 +50,13 @@ class ScanQuery[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
       }
       case None => {
         println("cache miss against key " + scan.toString)
-        val results = scala.collection.mutable.Buffer[QueryResult[T, R]]()
+        val results = scala.collection.mutable.Buffer[RR]()
         table.withTable() {
           htable =>
             val scanner = htable.getScanner(scan)
             try {
               for (result <- scanner) {
-                results += new QueryResult[T, R](result, table, table.tableName)
+                results += table.buildRow(result)
               }
               table.cache.putScanResult(scan, results.toSeq, ttl)
               results
@@ -70,7 +70,7 @@ class ScanQuery[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     results
   }
 
-  def execute(handler: (QueryResult[T, R]) => Unit, operator: FilterList.Operator = FilterList.Operator.MUST_PASS_ALL) {
+  def execute(handler: (RR) => Unit, operator: FilterList.Operator = FilterList.Operator.MUST_PASS_ALL) {
     table.withTable() {
       htable =>
         completeScanner(operator)
@@ -78,7 +78,7 @@ class ScanQuery[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
 
         try {
           for (result <- scanner) {
-            handler(new QueryResult[T, R](result, table, table.tableName))
+            handler(table.buildRow(result))
           }
         } finally {
           scanner.close()
@@ -97,7 +97,7 @@ class ScanQuery[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     }
   }
 
-  def executeToSeq[I](handler: (QueryResult[T, R]) => I, operator: FilterList.Operator = FilterList.Operator.MUST_PASS_ALL): Seq[I] = {
+  def executeToSeq[I](handler: (RR) => I, operator: FilterList.Operator = FilterList.Operator.MUST_PASS_ALL): Seq[I] = {
     val results = Buffer[I]()
 
     table.withTable() {
@@ -107,7 +107,7 @@ class ScanQuery[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
 
         try {
           for (result <- scanner; if (result != null)) {
-            results += handler(new QueryResult[T, R](result, table, table.tableName))
+            results += handler(table.buildRow(result))
           }
         } finally {
           scanner.close()
@@ -156,103 +156,5 @@ class ScanQuery[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
 
   def withCaching(rowsToCache: Int) = {scan.setCaching(rowsToCache); this;}
 }
-
-
-
-
-
-/**
-* Class to be implemented by custom converters
-*/
-
-
-/**
-* Simple high performance conversions from complex types to bytes
-*/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/**
-* When a query comes back, there are a bucket of column families and columns to retrieve.  This class retrieves them.
-*/
-
-
-/**
-* A query for setting up a scanner across the whole table or key subsets.
-* There is a lot of room for expansion in this class -- caching parameters, scanner specs, key-only, etc.
-*/
-
-
-/**
-* An individual data modification operation (put, increment, or delete usually)
-* These operations are chained together by the client, and then executed in bulk.
-*/
-
-
-
-
-/**
-* An increment operation -- can increment multiple columns in a single go.
-*/
-
-
-/**
-* A Put operation.  Can work across multiple columns or entire column families treated as Maps.
-*/
-
-
-/**
-* A deletion operation.  If nothing is specified but a key, will delete the whole row.  If a family is specified, will just delete the values in
-* that family.
-*/
-
-
-/**
-* A query for retrieving values.  It works somewhat differently than the data modification operations, in that you do the following:
-* 1. Specify one or more keys
-* 2. Specify columns and families to scan in for ALL the specified keys
-*
-* In other words there's no concept of having multiple rows fetched with different columns for each row (that seems to be a rare use-case and
-* would make the API very complex).
-*/
-
-
-/**
-* Represents the specification of a Column Family
-*/
-
-
-/**
-* Represents the specification of a Column.
-*/
-
-
-
-
-/**
-* Represents a Table.  Expects an instance of HBaseConfiguration to be present.
-* A parameter-type T should be the actual table that is implementing this one (this is to allow syntactic sugar for easily specifying columns during
-* queries).
-* A parameter-type R should be the type of the key for the table.  
-*/
-
-
-
-
-
-
-
-
 
 

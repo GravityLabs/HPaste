@@ -273,16 +273,16 @@ abstract class HOutput {
   def init(job: Job)
 }
 
-case class Columns[T <: HbaseTable[T, _]](columns: ColumnExtractor[T, _, _, _, _]*)
+case class Columns[T <: HbaseTable[T, _,_]](columns: ColumnExtractor[T, _, _, _, _]*)
 
-case class Families[T <: HbaseTable[T, _]](families: FamilyExtractor[T, _, _, _, _]*)
+case class Families[T <: HbaseTable[T, _,_]](families: FamilyExtractor[T, _, _, _, _]*)
 
-case class Filters[T <: HbaseTable[T, _]](filters: Filter*)
+case class Filters[T <: HbaseTable[T, _,_]](filters: Filter*)
 
 /**
 * Initializes input from an HPaste Table
 */
-case class HTableInput[T <: HbaseTable[T, _]](table: T, families: Families[T] = Families[T](), columns: Columns[T] = Columns[T](), filters: Seq[Filter] = Seq(), scan: Scan = new Scan(), scanCache:Int=100) extends HInput {
+case class HTableInput[T <: HbaseTable[T, _,_]](table: T, families: Families[T] = Families[T](), columns: Columns[T] = Columns[T](), filters: Seq[Filter] = Seq(), scan: Scan = new Scan(), scanCache:Int=100) extends HInput {
 
 
   override def toString = "Input: From table: \"" + table.tableName + "\""
@@ -342,7 +342,7 @@ case class HPathInput(paths: Seq[String]) extends HInput {
 /**
 * Outputs to an HPaste Table
 */
-case class HTableOutput[T <: HbaseTable[T, _]](table: T) extends HOutput {
+case class HTableOutput[T <: HbaseTable[T, _, _]](table: T) extends HOutput {
 
   override def toString = "Output: Table: " + table.tableName
 
@@ -456,7 +456,7 @@ trait BinaryWritable {
   }
 }
 
-trait ToTableWritable[T <: HbaseTable[T,R],R] {
+trait ToTableWritable[T <: HbaseTable[T,R,_],R] {
   this : MRWritable[NullWritable,Writable] =>
 
   def write(operation: OpBase[T, R]) {
@@ -464,24 +464,24 @@ trait ToTableWritable[T <: HbaseTable[T,R],R] {
   }
 }
 
-abstract class FromTableMapper[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase](table: T)
+abstract class FromTableMapper[T <: HbaseTable[T, R, _], R, MOK, MOV, S <: SettingsBase](table: T)
         extends HMapper[ImmutableBytesWritable, Result, MOK, MOV, S] {
 
   def row = new QueryResult[T,R](context.getCurrentValue, table, table.tableName)
 }
 
-abstract class FromTableToTableMapper[T <: HbaseTable[T,R],R, TT <: HbaseTable[TT,RT],RT, S <: SettingsBase](fromTable:T, toTable:TT)
+abstract class FromTableToTableMapper[T <: HbaseTable[T,R,_],R, TT <: HbaseTable[TT,RT,_],RT, S <: SettingsBase](fromTable:T, toTable:TT)
   extends FromTableMapper[T,R,NullWritable,Writable,S](fromTable) with ToTableWritable[TT,RT]
 
 
-abstract class FromTableBinaryMapper[T <: HbaseTable[T, R], R, S <: SettingsBase](table: T)
+abstract class FromTableBinaryMapper[T <: HbaseTable[T, R,_], R, S <: SettingsBase](table: T)
         extends FromTableMapper[T,R, BytesWritable, BytesWritable, S](table) with BinaryWritable
 
 
-abstract class ToTableReducer[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase](table: T)
+abstract class ToTableReducer[T <: HbaseTable[T, R,_], R, MOK, MOV, S <: SettingsBase](table: T)
         extends HReducer[MOK, MOV, NullWritable, Writable, S] with ToTableWritable[T,R]
 
-abstract class ToTableBinaryReducer[T <: HbaseTable[T, R], R, S <: SettingsBase](table: T)
+abstract class ToTableBinaryReducer[T <: HbaseTable[T, R,_], R, S <: SettingsBase](table: T)
         extends HReducer[BytesWritable, BytesWritable, NullWritable, Writable, S] with ToTableWritable[T,R]
 
 abstract class BinaryMapper[S <: SettingsBase] extends HMapper[BytesWritable,BytesWritable,BytesWritable,BytesWritable,S] with BinaryWritable
@@ -711,7 +711,7 @@ abstract class HPartitioner[MOK, MOV]() extends Partitioner[MOK, MOV] {
 //  }
 //}
 
-class TableToBinaryMapContext[T <: HbaseTable[T, R], R, S <: SettingsBase](table: T, conf: Configuration, counter: (String, Long) => Unit, context: Mapper[ImmutableBytesWritable, Result, BytesWritable, BytesWritable]#Context)
+class TableToBinaryMapContext[T <: HbaseTable[T, R,_], R, S <: SettingsBase](table: T, conf: Configuration, counter: (String, Long) => Unit, context: Mapper[ImmutableBytesWritable, Result, BytesWritable, BytesWritable]#Context)
         extends HMapContext[ImmutableBytesWritable, Result, BytesWritable, BytesWritable, S](conf, counter, context) {
   def row = new QueryResult[T, R](context.getCurrentValue, table, table.tableName)
 }
@@ -739,7 +739,7 @@ class HReduceContext[MOK, MOV, ROK, ROV, S <: SettingsBase](conf: Configuration,
   def write(key: ROK, value: ROV) {context.write(key, value)}
 }
 
-class ToTableReduceContext[MOK, MOV, T <: HbaseTable[T, R], R, S <: SettingsBase](conf: Configuration, counter: (String, Long) => Unit, context: Reducer[MOK, MOV, NullWritable, Writable]#Context) extends HReduceContext[MOK, MOV, NullWritable, Writable, S](conf, counter, context) {
+class ToTableReduceContext[MOK, MOV, T <: HbaseTable[T, R, _], R, S <: SettingsBase](conf: Configuration, counter: (String, Long) => Unit, context: Reducer[MOK, MOV, NullWritable, Writable]#Context) extends HReduceContext[MOK, MOV, NullWritable, Writable, S](conf, counter, context) {
   def write(operation: OpBase[T, R]) {
     operation.getOperations.foreach {op => write(NullWritable.get(), op)}
   }

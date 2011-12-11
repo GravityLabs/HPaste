@@ -34,7 +34,7 @@ import org.joda.time.DateTime
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
-class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
+class Query[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R,RR]](table: HbaseTable[T, R, RR]) {
 
   val keys = Buffer[Array[Byte]]()
   val families = Buffer[Array[Byte]]()
@@ -53,19 +53,19 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     this
   }
 
-  def withColumnFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V])(implicit c: ByteConverter[F]): Query[T, R] = {
+  def withColumnFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V])(implicit c: ByteConverter[F]): Query[T, R, RR] = {
     val fam = family(table.pops)
     families += c.toBytes(fam.familyName)
     this
   }
 
-  def withColumn[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K)(implicit c: ByteConverter[F], d: ByteConverter[K]): Query[T, R] = {
+  def withColumn[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K)(implicit c: ByteConverter[F], d: ByteConverter[K]): Query[T, R, RR] = {
     val fam = family(table.pops)
     columns += (fam.familyBytes -> d.toBytes(columnName))
     this
   }
 
-  def withColumn[F, K, V](column: (T) => Column[T, R, F, K, V])(implicit c: ByteConverter[K]): Query[T, R] = {
+  def withColumn[F, K, V](column: (T) => Column[T, R, F, K, V])(implicit c: ByteConverter[K]): Query[T, R, RR] = {
     val col = column(table.pops)
     columns += (col.familyBytes -> col.columnBytes)
     this
@@ -73,7 +73,8 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
 
   def single(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true) = singleOption(tableName, ttl, skipCache, false).get
 
-  def singleOption(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, noneOnEmpty: Boolean = true): Option[QueryResult[T, R]] = {
+
+  def singleOption(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, noneOnEmpty: Boolean = true): Option[RR] = {
     require(keys.size == 1, "Calling single() with more than one key")
     val get = new Get(keys.head)
     get.setMaxVersions(1)
@@ -95,7 +96,7 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
             if (noneOnEmpty && result.isEmpty) {
               None
             } else {
-              val qr = new QueryResult(result, table, tableName)
+              val qr = table.buildRow(result)
               if (!skipCache && !result.isEmpty) table.cache.putResult(get, qr, ttl)
               Some(qr)
             }
@@ -107,10 +108,10 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
 
   }
 
-  def execute(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true): Seq[QueryResult[T, R]] = {
-    if (keys.isEmpty) return Seq.empty[QueryResult[T, R]] // no keys..? nothing to see here... move along... move along.
+  def execute(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true): Seq[RR] = {
+    if (keys.isEmpty) return Seq.empty[RR] // no keys..? nothing to see here... move along... move along.
 
-    val results = Buffer[QueryResult[T, R]]() // buffer for storing all results retrieved
+    val results = Buffer[RR]() // buffer for storing all results retrieved
 
     // if we are utilizing cache, we'll need to be able to recall the `Get' later to use as the cache key
     val getsByKey = if (skipCache) mutable.Map.empty[String, Get] else mutable.Map[String, Get]()
@@ -123,7 +124,7 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     val gets = buildGetsAndCheckCache(skipCache) {
       case (get: Get, key: Array[Byte]) => if (!skipCache) getsByKey.put(new String(key), get)
     } {
-      case (qropt: Option[QueryResult[T, R]], get: Get) => if (!skipCache) {
+      case (qropt: Option[RR], get: Get) => if (!skipCache) {
         qropt match {
           case Some(result) => results += result // got it! place it in our result buffer
           case None => cacheMisses += get // missed it! place the get in the buffer
@@ -141,7 +142,7 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
           htable.get(hbaseGets).foreach(res => {
             if (res != null && !res.isEmpty) {
               // ignore empty results
-              val qr = new QueryResult[T, R](res, table, tableName) // construct query result
+              val qr = table.buildRow(res) // construct query result
 
               // now is where we need to retrive the 'get' used for this result so that we can
               // pass this 'get' as the key for our local cache
@@ -155,11 +156,11 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     results.toSeq // DONE!
   }
 
-  def executeMap(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true)(implicit c: ByteConverter[R]): Map[R, QueryResult[T, R]] = {
-    if (keys.isEmpty) return Map.empty[R, QueryResult[T, R]] // don't get all started with nothing to do
+  def executeMap(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true)(implicit c: ByteConverter[R]): Map[R, RR] = {
+    if (keys.isEmpty) return Map.empty[R, RR] // don't get all started with nothing to do
 
     // init our result map and give it a hint of the # of keys we have
-    val resultMap = mutable.Map[R, QueryResult[T, R]]()
+    val resultMap = mutable.Map[R, RR]()
     resultMap.sizeHint(keys.size) // perf optimization
 
     // if we are utilizing cache, we'll need to be able to recall the `Get' later to use as the cache key
@@ -173,7 +174,7 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     val gets = buildGetsAndCheckCache(skipCache) {
       case (get: Get, key: Array[Byte]) => if (!skipCache) getsByKey.put(new String(key), get)
     } {
-      case (qropt: Option[QueryResult[T, R]], get: Get) => if (!skipCache) {
+      case (qropt: Option[RR], get: Get) => if (!skipCache) {
         qropt match {
           case Some(result) => resultMap.put(result.rowid, result) // got it! place it in our result map
           case None => cacheMisses += get // missed it! place the get in the buffer
@@ -191,7 +192,7 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
           htable.get(hbaseGets).foreach(res => {
             if (res != null && !res.isEmpty) {
               // ignore empty results
-              val qr = new QueryResult[T, R](res, table, tableName) // construct query result
+              val qr = table.buildRow(res) // construct query result
 
               // now is where we need to retrive the 'get' used for this result so that we can
               // pass this 'get' as the key for our local cache
@@ -205,7 +206,7 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
     resultMap // DONE!
   }
 
-  private def buildGetsAndCheckCache(skipCache: Boolean)(receiveGetAndKey: (Get, Array[Byte]) => Unit = (get, key) => {})(receiveCachedResult: (Option[QueryResult[T, R]], Get) => Unit = (qr, get) => {}): Seq[Get] = {
+  private def buildGetsAndCheckCache(skipCache: Boolean)(receiveGetAndKey: (Get, Array[Byte]) => Unit = (get, key) => {})(receiveCachedResult: (Option[RR], Get) => Unit = (qr, get) => {}): Seq[Get] = {
     if (keys.isEmpty) return Seq.empty[Get] // no keys..? nothing to see here... move along... move along.
 
     val gets = Buffer[Get]() // buffer for the raw `Get's
@@ -249,103 +250,3 @@ class Query[T <: HbaseTable[T, R], R](table: HbaseTable[T, R]) {
   }
 
 }
-
-
-
-
-
-/**
-* Class to be implemented by custom converters
-*/
-
-
-/**
-* Simple high performance conversions from complex types to bytes
-*/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/**
-* When a query comes back, there are a bucket of column families and columns to retrieve.  This class retrieves them.
-*/
-
-
-/**
-* A query for setting up a scanner across the whole table or key subsets.
-* There is a lot of room for expansion in this class -- caching parameters, scanner specs, key-only, etc.
-*/
-
-
-/**
-* An individual data modification operation (put, increment, or delete usually)
-* These operations are chained together by the client, and then executed in bulk.
-*/
-
-
-
-
-/**
-* An increment operation -- can increment multiple columns in a single go.
-*/
-
-
-/**
-* A Put operation.  Can work across multiple columns or entire column families treated as Maps.
-*/
-
-
-/**
-* A deletion operation.  If nothing is specified but a key, will delete the whole row.  If a family is specified, will just delete the values in
-* that family.
-*/
-
-
-/**
-* A query for retrieving values.  It works somewhat differently than the data modification operations, in that you do the following:
-* 1. Specify one or more keys
-* 2. Specify columns and families to scan in for ALL the specified keys
-*
-* In other words there's no concept of having multiple rows fetched with different columns for each row (that seems to be a rare use-case and
-* would make the API very complex).
-*/
-
-
-/**
-* Represents the specification of a Column Family
-*/
-
-
-/**
-* Represents the specification of a Column.
-*/
-
-
-
-
-/**
-* Represents a Table.  Expects an instance of HBaseConfiguration to be present.
-* A parameter-type T should be the actual table that is implementing this one (this is to allow syntactic sugar for easily specifying columns during
-* queries).
-* A parameter-type R should be the type of the key for the table.  
-*/
-
-
-
-
-
-
-
-
-
-

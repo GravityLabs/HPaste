@@ -57,7 +57,8 @@ trait ContextCache {
   * @param table the underlying [[com.gravity.hbase.schema.HbaseTable]]
   * @param tableName the name of the actual table
   */
-class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTable[T, R], val tableName: String) extends Serializable with ContextCache {
+class QueryResult[T <: HbaseTable[T, R, _], R](var result: Result, var table: HbaseTable[T, R, _], var tableName: String) extends Serializable with ContextCache {
+
 
   /** This is a convenience method to allow consumers to check
     * if a column has a value present in the result without
@@ -233,7 +234,7 @@ class QueryResult[T <: HbaseTable[T, R], R](val result: Result, table: HbaseTabl
   * An individual data modification operation (put, increment, or delete usually)
   * These operations are chained together by the client, and then executed in bulk.
   */
-class OpBase[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) {
+class OpBase[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) {
 
   previous += this
 
@@ -344,7 +345,7 @@ case class OpsResult(numDeletes: Int, numPuts: Int, numIncrements: Int)
 /**
   * An increment operation -- can increment multiple columns in a single go.
   */
-class IncrementOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) extends OpBase[T, R](table, key, previous) {
+class IncrementOp[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) extends OpBase[T, R](table, key, previous) {
   val increment = new Increment(key)
   increment.setWriteToWAL(false)
 
@@ -366,7 +367,7 @@ class IncrementOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[
 /**
   * A Put operation.  Can work across multiple columns or entire column families treated as Maps.
   */
-class PutOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]](), writeToWAL: Boolean = true) extends OpBase[T, R](table, key, previous) {
+class PutOp[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]](), writeToWAL: Boolean = true) extends OpBase[T, R](table, key, previous) {
   val put = new Put(key)
   put.setWriteToWAL(writeToWAL)
 
@@ -389,7 +390,7 @@ class PutOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte],
   * A deletion operation.  If nothing is specified but a key, will delete the whole row.  If a family is specified, will just delete the values in
   * that family.
   */
-class DeleteOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) extends OpBase[T, R](table, key, previous) {
+class DeleteOp[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) extends OpBase[T, R](table, key, previous) {
   val delete = new Delete(key)
 
   def family[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V]) = {
@@ -420,14 +421,14 @@ class DeleteOp[T <: HbaseTable[T, R], R](table: HbaseTable[T, R], key: Array[Byt
 /**
   * Represents the specification of a Column Family
   */
-class ColumnFamily[T <: HbaseTable[T, R], R, F, K, V](val table: HbaseTable[T, R], val familyName: F, val compressed: Boolean = false, val versions: Int = 1)(implicit c: ByteConverter[F]) {
+class ColumnFamily[T <: HbaseTable[T, R, _], R, F, K, V](val table: HbaseTable[T, R, _], val familyName: F, val compressed: Boolean = false, val versions: Int = 1)(implicit c: ByteConverter[F]) {
   val familyBytes = c.toBytes(familyName)
 }
 
 /**
   * Represents the specification of a Column.
   */
-class Column[T <: HbaseTable[T, R], R, F, K, V](table: HbaseTable[T, R], columnFamily: F, columnName: K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) {
+class Column[T <: HbaseTable[T, R, _], R, F, K, V](table: HbaseTable[T, R, _], columnFamily: F, columnName: K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) {
   val columnBytes = kc.toBytes(columnName)
   val familyBytes = fc.toBytes(columnFamily)
 
@@ -455,12 +456,16 @@ class Column[T <: HbaseTable[T, R], R, F, K, V](table: HbaseTable[T, R], columnF
 }
 
 trait Schema {
-  val tables = scala.collection.mutable.Set[HbaseTable[_, _]]()
+  val tables = scala.collection.mutable.Set[HbaseTable[_, _, _]]()
 
-  def table[T <: HbaseTable[T, _], _](table: T) = {
+  def table[T <: HbaseTable[T, _, _]](table: T) = {
     tables += table
     table
   }
+
+}
+
+abstract class HRow[T<:HbaseTable[T,R,RR],R, RR <: HRow[T,R,RR]] extends QueryResult[T,R](null, null, null) {
 
 }
 
@@ -470,9 +475,17 @@ trait Schema {
   * queries).
   * A parameter-type R should be the type of the key for the table.
   */
-class HbaseTable[T <: HbaseTable[T, R], R](val tableName: String, var cache: QueryResultCache[T, R] = new NoOpCache[T, R]())(implicit conf: Configuration) {
+class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,R,RR]](val tableName: String, var cache: QueryResultCache[T, R,RR] = new NoOpCache[T, R,RR](), rowKeyClass:Class[R], rowBuilder :  => RR)(implicit conf: Configuration) {
 
   def pops = this.asInstanceOf[T]
+
+  def buildRow(result:Result) : RR = {
+    val newrow = rowBuilder
+    newrow.result = result
+    newrow.table = pops
+    newrow.tableName = tableName
+    newrow
+  }
 
   val tablePool = new HTablePool(conf, 50)
 

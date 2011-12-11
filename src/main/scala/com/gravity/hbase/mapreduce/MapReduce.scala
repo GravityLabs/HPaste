@@ -115,7 +115,7 @@ class FuncReducer[IK, IV, OK, OV, S <: SettingsBase] extends Reducer[IK, IV, OK,
   }
 }
 
-class FuncTableMapper[T <: HbaseTable[T, R], R, S <: SettingsBase] extends TableMapper[NullWritable, Writable] with OurMapper[ImmutableBytesWritable, Result, NullWritable, Writable, S] {
+class FuncTableMapper[T <: HbaseTable[T, R,_], R, S <: SettingsBase] extends TableMapper[NullWritable, Writable] with OurMapper[ImmutableBytesWritable, Result, NullWritable, Writable, S] {
 
 
   var jobBase: TableAnnotationJobBase[T, R, S] = _
@@ -135,7 +135,7 @@ class FuncTableMapper[T <: HbaseTable[T, R], R, S <: SettingsBase] extends Table
   }
 }
 
-class FuncTableExternMapper[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase] extends TableMapper[MOK, MOV] with OurMapper[ImmutableBytesWritable, Result, MOK, MOV, S] {
+class FuncTableExternMapper[T <: HbaseTable[T, R,_], R, MOK, MOV, S <: SettingsBase] extends TableMapper[MOK, MOV] with OurMapper[ImmutableBytesWritable, Result, MOK, MOV, S] {
 
 
   var jobBase: TableAnnotationMRJobBase[T, R, _, _, MOK, MOV, S] = _
@@ -155,7 +155,7 @@ class FuncTableExternMapper[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBas
   }
 }
 
-class FuncTableExternReducer[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase] extends TableReducer[MOK, MOV, NullWritable] with OurReducer[MOK, MOV, NullWritable, Writable, S] {
+class FuncTableExternReducer[T <: HbaseTable[T, R,_], R, MOK, MOV, S <: SettingsBase] extends TableReducer[MOK, MOV, NullWritable] with OurReducer[MOK, MOV, NullWritable, Writable, S] {
   var jobBase: TableAnnotationMRJobBase[_, _, T, R, MOK, MOV, S] = _
 
   override def setup(context: Reducer[MOK, MOV, NullWritable, Writable]#Context) {
@@ -177,7 +177,7 @@ class FuncTableExternReducer[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBa
   }
 }
 
-class PathTableExternReducer[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase] extends TableReducer[MOK, MOV, NullWritable] with OurReducer[MOK, MOV, NullWritable, Writable, S] {
+class PathTableExternReducer[T <: HbaseTable[T, R,_], R, MOK, MOV, S <: SettingsBase] extends TableReducer[MOK, MOV, NullWritable] with OurReducer[MOK, MOV, NullWritable, Writable, S] {
   var jobBase: PathToTableMRJobBase[T, R, MOK, MOV, S] = _
 
   override def setup(context: Reducer[MOK, MOV, NullWritable, Writable]#Context) {
@@ -223,7 +223,7 @@ class PathMapper[MOK, MOV, S <: SettingsBase] extends Mapper[LongWritable, Text,
 }
 
 
-class TableToPathMapper[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase] extends TableMapper[MOK, MOV] with OurMapper[ImmutableBytesWritable, Result, MOK, MOV, S] {
+class TableToPathMapper[T <: HbaseTable[T, R,_], R, MOK, MOV, S <: SettingsBase] extends TableMapper[MOK, MOV] with OurMapper[ImmutableBytesWritable, Result, MOK, MOV, S] {
 
 
   var jobBase: TableToPathMRJobBase[T, R, MOK, MOV, S] = _
@@ -265,7 +265,7 @@ class TableToPathReducer[MOK, MOV, S <: SettingsBase] extends Reducer[MOK, MOV, 
   }
 }
 
-abstract class TableToPathMRJobBase[T <: HbaseTable[T, R], R, MOK: Manifest, MOV: Manifest, S <: SettingsBase]
+abstract class TableToPathMRJobBase[T <: HbaseTable[T, R,_], R, MOK: Manifest, MOV: Manifest, S <: SettingsBase]
 (
         name: String,
         val mapTable: T,
@@ -357,7 +357,7 @@ abstract class PathToPathMRJobBase[MOK: Manifest, MOV: Manifest, S <: SettingsBa
   }
 }
 
-abstract class PathToTableMRJobBase[T <: HbaseTable[T, R], R, MOK: Manifest, MOV: Manifest, S <: SettingsBase]
+abstract class PathToTableMRJobBase[T <: HbaseTable[T, R,_], R, MOK: Manifest, MOV: Manifest, S <: SettingsBase]
 (
         name: String,
         val reduceTable: T,
@@ -385,7 +385,7 @@ abstract class PathToTableMRJobBase[T <: HbaseTable[T, R], R, MOK: Manifest, MOV
 
 }
 
-abstract class TableAnnotationMRJobBase[T <: HbaseTable[T, R], R, TT <: HbaseTable[TT, RR], RR, MOK: Manifest, MOV: Manifest, S <: SettingsBase]
+abstract class TableAnnotationMRJobBase[T <: HbaseTable[T, R,_], R, TT <: HbaseTable[TT, RR, _], RR, MOK: Manifest, MOV: Manifest, S <: SettingsBase]
 (name: String, val mapTable: T, val reduceTable: TT,
  val mapper: (QueryResult[T, R], (MOK, MOV) => Unit, HpasteContext[S]) => Unit,
  val reducer: (MOK, Iterable[MOV], (OpBase[TT, RR]) => Unit, HpasteContext[S]) => Unit,
@@ -416,7 +416,7 @@ abstract class TableAnnotationMRJobBase[T <: HbaseTable[T, R], R, TT <: HbaseTab
 }
 
 
-abstract class TableAnnotationJobBase[T <: HbaseTable[T, R], R, S <: SettingsBase]
+abstract class TableAnnotationJobBase[T <: HbaseTable[T, R,_], R, S <: SettingsBase]
 (name: String, val mapTable: T,
  val mapper: (QueryResult[T, R], (Writable) => Unit, HpasteContext[S]) => Unit,
  conf: Configuration
@@ -626,7 +626,7 @@ trait MapperJob[M <: StandardMapper[MK, MV], MK, MV] extends JobTrait {
 
 }
 
-trait TableReducerJob[R <: TableWritingReducer[TF, TFK, MK, MV], TF <: HbaseTable[TF, TFK], TFK, MK, MV] extends ToTable[TF] {
+trait TableReducerJob[R <: TableWritingReducer[TF, TFK, MK, MV], TF <: HbaseTable[TF, TFK, _], TFK, MK, MV] extends ToTable[TF] {
   val reducer: Class[R]
 
   override def configure(conf: Configuration) {
@@ -642,7 +642,7 @@ trait TableReducerJob[R <: TableWritingReducer[TF, TFK, MK, MV], TF <: HbaseTabl
 
 }
 
-trait TableMapperJob[M <: TableReadingMapper[TF, TFK, MK, MV], TF <: HbaseTable[TF, TFK], TFK, MK, MV] extends FromTable[TF] {
+trait TableMapperJob[M <: TableReadingMapper[TF, TFK, MK, MV], TF <: HbaseTable[TF, TFK, _], TFK, MK, MV] extends FromTable[TF] {
   val mapper: Class[M]
   val mapperOutputKey: Class[MK]
   val mapperOutputValue: Class[MV]
@@ -716,9 +716,9 @@ trait JobTrait {
 /**
  * Specifies the Table from which you'll be mapping.
  */
-trait FromTable[T <: HbaseTable[T, _]] extends JobTrait with NoSpeculativeExecution {
+trait FromTable[T <: HbaseTable[T, _, _]] extends JobTrait with NoSpeculativeExecution {
 
-  val fromTable: HbaseTable[T, _]
+  val fromTable: HbaseTable[T, _, _]
 
   val families = Buffer[ColumnFamily[T, _, _, _, _]]()
   val columns = Buffer[Column[T, _, _, _, _]]()
@@ -836,8 +836,8 @@ trait NoSpeculativeExecution extends JobTrait {
 /**
 * Specifies the Table against which you'll be outputting your operation.
 */
-trait ToTable[T <: HbaseTable[T, _]] extends JobTrait with NoSpeculativeExecution {
-  val toTable: HbaseTable[T, _]
+trait ToTable[T <: HbaseTable[T, _, _]] extends JobTrait with NoSpeculativeExecution {
+  val toTable: HbaseTable[T, _, _]
 
   override def configure(conf: Configuration) {
     println("Configuring ToTable")
@@ -964,7 +964,7 @@ trait BigMemoryJob extends JobTrait {
 
 }
 
-trait TableAnnotationMultithreadedMapperJob[M <: TableAnnotationMapper[T, _], T <: HbaseTable[T, _], TT <: HbaseTable[TT, _]] extends JobTrait with FromTable[T] with ToTable[TT] with MapperOnly {
+trait TableAnnotationMultithreadedMapperJob[M <: TableAnnotationMapper[T, _], T <: HbaseTable[T, _, _], TT <: HbaseTable[TT, _, _]] extends JobTrait with FromTable[T] with ToTable[TT] with MapperOnly {
   val mapper: Class[M]
 
   override def configure(conf: Configuration) {
@@ -981,14 +981,14 @@ trait TableAnnotationMultithreadedMapperJob[M <: TableAnnotationMapper[T, _], T 
   }
 }
 
-class TableAnnotationMapReduceJob[M <: TableReadingMapper[TF, TFK, BytesWritable, BytesWritable], R <: TableWritingReducer[TT, TTK, BytesWritable, BytesWritable], TF <: HbaseTable[TF, TFK], TFK, TT <: HbaseTable[TT, TTK], TTK](name: String, conf: Configuration, val fromTable: TF, val toTable: TT, val mapper: Class[M], val reducer: Class[R]) extends JobBase(name)(conf) with TableMapperJob[M, TF, TFK, BytesWritable, BytesWritable] with TableReducerJob[R, TT, TTK, BytesWritable, BytesWritable] {
+class TableAnnotationMapReduceJob[M <: TableReadingMapper[TF, TFK, BytesWritable, BytesWritable], R <: TableWritingReducer[TT, TTK, BytesWritable, BytesWritable], TF <: HbaseTable[TF, TFK,_], TFK, TT <: HbaseTable[TT, TTK,_], TTK](name: String, conf: Configuration, val fromTable: TF, val toTable: TT, val mapper: Class[M], val reducer: Class[R]) extends JobBase(name)(conf) with TableMapperJob[M, TF, TFK, BytesWritable, BytesWritable] with TableReducerJob[R, TT, TTK, BytesWritable, BytesWritable] {
 
   val mapperOutputKey = classOf[BytesWritable]
   val mapperOutputValue = classOf[BytesWritable]
 
 }
 
-trait TableAnnotationMapperJob[M <: TableAnnotationMapper[T, _], T <: HbaseTable[T, _], TT <: HbaseTable[TT, _]] extends JobTrait with FromTable[T] with ToTable[TT] with MapperOnly {
+trait TableAnnotationMapperJob[M <: TableAnnotationMapper[T, _], T <: HbaseTable[T, _, _], TT <: HbaseTable[TT, _, _]] extends JobTrait with FromTable[T] with ToTable[TT] with MapperOnly {
   val mapper: Class[M]
 
   override def configure(conf: Configuration) {
@@ -1013,7 +1013,7 @@ abstract class TextFileWritingReducer[MK, MV](name: String = "Text File Reducer"
   }
 }
 
-abstract class TableWritingReducer[TF <: HbaseTable[TF, TFK], TFK, MK, MV](name: String, table: TF)(implicit conf: Configuration)
+abstract class TableWritingReducer[TF <: HbaseTable[TF, TFK, _], TFK, MK, MV](name: String, table: TF)(implicit conf: Configuration)
         extends Reducer[MK, MV, NullWritable, Writable] {
 
   def item(key: MK, values: java.lang.Iterable[MV], counter: (String, String) => Unit, writer: (Writable) => Unit)
@@ -1048,7 +1048,7 @@ abstract class StandardMapper[MK, MV] extends Mapper[LongWritable, Text, MK, MV]
 /**
  * Reads from a specified Table and writes to MK and MV
  */
-abstract class TableReadingMapper[TF <: HbaseTable[TF, TFK], TFK, MK, MV](val table: TF) extends TableMapper[MK, MV] {
+abstract class TableReadingMapper[TF <: HbaseTable[TF, TFK,_], TFK, MK, MV](val table: TF) extends TableMapper[MK, MV] {
 
   def row(value: QueryResult[TF, TFK], counter: (String, Long) => Unit, writer: (MK, MV) => Unit)
 
@@ -1061,7 +1061,7 @@ abstract class TableReadingMapper[TF <: HbaseTable[TF, TFK], TFK, MK, MV](val ta
   }
 }
 
-abstract class TableWritingMapper[TF <: HbaseTable[TF, TFK], TFK](val name: String, val table: TF)(implicit conf: Configuration) extends Mapper[LongWritable, Text, NullWritable, Writable] {
+abstract class TableWritingMapper[TF <: HbaseTable[TF, TFK,_], TFK](val name: String, val table: TF)(implicit conf: Configuration) extends Mapper[LongWritable, Text, NullWritable, Writable] {
   override def map(key: LongWritable, value: Text, context: Mapper[LongWritable, Text, NullWritable, Writable]#Context) {
     def counter(key: String) {context.getCounter(name, key).increment(1l)}
     item(value, counter _).foreach(row => context.write(NullWritable.get(), row))
@@ -1074,7 +1074,7 @@ abstract class TableWritingMapper[TF <: HbaseTable[TF, TFK], TFK](val name: Stri
 /**
  * Reads from a specified Table and writes to that Table or another Table
  */
-abstract class TableAnnotationMapper[TF <: HbaseTable[TF, TFK], TFK](val table: TF) extends TableMapper[NullWritable, Writable] {
+abstract class TableAnnotationMapper[TF <: HbaseTable[TF, TFK, _], TFK](val table: TF) extends TableMapper[NullWritable, Writable] {
   def row(value: QueryResult[TF, TFK], counter: (String, Long) => Unit, writer: (Writable) => Unit)
 
   var context: Mapper[ImmutableBytesWritable, Result, NullWritable, Writable]#Context = _
