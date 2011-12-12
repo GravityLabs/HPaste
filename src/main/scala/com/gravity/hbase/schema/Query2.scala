@@ -374,7 +374,7 @@ class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,
     for(family <- families) scan.addFamily(family)
     for(column <- columns) scan.addColumn(column._1, column._2)
 
-    if(currentFilter.getFilters.size > 0) {
+    if(currentFilter != null && currentFilter.getFilters.size > 0) {
       scan.setFilter(currentFilter)
     }
 
