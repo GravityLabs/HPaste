@@ -115,13 +115,13 @@ class FuncReducer[IK, IV, OK, OV, S <: SettingsBase] extends Reducer[IK, IV, OK,
   }
 }
 
-class FuncTableMapper[T <: HbaseTable[T, R,_], R, S <: SettingsBase] extends TableMapper[NullWritable, Writable] with OurMapper[ImmutableBytesWritable, Result, NullWritable, Writable, S] {
+class FuncTableMapper[T <: HbaseTable[T, R,RR], R,RR<:HRow[T,R,RR], S <: SettingsBase] extends TableMapper[NullWritable, Writable] with OurMapper[ImmutableBytesWritable, Result, NullWritable, Writable, S] {
 
 
-  var jobBase: TableAnnotationJobBase[T, R, S] = _
+  var jobBase: TableAnnotationJobBase[T, R,RR, S] = _
 
   override def setup(context: Mapper[ImmutableBytesWritable, Result, NullWritable, Writable]#Context) {
-    jobBase = Class.forName(context.getConfiguration.get("mapperholder")).newInstance().asInstanceOf[TableAnnotationJobBase[T, R, S]]
+    jobBase = Class.forName(context.getConfiguration.get("mapperholder")).newInstance().asInstanceOf[TableAnnotationJobBase[T, R,RR, S]]
     jobBase.fromSettings(context.getConfiguration)
 
     setupOurs(context)
@@ -130,7 +130,7 @@ class FuncTableMapper[T <: HbaseTable[T, R,_], R, S <: SettingsBase] extends Tab
   override def map(key: ImmutableBytesWritable, value: Result, context: Mapper[ImmutableBytesWritable, Result, NullWritable, Writable]#Context) {
     def write(operation: Writable) {context.write(NullWritable.get(), operation)}
 
-    jobBase.mapper(new QueryResult[T, R](value, jobBase.mapTable, jobBase.mapTable.tableName), write, hcontext)
+    jobBase.mapper(jobBase.fromTable.buildRow(context.getCurrentValue), write, hcontext)
     //    mapper(key,value,write,counter)
   }
 }
@@ -416,9 +416,9 @@ abstract class TableAnnotationMRJobBase[T <: HbaseTable[T, R,RR], R,RR <: HRow[T
 }
 
 
-abstract class TableAnnotationJobBase[T <: HbaseTable[T, R,_], R, S <: SettingsBase]
+abstract class TableAnnotationJobBase[T <: HbaseTable[T, R,RR], R,RR<:HRow[T,R,RR], S <: SettingsBase]
 (name: String, val mapTable: T,
- val mapper: (QueryResult[T, R], (Writable) => Unit, HpasteContext[S]) => Unit,
+ val mapper: (RR, (Writable) => Unit, HpasteContext[S]) => Unit,
  conf: Configuration
         ) extends SettingsJobBase[S](name)(conf) with FromTable[T] with ToTable[T] with JobSettings {
 
@@ -439,9 +439,9 @@ abstract class TableAnnotationJobBase[T <: HbaseTable[T, R,_], R, S <: SettingsB
       MultithreadedMapper.setNumberOfThreads(job, mapperThreads)
       job.setMapperClass(classOf[MultithreadedMapper[_, _, _, _]])
       job.setMapperClass(classOf[MultithreadedMapper[_,_,_,_]])
-      MultithreadedMapper.setMapperClass(job,classOf[FuncTableMapper[T,R,S]])
+      MultithreadedMapper.setMapperClass(job,classOf[FuncTableMapper[T,R,RR,S]])
     } else {
-      job.setMapperClass(classOf[FuncTableMapper[T,R,S]])
+      job.setMapperClass(classOf[FuncTableMapper[T,R,RR,S]])
     }
     job.setMapOutputKeyClass(classOf[NullWritable])
     job.setMapOutputValueClass(classOf[Writable])

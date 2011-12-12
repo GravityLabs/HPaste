@@ -24,7 +24,7 @@ import org.apache.hadoop.conf.Configuration
 import java.io._
 import org.apache.hadoop.io.Writable
 import scala.collection._
-import mutable.{SynchronizedMap, HashMap, Buffer}
+import mutable.{ListBuffer, SynchronizedMap, HashMap, Buffer}
 import org.joda.time.DateTime
 
 /*             )\._.,--....,'``.
@@ -57,7 +57,10 @@ trait ContextCache {
   * @param table the underlying [[com.gravity.hbase.schema.HbaseTable]]
   * @param tableName the name of the actual table
   */
-class QueryResult[T <: HbaseTable[T, R, _], R](var result: Result, var table: HbaseTable[T, R, _], var tableName: String) extends Serializable with ContextCache {
+class QueryResult[T <: HbaseTable[T, R, _], R](val result: Result, val table: HbaseTable[T, R, _], val tableName: String) extends Serializable with ContextCache {
+
+
+
 
 
   /** This is a convenience method to allow consumers to check
@@ -465,8 +468,7 @@ trait Schema {
 
 }
 
-abstract class HRow[T<:HbaseTable[T,R,RR],R, RR <: HRow[T,R,RR]] extends QueryResult[T,R](null, null, null) {
-
+abstract class HRow[T<:HbaseTable[T,R,RR],R, RR <: HRow[T,R,RR]](result:Result, table:T) extends QueryResult[T,R](result,table,table.tableName) {
 }
 
 /**
@@ -475,17 +477,11 @@ abstract class HRow[T<:HbaseTable[T,R,RR],R, RR <: HRow[T,R,RR]] extends QueryRe
   * queries).
   * A parameter-type R should be the type of the key for the table.
   */
-class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,R,RR]](val tableName: String, var cache: QueryResultCache[T, R,RR] = new NoOpCache[T, R,RR](), rowKeyClass:Class[R], rowBuilder :  => RR)(implicit conf: Configuration) {
+class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,R,RR]](val tableName: String, var cache: QueryResultCache[T, R,RR] = new NoOpCache[T, R,RR](), rowKeyClass:Class[R], rowBuilder : (Result,T) => RR)(implicit conf: Configuration) {
 
   def pops = this.asInstanceOf[T]
 
-  def buildRow(result:Result) : RR = {
-    val newrow = rowBuilder
-    newrow.result = result
-    newrow.table = pops
-    newrow.tableName = tableName
-    newrow
-  }
+  def buildRow(result:Result) : RR = { rowBuilder(result,pops) }
 
   val tablePool = new HTablePool(conf, 50)
 

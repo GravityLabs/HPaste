@@ -66,7 +66,7 @@ object CustomTypes {
   implicit object KittenSeqConverter extends SeqConverter[Kitten]
 }
 
-class ExampleTableRow extends HRow[ExampleTable,String,ExampleTableRow]
+class ExampleTableRow(result:Result, table:ExampleTable) extends HRow[ExampleTable,String,ExampleTableRow](result,table)
 
 object ExampleSchema extends Schema {
 
@@ -76,7 +76,7 @@ object ExampleSchema extends Schema {
   implicit val conf = ClusterTest.htest.getConfiguration
 
   //A table definition, where the row keys are Strings
-  class ExampleTable extends HbaseTable[ExampleTable,String, ExampleTableRow](tableName = "schema_example",rowKeyClass=classOf[String],rowBuilder = new ExampleTableRow())
+  class ExampleTable extends HbaseTable[ExampleTable,String, ExampleTableRow](tableName = "schema_example",rowKeyClass=classOf[String],rowBuilder = new ExampleTableRow(_,_))
   {
     //Column family definition
     //Inside meta, assume a column called title whose value is a string
