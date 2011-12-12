@@ -468,8 +468,12 @@ trait Schema {
 
 }
 
-abstract class HRow[T<:HbaseTable[T,R,RR],R, RR <: HRow[T,R,RR]](result:Result, table:T) extends QueryResult[T,R](result,table,table.tableName) {
-}
+/** Standard base class for all Row objects.
+  *
+  * Inside of a *Row object, it is good to use lazy val and def as opposed to val.
+  * Because HRow objects are now the first-class instantiation of a query result, and because they are the type cached in Ehcache, they are good places to cache values.
+  */
+abstract class HRow[T<:HbaseTable[T,R,RR],R, RR <: HRow[T,R,RR]](result:Result, table:T) extends QueryResult[T,R](result,table,table.tableName)
 
 /**
   * Represents a Table.  Expects an instance of HBaseConfiguration to be present.
