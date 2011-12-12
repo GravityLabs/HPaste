@@ -35,7 +35,14 @@ import org.apache.hadoop.hbase.filter.FilterList.Operator
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
 
-
+/** Expresses a scan, get, or batched get against hbase.  Which one it becomes depends on what calls you make.  If you specify withKey() it will
+  * become a Get, withKeys() will make into a batched get, and no keys at all will make it a Scan.
+  *
+  * @tparam T the table to work with
+  * @tparam R the row key type
+  * @tparam RR the row result type
+  * @param table the instance of the table to work with
+  */
 class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,RR]) {
   val keys = Buffer[Array[Byte]]()
   val families = Buffer[Array[Byte]]()
@@ -44,11 +51,13 @@ class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,
   var startRowBytes : Array[Byte] = null
   var endRowBytes : Array[Byte] = null
 
+  /**The key to fetch (this makes it into a Get request against hbase) */
   def withKey(key: R)(implicit c: ByteConverter[R]) = {
     keys += c.toBytes(key)
     this
   }
 
+  /**Multiple keys to fetch (this makes it into a multi-Get request against hbase) */
   def withKeys(keys: Set[R])(implicit c: ByteConverter[R]) = {
     for (key <- keys) {
       withKey(key)(c)
@@ -359,7 +368,7 @@ class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,
     this
   }
 
-  def makeScanner(maxVersions:Int =1, cacheBlocks:Boolean=false, cacheSize: Int = 100) = {
+  def makeScanner(maxVersions:Int =1, cacheBlocks:Boolean=true, cacheSize: Int = 100) = {
     require(keys.size == 0, "A scanner should not specify keys, use singleOption or execute or executeMap")
     val scan = new Scan()
     scan.setMaxVersions(maxVersions)
@@ -381,7 +390,7 @@ class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,
     scan
   }
 
-  def scan(handler: (RR) => Unit, maxVersions:Int = 1, cacheBlocks:Boolean = false, cacheSize:Int = 100) {
+  def scan(handler: (RR) => Unit, maxVersions:Int = 1, cacheBlocks:Boolean = true, cacheSize:Int = 100) {
     table.withTable() {
       htable =>
         val scan = makeScanner(maxVersions,cacheBlocks,cacheSize)
@@ -397,7 +406,7 @@ class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,
     }
   }
 
-  def scanToIterable[I](handler:(RR) => I, maxVersions:Int = 1, cacheBlocks:Boolean = false, cacheSize:Int = 100) = {
+  def scanToIterable[I](handler:(RR) => I, maxVersions:Int = 1, cacheBlocks:Boolean = true, cacheSize:Int = 100) = {
     val results2 = table.withTable() {
       htable => 
         val scan = makeScanner(maxVersions,cacheBlocks, cacheSize)
