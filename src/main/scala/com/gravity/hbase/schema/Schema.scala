@@ -580,7 +580,7 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
         ds.add(f, k, r, ts)
       } catch {
         case ex: Exception => {
-          println("Unable to deserialize item in family: " + f.familyName)
+//          println("Unable to deserialize item in family: " + f.familyName)
         }
       }
     }
