@@ -713,7 +713,7 @@ abstract class HPartitioner[MOK, MOV]() extends Partitioner[MOK, MOV] {
 
 class TableToBinaryMapContext[T <: HbaseTable[T, R,_], R, S <: SettingsBase](table: T, conf: Configuration, counter: (String, Long) => Unit, context: Mapper[ImmutableBytesWritable, Result, BytesWritable, BytesWritable]#Context)
         extends HMapContext[ImmutableBytesWritable, Result, BytesWritable, BytesWritable, S](conf, counter, context) {
-  def row = new QueryResult[T, R](context.getCurrentValue, table, table.tableName)
+  def row = new QueryResult[T, R](table.convertResult(context.getCurrentValue), table, table.tableName)
 }
 
 /**

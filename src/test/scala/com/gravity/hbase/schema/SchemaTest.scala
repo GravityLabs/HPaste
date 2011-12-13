@@ -28,6 +28,7 @@ import org.joda.time.DateTime
 import java.io.{DataInputStream, DataOutputStream}
 import CustomTypes._
 import org.apache.hadoop.hbase.client.Result
+import com.gravity.hbase.schema._
 import com.gravity.hbase.schema.ExampleSchema.ExampleTable
 
 /*             )\._.,--....,'``.
@@ -66,7 +67,7 @@ object CustomTypes {
   implicit object KittenSeqConverter extends SeqConverter[Kitten]
 }
 
-class ExampleTableRow(result:Result, table:ExampleTable) extends HRow[ExampleTable,String,ExampleTableRow](result,table)
+class ExampleTableRow(result:DeserializedResult[ExampleTable,String], table:ExampleTable) extends HRow[ExampleTable,String,ExampleTableRow](result,table)
 
 object ExampleSchema extends Schema {
 
@@ -278,9 +279,10 @@ enable 'schema_example'"""
     if (bros.isEmpty) fail("Failed to retrieve the data we just put!")
 
     for (bro <- bros) {
-      ExampleSchema.ExampleTable.title(bro) match {
+      bro.column(_.title) match {
         case Some(title) => println("%nBro: %s; title: %s".format(bro.rowid, title))
         case None => fail("FAILED TO GET TITLE!")
+
       }
     }
 

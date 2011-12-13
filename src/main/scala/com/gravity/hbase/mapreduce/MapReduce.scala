@@ -1056,7 +1056,7 @@ abstract class TableReadingMapper[TF <: HbaseTable[TF, TFK,_], TFK, MK, MV](val 
     def counter(name: String, count: Long = 1) {context.getCounter(table.tableName + " Reading Job", name).increment(count)}
     def writer(key: MK, value: MV) {context.write(key, value)}
 
-    val queryResult = new QueryResult[TF, TFK](value, table, table.tableName)
+    val queryResult = new QueryResult[TF, TFK](table.convertResult(value), table, table.tableName)
     row(queryResult, counter _, writer _)
   }
 }
@@ -1092,7 +1092,7 @@ abstract class TableAnnotationMapper[TF <: HbaseTable[TF, TFK, _], TFK](val tabl
   override def map(key: ImmutableBytesWritable, value: Result, context: Mapper[ImmutableBytesWritable, Result, NullWritable, Writable]#Context) {
     def writer(item: Writable) {context.write(NullWritable.get(), item)}
     def counter(name: String, count: Long = 1) {context.getCounter(table.tableName + " Annotation Job", name).increment(count)}
-    val queryResult = new QueryResult[TF, TFK](value, table, table.tableName)
+    val queryResult = new QueryResult[TF, TFK](table.convertResult(value), table, table.tableName)
     this.context = context
     row(queryResult, counter _, writer _)
   }
