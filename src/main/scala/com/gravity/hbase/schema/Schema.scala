@@ -33,22 +33,7 @@ import com.google.common.collect._
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
-/** It is expensive to deserialize column values in tight loops.  This construct provides temporary caches for such a scenario.  This introduces its own overhead
-  * and should be factored out.  Essentially, a result object is needed that allows the user to assign vals where needed.
-  *
-  */
-trait ContextCache {
 
-  val cache = new HashMap[String, Any]() with SynchronizedMap[String, Any]
-  val famCache = new HashMap[ColumnFamily[_, _, _, _, _], Any]() with SynchronizedMap[ColumnFamily[_, _, _, _, _], Any]
-  val colCache = new HashMap[Column[_, _, _, _, _], Any]() with SynchronizedMap[Column[_, _, _, _, _], Any]
-
-  def getOrUpdateFam[T](key: ColumnFamily[_, _, _, _, _])(value: => T): T = famCache.getOrElseUpdate(key, value).asInstanceOf[T]
-
-  def getOrUpdateCol[T](key: Column[_, _, _, _, _])(value: => T): T = colCache.getOrElseUpdate(key, value).asInstanceOf[T]
-
-  def getOrUpdate[T](key: String)(value: => T): T = cache.getOrElseUpdate(key, value).asInstanceOf[T]
-}
 
 /** When a query comes back, there are a bucket of column families and columns to retrieve.  This class retrieves them.
   *
@@ -59,7 +44,7 @@ trait ContextCache {
   * @param table the underlying [[com.gravity.hbase.schema.HbaseTable]]
   * @param tableName the name of the actual table
   */
-class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult[T, R], val table: HbaseTable[T, R, _], val tableName: String) extends Serializable with ContextCache {
+class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult[T, R], val table: HbaseTable[T, R, _], val tableName: String) extends Serializable {
 
 
   /** This is a convenience method to allow consumers to check
@@ -448,6 +433,7 @@ case class DeserializedResult[T <: HbaseTable[T, R, _], R](rowid: AnyRef) {
 
   def getRow[R]() = rowid.asInstanceOf[R]
 
+  /** This is a map whose key is the family type, and whose values are maps of column keys to columnvalues paired with their timestamps */
   val values = new mutable.HashMap[ColumnFamily[_, _, _, _, _], mutable.Map[AnyRef, (AnyRef, DateTime)]]()
 
   def familyValueMap[K, V](fam: ColumnFamily[_, _, _, _, _]) = {
@@ -523,10 +509,10 @@ case class DeserializedResult[T <: HbaseTable[T, R, _], R](rowid: AnyRef) {
   */
 class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableName: String, var cache: QueryResultCache[T, R, RR] = new NoOpCache[T, R, RR](), rowKeyClass: Class[R], rowBuilder: (DeserializedResult[T, R], T) => RR)(implicit conf: Configuration, keyConverter: ByteConverter[R]) {
 
-  /**Provides the client with an instance of the superclass this table was defined against. */
+  /** Provides the client with an instance of the superclass this table was defined against. */
   def pops = this.asInstanceOf[T]
 
-  /**A method injected by the super class that will build a strongly-typed row object.  */
+  /** A method injected by the super class that will build a strongly-typed row object.  */
   def buildRow(result: Result): RR = {rowBuilder(convertResult(result), pops)}
 
   /** A pool of table objects with AutoFlush set to true */
@@ -578,13 +564,11 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
 
     val ds = DeserializedResult[T, R](rowId)
 
-    val multiMap = ArrayListMultimap.create[AnyRef, (AnyRef, AnyRef)]()
-
-
     for {kv <- keyValues
          family = kv.getFamily
          key = kv.getQualifier
-         value = kv.getValue} {
+         value = kv.getValue}
+    {
       val c = converterByBytes(family, key)
       val f = c.family
 
@@ -602,8 +586,6 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
     }
     ds
   }
-
-
 
 
   private val columns = Buffer[Column[T, R, _, _, _]]()
