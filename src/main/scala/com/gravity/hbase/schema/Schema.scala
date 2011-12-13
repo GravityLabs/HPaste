@@ -26,6 +26,8 @@ import org.apache.hadoop.io.Writable
 import scala.collection._
 import mutable.{ListBuffer, SynchronizedMap, HashMap, Buffer}
 import org.joda.time.DateTime
+import com.gravity.hbase.schema._
+import com.google.common.collect._
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -37,7 +39,7 @@ import org.joda.time.DateTime
   */
 trait ContextCache {
 
-  val cache = new HashMap[String, Any]() with SynchronizedMap[String,Any]
+  val cache = new HashMap[String, Any]() with SynchronizedMap[String, Any]
   val famCache = new HashMap[ColumnFamily[_, _, _, _, _], Any]() with SynchronizedMap[ColumnFamily[_, _, _, _, _], Any]
   val colCache = new HashMap[Column[_, _, _, _, _], Any]() with SynchronizedMap[Column[_, _, _, _, _], Any]
 
@@ -58,9 +60,6 @@ trait ContextCache {
   * @param tableName the name of the actual table
   */
 class QueryResult[T <: HbaseTable[T, R, _], R](val result: Result, val table: HbaseTable[T, R, _], val tableName: String) extends Serializable with ContextCache {
-
-
-
 
 
   /** This is a convenience method to allow consumers to check
@@ -420,20 +419,32 @@ class DeleteOp[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: Arr
   * would make the API very complex).
   */
 
+trait KeyValueConvertible[F, K, V] {
+  val familyConverter: ByteConverter[F]
+  val keyConverter: ByteConverter[K]
+  val valueConverter: ByteConverter[V]
+}
 
 /**
   * Represents the specification of a Column Family
   */
-class ColumnFamily[T <: HbaseTable[T, R, _], R, F, K, V](val table: HbaseTable[T, R, _], val familyName: F, val compressed: Boolean = false, val versions: Int = 1)(implicit c: ByteConverter[F]) {
+class ColumnFamily[T <: HbaseTable[T, R, _], R, F, K, V](val table: HbaseTable[T, R, _], val familyName: F, val compressed: Boolean = false, val versions: Int = 1)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
+  val familyConverter = c
+  val keyConverter = d
+  val valueConverter = e
   val familyBytes = c.toBytes(familyName)
 }
 
 /**
   * Represents the specification of a Column.
   */
-class Column[T <: HbaseTable[T, R, _], R, F, K, V](table: HbaseTable[T, R, _], columnFamily: F, columnName: K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) {
+class Column[T <: HbaseTable[T, R, _], R, F, K, V](table: HbaseTable[T, R, _], columnFamily: F, columnName: K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
   val columnBytes = kc.toBytes(columnName)
   val familyBytes = fc.toBytes(columnFamily)
+
+  val familyConverter = fc
+  val keyConverter = kc
+  val valueConverter = kv
 
   def getQualifier: K = columnName
 
@@ -473,7 +484,9 @@ trait Schema {
   * Inside of a *Row object, it is good to use lazy val and def as opposed to val.
   * Because HRow objects are now the first-class instantiation of a query result, and because they are the type cached in Ehcache, they are good places to cache values.
   */
-abstract class HRow[T<:HbaseTable[T,R,RR],R, RR <: HRow[T,R,RR]](result:Result, table:T) extends QueryResult[T,R](result,table,table.tableName)
+abstract class HRow[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](result: Result, table: T) extends QueryResult[T, R](result, table, table.tableName)
+
+case class DeserializedResult(rowid:AnyRef, familyValuesMap:Multimap[AnyRef,(AnyRef,AnyRef)])
 
 /**
   * Represents a Table.  Expects an instance of HBaseConfiguration to be present.
@@ -481,13 +494,48 @@ abstract class HRow[T<:HbaseTable[T,R,RR],R, RR <: HRow[T,R,RR]](result:Result, 
   * queries).
   * A parameter-type R should be the type of the key for the table.
   */
-class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,R,RR]](val tableName: String, var cache: QueryResultCache[T, R,RR] = new NoOpCache[T, R,RR](), rowKeyClass:Class[R], rowBuilder : (Result,T) => RR)(implicit conf: Configuration) {
+class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableName: String, var cache: QueryResultCache[T, R, RR] = new NoOpCache[T, R, RR](), rowKeyClass: Class[R], rowBuilder: (Result, T) => RR)(implicit conf: Configuration, keyConverter:ByteConverter[R]) {
 
   def pops = this.asInstanceOf[T]
 
-  def buildRow(result:Result) : RR = { rowBuilder(result,pops) }
+  def buildRow(result: Result): RR = {rowBuilder(result, pops)}
 
   val tablePool = new HTablePool(conf, 50)
+
+  def converterByBytes(famBytes: Array[Byte], colBytes: Array[Byte]) : KeyValueConvertible[_,_,_] = {
+    //First make sure an overriding column has not been defined
+    val col = columns.find {c => Bytes.equals(c.familyBytes, famBytes) && Bytes.equals(c.columnBytes, colBytes)}
+
+    if(col.isEmpty) {
+      families.find {f=> Bytes.equals(f.familyBytes, famBytes)}.get
+    }else {
+      col.get
+    }
+  }
+
+  def convertResult(result: Result) = {
+    val keyValues = result.raw()
+    
+
+
+    val multiMap = ArrayListMultimap.create[AnyRef,(AnyRef,AnyRef)]()
+
+    val rowId = keyConverter.fromBytes(result.getRow).asInstanceOf[AnyRef]
+
+    for {kv <- keyValues
+                       family = kv.getFamily
+                       key = kv.getQualifier
+                       value = kv.getValue} yield {
+      val c = converterByBytes(family, key)
+      val f = c.familyConverter.fromBytes(family).asInstanceOf[AnyRef]
+      val k = c.keyConverter.fromBytes(key).asInstanceOf[AnyRef]
+      val r = c.valueConverter.fromBytes(value).asInstanceOf[AnyRef]
+
+      multiMap.put(f,(k -> r))
+    }
+    DeserializedResult(rowId,multiMap)
+  }
+
 
   val bufferTablePool = new HTablePool(conf, 1, new HTableInterfaceFactory {
     def createHTableInterface(config: Configuration, tableName: Array[Byte]): HTableInterface = {
@@ -559,7 +607,7 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,R,RR]](val tableName
     c
   }
 
-  def family[F, K, V](familyName: F, compressed: Boolean = false, versions: Int = 1)(implicit c: ByteConverter[F]) = {
+  def family[F, K, V](familyName: F, compressed: Boolean = false, versions: Int = 1)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) = {
     val family = new ColumnFamily[T, R, F, K, V](this, familyName, compressed, versions)
     families += family
     family
