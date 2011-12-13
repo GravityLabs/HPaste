@@ -59,7 +59,7 @@ trait ContextCache {
   * @param table the underlying [[com.gravity.hbase.schema.HbaseTable]]
   * @param tableName the name of the actual table
   */
-class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult[T,R], val table: HbaseTable[T, R, _], val tableName: String) extends Serializable with ContextCache {
+class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult[T, R], val table: HbaseTable[T, R, _], val tableName: String) extends Serializable with ContextCache {
 
 
   /** This is a convenience method to allow consumers to check
@@ -91,7 +91,7 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult[T,
     *
     * @note if there is no explicitly defined `val` for the desired column, use `columnFromFamily`
     */
-  def column[F, K, V](column: (T) => Column[T, R, F, K, V])= {
+  def column[F, K, V](column: (T) => Column[T, R, F, K, V]) = {
     val co = column(table.pops)
     result.columnValue[V](co)
   }
@@ -109,7 +109,7 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult[T,
     */
   def columnFromFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K) = {
     val fam = family(table.pops)
-    result.columnValueByName[V](fam,columnName.asInstanceOf[AnyRef])
+    result.columnValueByName[V](fam, columnName.asInstanceOf[AnyRef])
   }
 
   /** Extracts column timestamp of the specified `column`
@@ -142,12 +142,16 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult[T,
     result.familyMap(fam) match {
       case Some(familyPairs) => {
         var ts = -1l
-        for(kv <- familyPairs) {
+        for (kv <- familyPairs) {
           val tsn = kv._2._2.getMillis
-          if(tsn > ts) ts = tsn
+          if (tsn > ts) ts = tsn
         }
-        if(ts >= 0) Some(new DateTime(ts))
-        else None
+        if (ts >= 0) {
+          Some(new DateTime(ts))
+        }
+        else {
+          None
+        }
       }
       case None => None
     }
@@ -164,7 +168,7 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult[T,
     */
   def family[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V]): Map[K, V] = {
     val fm = family(table.pops)
-    result.familyValueMap[K,V](fm)
+    result.familyValueMap[K, V](fm)
   }
 
   /** Extracts and deserializes only the keys (qualifiers) of the family as a `Set[K]`
@@ -387,7 +391,7 @@ trait KeyValueConvertible[F, K, V] {
   val keyConverter: ByteConverter[K]
   val valueConverter: ByteConverter[V]
 
-  def family : ColumnFamily[_,_,_,_,_]
+  def family: ColumnFamily[_, _, _, _, _]
 }
 
 /**
@@ -405,7 +409,7 @@ class ColumnFamily[T <: HbaseTable[T, R, _], R, F, K, V](val table: HbaseTable[T
 /**
   * Represents the specification of a Column.
   */
-class Column[T <: HbaseTable[T, R, _], R, F, K, V](table: HbaseTable[T, R, _], columnFamily: ColumnFamily[T,R,F,K,_], val columnName: K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
+class Column[T <: HbaseTable[T, R, _], R, F, K, V](table: HbaseTable[T, R, _], columnFamily: ColumnFamily[T, R, F, K, _], val columnName: K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
   val columnBytes = kc.toBytes(columnName)
   val familyBytes = columnFamily.familyBytes
   val columnNameRef = columnName.asInstanceOf[AnyRef]
@@ -416,7 +420,7 @@ class Column[T <: HbaseTable[T, R, _], R, F, K, V](table: HbaseTable[T, R, _], c
 
   def getQualifier: K = columnName
 
-  def family = columnFamily.asInstanceOf[ColumnFamily[_,_,_,_,_]]
+  def family = columnFamily.asInstanceOf[ColumnFamily[_, _, _, _, _]]
 
 
 }
@@ -436,25 +440,26 @@ trait Schema {
   * Inside of a *Row object, it is good to use lazy val and def as opposed to val.
   * Because HRow objects are now the first-class instantiation of a query result, and because they are the type cached in Ehcache, they are good places to cache values.
   */
-abstract class HRow[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](result: DeserializedResult[T,R], table: T) extends QueryResult[T, R](result, table, table.tableName)
+abstract class HRow[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](result: DeserializedResult[T, R], table: T) extends QueryResult[T, R](result, table, table.tableName)
 
-case class DeserializedResult[T <: HbaseTable[T,R,_],R](rowid:AnyRef) {
+case class DeserializedResult[T <: HbaseTable[T, R, _], R](rowid: AnyRef) {
 
   def isEmpty = values.size == 0
+
   def getRow[R]() = rowid.asInstanceOf[R]
 
-  val values = new mutable.HashMap[ColumnFamily[_,_,_,_,_],mutable.Map[AnyRef,(AnyRef,DateTime)]]()
+  val values = new mutable.HashMap[ColumnFamily[_, _, _, _, _], mutable.Map[AnyRef, (AnyRef, DateTime)]]()
 
-  def familyValueMap[K,V](fam:ColumnFamily[_,_,_,_,_]) = {
+  def familyValueMap[K, V](fam: ColumnFamily[_, _, _, _, _]) = {
     family(fam) match {
       case Some(famMap) => {
-        famMap.map{case (colKey: AnyRef, valueTuple: (AnyRef, DateTime)) => (colKey.asInstanceOf[K], valueTuple._1.asInstanceOf[V])}.toMap
+        famMap.map {case (colKey: AnyRef, valueTuple: (AnyRef, DateTime)) => (colKey.asInstanceOf[K], valueTuple._1.asInstanceOf[V])}.toMap
       }
-      case None => Map[K,V]()
+      case None => Map[K, V]()
     }
   }
 
-  def familyKeySet[K](fam:ColumnFamily[_,_,_,_,_]) = {
+  def familyKeySet[K](fam: ColumnFamily[_, _, _, _, _]) = {
     family(fam) match {
       case Some(famMap) => {
         famMap.keySet.asInstanceOf[Set[K]]
@@ -463,25 +468,27 @@ case class DeserializedResult[T <: HbaseTable[T,R,_],R](rowid:AnyRef) {
     }
   }
 
-  def family(family:ColumnFamily[_,_,_,_,_]) = values.get(family)
-  
-  def familyOf(column:Column[_,_,_,_,_]) = family(column.family)
+  def family(family: ColumnFamily[_, _, _, _, _]) = values.get(family)
 
-  def familyMap(fam:ColumnFamily[_,_,_,_,_]) = family(fam)
-  
-  def hasColumn(column:Column[_,_,_,_,_]) = {
+  def familyOf(column: Column[_, _, _, _, _]) = family(column.family)
+
+  def familyMap(fam: ColumnFamily[_, _, _, _, _]) = family(fam)
+
+  def hasColumn(column: Column[_, _, _, _, _]) = {
     familyOf(column) match {
       case Some(valueMap) => {
-        if(valueMap.size > 0)
+        if (valueMap.size > 0) {
           true
-        else
+        }
+        else {
           false
+        }
       }
       case None => false
     }
   }
 
-  def columnValueAndTimestamp(fam:ColumnFamily[_,_,_,_,_],columnName:AnyRef) = {
+  def columnValueAndTimestamp(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = {
     family(fam) match {
       case Some(valueMap) => {
         valueMap.get(columnName)
@@ -490,21 +497,21 @@ case class DeserializedResult[T <: HbaseTable[T,R,_],R](rowid:AnyRef) {
     }
   }
 
-  def columnTimestamp(column:Column[_,_,_,_,_]) = columnValueAndTimestamp(column.family,column.columnNameRef) match {
+  def columnTimestamp(column: Column[_, _, _, _, _]) = columnValueAndTimestamp(column.family, column.columnNameRef) match {
     case Some(cts) => Some(cts._2)
     case None => None
   }
-  
-  def columnValueByName[V](fam:ColumnFamily[_,_,_,_,_],columnName:AnyRef) = columnValueAndTimestamp(fam,columnName) match {
+
+  def columnValueByName[V](fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = columnValueAndTimestamp(fam, columnName) match {
     case Some(cts) => Some(cts._1.asInstanceOf[V])
     case None => None
   }
-  
-  def columnValue[V](column:Column[_,_,_,_,_]) = columnValueByName[V](column.family,column.columnNameRef)
-  
-  def add(family:ColumnFamily[_,_,_,_,_], qualifier:AnyRef, value:AnyRef, timeStamp:DateTime) {
-    val map = values.getOrElseUpdate(family, new HashMap[AnyRef,(AnyRef,DateTime)]())
-    map.put(qualifier,(value,timeStamp))
+
+  def columnValue[V](column: Column[_, _, _, _, _]) = columnValueByName[V](column.family, column.columnNameRef)
+
+  def add(family: ColumnFamily[_, _, _, _, _], qualifier: AnyRef, value: AnyRef, timeStamp: DateTime) {
+    val map = values.getOrElseUpdate(family, new HashMap[AnyRef, (AnyRef, DateTime)]())
+    map.put(qualifier, (value, timeStamp))
   }
 }
 
@@ -514,7 +521,7 @@ case class DeserializedResult[T <: HbaseTable[T,R,_],R](rowid:AnyRef) {
   * queries).
   * A parameter-type R should be the type of the key for the table.
   */
-class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableName: String, var cache: QueryResultCache[T, R, RR] = new NoOpCache[T, R, RR](), rowKeyClass: Class[R], rowBuilder: (DeserializedResult[T,R], T) => RR)(implicit conf: Configuration, keyConverter:ByteConverter[R]) {
+class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableName: String, var cache: QueryResultCache[T, R, RR] = new NoOpCache[T, R, RR](), rowKeyClass: Class[R], rowBuilder: (DeserializedResult[T, R], T) => RR)(implicit conf: Configuration, keyConverter: ByteConverter[R]) {
 
   def pops = this.asInstanceOf[T]
 
@@ -522,13 +529,13 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
 
   val tablePool = new HTablePool(conf, 50)
 
-  def converterByBytes(famBytes: Array[Byte], colBytes: Array[Byte]) : KeyValueConvertible[_,_,_] = {
+  def converterByBytes(famBytes: Array[Byte], colBytes: Array[Byte]): KeyValueConvertible[_, _, _] = {
     //First make sure an overriding column has not been defined
     val col = columns.find {c => Bytes.equals(c.familyBytes, famBytes) && Bytes.equals(c.columnBytes, colBytes)}
 
-    if(col.isEmpty) {
-      families.find {f=> Bytes.equals(f.familyBytes, famBytes)}.get
-    }else {
+    if (col.isEmpty) {
+      families.find {f => Bytes.equals(f.familyBytes, famBytes)}.get
+    } else {
       col.get
     }
   }
@@ -537,22 +544,29 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
     val keyValues = result.raw()
     val rowId = keyConverter.fromBytes(result.getRow).asInstanceOf[AnyRef]
 
-    val ds = DeserializedResult[T,R](rowId)
+    val ds = DeserializedResult[T, R](rowId)
 
-    val multiMap = ArrayListMultimap.create[AnyRef,(AnyRef,AnyRef)]()
+    val multiMap = ArrayListMultimap.create[AnyRef, (AnyRef, AnyRef)]()
 
 
     for {kv <- keyValues
-                       family = kv.getFamily
-                       key = kv.getQualifier
-                       value = kv.getValue} {
+         family = kv.getFamily
+         key = kv.getQualifier
+         value = kv.getValue} {
       val c = converterByBytes(family, key)
       val f = c.family
-      val k = c.keyConverter.fromBytes(key).asInstanceOf[AnyRef]
-      val r = c.valueConverter.fromBytes(value).asInstanceOf[AnyRef]
-      val ts = new DateTime(kv.getTimestamp)
 
-      ds.add(f,k,r,ts)
+      try {
+        val k = c.keyConverter.fromBytes(key).asInstanceOf[AnyRef]
+        val r = c.valueConverter.fromBytes(value).asInstanceOf[AnyRef]
+        val ts = new DateTime(kv.getTimestamp)
+
+        ds.add(f, k, r, ts)
+      } catch {
+        case ex: Exception => {
+          println("Unable to deserialize item in family: " + f.familyName)
+        }
+      }
     }
     ds
   }
