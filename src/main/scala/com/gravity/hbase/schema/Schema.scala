@@ -523,12 +523,41 @@ case class DeserializedResult[T <: HbaseTable[T, R, _], R](rowid: AnyRef) {
   */
 class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableName: String, var cache: QueryResultCache[T, R, RR] = new NoOpCache[T, R, RR](), rowKeyClass: Class[R], rowBuilder: (DeserializedResult[T, R], T) => RR)(implicit conf: Configuration, keyConverter: ByteConverter[R]) {
 
+  /**Provides the client with an instance of the superclass this table was defined against. */
   def pops = this.asInstanceOf[T]
 
+  /**A method injected by the super class that will build a strongly-typed row object.  */
   def buildRow(result: Result): RR = {rowBuilder(convertResult(result), pops)}
 
+  /** A pool of table objects with AutoFlush set to true */
   val tablePool = new HTablePool(conf, 50)
 
+  /** A pool of table objects with AutoFlush set to false --therefore usable for asynchronous write buffering */
+  val bufferTablePool = new HTablePool(conf, 1, new HTableInterfaceFactory {
+    def createHTableInterface(config: Configuration, tableName: Array[Byte]): HTableInterface = {
+      val table = new HTable(conf, tableName)
+      table.setWriteBufferSize(2000000L)
+      table.setAutoFlush(false)
+      table
+    }
+
+    def releaseHTableInterface(table: HTableInterface) {
+      try {
+        table.close()
+      } catch {
+        case ex: IOException => throw new RuntimeException(ex)
+      }
+    }
+  })
+
+
+  /** Looks up a KeyValueConvertible by the family and column bytes provided.
+    * Because of the rules of the system, the lookup goes as follows:
+    * 1. Find a column first.  If you find a column first, it means there is a strongly-typed column defined.
+    * 2. If no column, then find the family.
+    *
+    * TODO: Replace this with a hashmap lookup before launching, it's horribly slow.
+    */
   def converterByBytes(famBytes: Array[Byte], colBytes: Array[Byte]): KeyValueConvertible[_, _, _] = {
     //First make sure an overriding column has not been defined
     val col = columns.find {c => Bytes.equals(c.familyBytes, famBytes) && Bytes.equals(c.columnBytes, colBytes)}
@@ -540,6 +569,9 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
     }
   }
 
+  /** Converts a Result object to a DeserializedResult object, which is a map of maps that contains the deserialized objects in the payload.
+    *
+    */
   def convertResult(result: Result) = {
     val keyValues = result.raw()
     val rowId = keyConverter.fromBytes(result.getRow).asInstanceOf[AnyRef]
@@ -572,22 +604,6 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
   }
 
 
-  val bufferTablePool = new HTablePool(conf, 1, new HTableInterfaceFactory {
-    def createHTableInterface(config: Configuration, tableName: Array[Byte]): HTableInterface = {
-      val table = new HTable(conf, tableName)
-      table.setWriteBufferSize(2000000L)
-      table.setAutoFlush(false)
-      table
-    }
-
-    def releaseHTableInterface(table: HTableInterface) {
-      try {
-        table.close()
-      } catch {
-        case ex: IOException => throw new RuntimeException(ex)
-      }
-    }
-  })
 
 
   private val columns = Buffer[Column[T, R, _, _, _]]()
@@ -595,6 +611,7 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
 
   def familyBytes = families.map(family => family.familyBytes)
 
+  /** All tables automatically receive a family called "meta" */
   val meta = family[String, String, Any]("meta")
 
 
