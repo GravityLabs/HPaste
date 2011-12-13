@@ -423,6 +423,8 @@ trait KeyValueConvertible[F, K, V] {
   val familyConverter: ByteConverter[F]
   val keyConverter: ByteConverter[K]
   val valueConverter: ByteConverter[V]
+
+  def family : ColumnFamily[_,_,_,_,_]
 }
 
 /**
@@ -433,14 +435,16 @@ class ColumnFamily[T <: HbaseTable[T, R, _], R, F, K, V](val table: HbaseTable[T
   val keyConverter = d
   val valueConverter = e
   val familyBytes = c.toBytes(familyName)
+
+  def family = this
 }
 
 /**
   * Represents the specification of a Column.
   */
-class Column[T <: HbaseTable[T, R, _], R, F, K, V](table: HbaseTable[T, R, _], columnFamily: F, columnName: K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
+class Column[T <: HbaseTable[T, R, _], R, F, K, V](table: HbaseTable[T, R, _], columnFamily: ColumnFamily[T,R,F,K,_], columnName: K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
   val columnBytes = kc.toBytes(columnName)
-  val familyBytes = fc.toBytes(columnFamily)
+  val familyBytes = columnFamily.familyBytes
 
   val familyConverter = fc
   val keyConverter = kc
@@ -448,6 +452,7 @@ class Column[T <: HbaseTable[T, R, _], R, F, K, V](table: HbaseTable[T, R, _], c
 
   def getQualifier: K = columnName
 
+  def family = columnFamily.asInstanceOf[ColumnFamily[_,_,_,_,_]]
 
   def getValue(res: QueryResult[T, R]) = {
     kv.fromBytes(res.result.getColumnLatest(familyBytes, columnBytes).getValue)
@@ -486,7 +491,14 @@ trait Schema {
   */
 abstract class HRow[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](result: Result, table: T) extends QueryResult[T, R](result, table, table.tableName)
 
-case class DeserializedResult(rowid:AnyRef, familyValuesMap:Multimap[AnyRef,(AnyRef,AnyRef)])
+case class DeserializedResult(rowid:AnyRef) {
+  val values = new mutable.HashMap[ColumnFamily[_,_,_,_,_],mutable.Map[AnyRef,AnyRef]]()
+
+  def add(family:ColumnFamily[_,_,_,_,_], qualifier:AnyRef, value:AnyRef) {
+    val map = values.getOrElseUpdate(family, new HashMap[AnyRef,AnyRef]())
+    map.put(qualifier,value)
+  }
+}
 
 /**
   * Represents a Table.  Expects an instance of HBaseConfiguration to be present.
@@ -515,25 +527,25 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
 
   def convertResult(result: Result) = {
     val keyValues = result.raw()
-    
+    val rowId = keyConverter.fromBytes(result.getRow).asInstanceOf[AnyRef]
 
+    val ds = DeserializedResult(rowId)
 
     val multiMap = ArrayListMultimap.create[AnyRef,(AnyRef,AnyRef)]()
 
-    val rowId = keyConverter.fromBytes(result.getRow).asInstanceOf[AnyRef]
 
     for {kv <- keyValues
                        family = kv.getFamily
                        key = kv.getQualifier
                        value = kv.getValue} yield {
       val c = converterByBytes(family, key)
-      val f = c.familyConverter.fromBytes(family).asInstanceOf[AnyRef]
+      val f = c.family
       val k = c.keyConverter.fromBytes(key).asInstanceOf[AnyRef]
       val r = c.valueConverter.fromBytes(value).asInstanceOf[AnyRef]
 
-      multiMap.put(f,(k -> r))
+      ds.add(f,k,r)
     }
-    DeserializedResult(rowId,multiMap)
+    ds
   }
 
 
@@ -602,7 +614,7 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
   def getBufferedTable(name: String) = bufferTablePool.getTable(name)
 
   def column[F, K, V](columnFamily: ColumnFamily[T, R, F, K, _], columnName: K, valueClass: Class[V])(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) = {
-    val c = new Column[T, R, F, K, V](this, columnFamily.familyName, columnName)
+    val c = new Column[T, R, F, K, V](this, columnFamily, columnName)
     columns += c
     c
   }
