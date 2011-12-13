@@ -173,7 +173,7 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult[T,
   /** The row identifier deserialized as type `R`
     *
     */
-  def rowid() = result.getRow[R]()
+  def rowid = result.getRow[R]()
 
   def getTableName = tableName
 }
