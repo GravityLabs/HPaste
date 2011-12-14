@@ -27,11 +27,12 @@ import scala.collection._
 import scala.collection.mutable.Buffer
 import org.joda.time.DateTime
 import com.gravity.hbase.schema._
+import java.math.BigInteger
+import java.nio.ByteBuffer
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
-
 
 
 /** When a query comes back, there are a bucket of column families and columns to retrieve.  This class retrieves them.
@@ -544,14 +545,17 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
     * TODO: Replace this with a hashmap lookup before launching, it's horribly slow.
     */
   def converterByBytes(famBytes: Array[Byte], colBytes: Array[Byte]): KeyValueConvertible[_, _, _] = {
-    //First make sure an overriding column has not been defined
-    val col = columns.find {c => Bytes.equals(c.familyBytes, famBytes) && Bytes.equals(c.columnBytes, colBytes)}
 
-    if (col.isEmpty) {
-      families.find {f => Bytes.equals(f.familyBytes, famBytes)}.get
-    } else {
-      col.get
+    val fullKey = Array.concat(famBytes, colBytes)
+
+    //First make sure an overriding column has not been defined
+    val kvc: KeyValueConvertible[_, _, _] = columnsByBytes.getOrElse(java.nio.ByteBuffer.wrap(fullKey), {
+      familiesByBytes(java.nio.ByteBuffer.wrap(famBytes))
+    })
+    if (kvc == null) {
+      throw new RuntimeException("Unable to locate family or column definition")
     }
+    kvc
   }
 
   /** Converts a Result object to a DeserializedResult object, which is a map of maps that contains the deserialized objects in the payload.
@@ -566,8 +570,7 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
     for {kv <- keyValues
          family = kv.getFamily
          key = kv.getQualifier
-         value = kv.getValue}
-    {
+         value = kv.getValue} {
       val c = converterByBytes(family, key)
       val f = c.family
 
@@ -579,7 +582,7 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
         ds.add(f, k, r, ts)
       } catch {
         case ex: Exception => {
-//          println("Unable to deserialize item in family: " + f.familyName)
+          //          println("Unable to deserialize item in family: " + f.familyName)
         }
       }
     }
@@ -587,9 +590,7 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
   }
 
 
-
   def familyBytes = families.map(family => family.familyBytes)
-
 
 
   //alter 'articles', NAME => 'html', VERSIONS =>1, COMPRESSION=>'lzo'
@@ -634,18 +635,21 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
   val families = Buffer[ColumnFamily[T, R, _, _, _]]()
 
 
-//  private val columnsByBytes = mutable.Map[(Array[Byte],Array[Byte])]()
+  private val columnsByBytes = mutable.Map[ByteBuffer, KeyValueConvertible[_, _, _]]()
+  private val familiesByBytes = mutable.Map[ByteBuffer, KeyValueConvertible[_, _, _]]()
 
   def column[F, K, V](columnFamily: ColumnFamily[T, R, F, K, _], columnName: K, valueClass: Class[V])(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) = {
     val c = new Column[T, R, F, K, V](this, columnFamily, columnName)
     columns += c
 
+    columnsByBytes.put(ByteBuffer.wrap(Array.concat(columnFamily.familyBytes, c.columnBytes)), c)
     c
   }
 
   def family[F, K, V](familyName: F, compressed: Boolean = false, versions: Int = 1)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) = {
     val family = new ColumnFamily[T, R, F, K, V](this, familyName, compressed, versions)
     families += family
+    familiesByBytes.put(ByteBuffer.wrap(family.familyBytes), family)
     family
   }
 
