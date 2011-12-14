@@ -488,6 +488,16 @@ abstract class BinaryMapper[S <: SettingsBase] extends HMapper[BytesWritable,Byt
 
 abstract class BinaryReducer[S <: SettingsBase] extends HReducer[BytesWritable,BytesWritable,BytesWritable,BytesWritable,S] with BinaryWritable
 
+abstract class BinaryToTextReducer[S <: SettingsBase] extends HReducer[BytesWritable,BytesWritable,NullWritable,Text,S]{
+  def writeln(line:String) {write(NullWritable.get(),new Text(line))}
+
+  def readKey[T](reader:(PrimitiveInputStream)=>T) = readWritable(key){reader}
+
+  def perValue(reader:(PrimitiveInputStream)=>Unit) {values.foreach{value=>readWritable(value)(reader)}}
+
+  def makePerValue[T](reader:(PrimitiveInputStream)=>T) = values.map{value=>readWritable(value)(reader)}
+
+}
 
 //case class FromTableMapper[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase](table: T, tableMapper: (QueryResult[T, R], HMapContext[ImmutableBytesWritable, Result, MOK, MOV, S]) => Unit)
 //        extends MapperFx[ImmutableBytesWritable, Result, MOK, MOV, S]((ctx: HMapContext[ImmutableBytesWritable, Result, MOK, MOV, S]) => {
@@ -534,6 +544,7 @@ abstract class HReducer[MOK,MOV,ROK,ROV, S<:SettingsBase] extends Reducer[MOK,MO
   }
 
   def ctr(message:String, count:Long) {counter(message,count)}
+  def ctr(message:String) {ctr(message,1l)}
 
   def write(key:ROK, value:ROV) {context.write(key,value)}
 

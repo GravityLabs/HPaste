@@ -107,7 +107,7 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult[T,
     * @param family the underlying table's family `val`
     * @param columnName value of the desired column's qualifier
     *
-    * @return `Some` value of type `V` if the column value is present, otherwise `None`
+    * @return `Some` [[org.joda.time.DateTime]] if the column value is present, otherwise `None`
     */
   def columnFromFamilyTimestamp[F,K,V](family:(T) => ColumnFamily[T,R,F,K,V],columnName:K) = {
     val fam = family(table.pops)
@@ -621,6 +621,7 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
     val rowId = keyConverter.fromBytes(result.getRow).asInstanceOf[AnyRef]
 
     val ds = DeserializedResult[T, R](rowId)
+
 
     for {kv <- keyValues
          family = kv.getFamily
