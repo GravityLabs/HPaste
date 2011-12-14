@@ -30,8 +30,9 @@ import scala.collection.mutable.Buffer
 import org.joda.time.DateTime
 import org.apache.hadoop.hbase.filter._
 import org.apache.hadoop.hbase.filter.FilterList.Operator
+
 /*             )\._.,--....,'``.
- .b--.        /;   _.. \   _\  (`._ ,.
+.b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
 
@@ -43,33 +44,33 @@ import org.apache.hadoop.hbase.filter.FilterList.Operator
   * @tparam RR the row result type
   * @param table the instance of the table to work with
   */
-class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,RR]) {
+class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](table: HbaseTable[T, R, RR]) {
   val keys = Buffer[Array[Byte]]()
   val families = Buffer[Array[Byte]]()
   val columns = Buffer[(Array[Byte], Array[Byte])]()
-  var currentFilter : FilterList = _ // new FilterList(Operator.MUST_PASS_ALL)
-  var startRowBytes : Array[Byte] = null
-  var endRowBytes : Array[Byte] = null
+  var currentFilter: FilterList = _ // new FilterList(Operator.MUST_PASS_ALL)
+  var startRowBytes: Array[Byte] = null
+  var endRowBytes: Array[Byte] = null
 
-  /**The key to fetch (this makes it into a Get request against hbase) */
-  def withKey(key: R)(implicit c: ByteConverter[R]) = {
-    keys += c.toBytes(key)
+  /** The key to fetch (this makes it into a Get request against hbase) */
+  def withKey(key: R) = {
+    keys += table.rowKeyConverter.toBytes(key)
     this
   }
 
-  /**Multiple keys to fetch (this makes it into a multi-Get request against hbase) */
-  def withKeys(keys: Set[R])(implicit c: ByteConverter[R]) = {
+  /** Multiple keys to fetch (this makes it into a multi-Get request against hbase) */
+  def withKeys(keys: Set[R]) = {
     for (key <- keys) {
-      withKey(key)(c)
+      withKey(key)
     }
     this
   }
 
 
   def and = {
-    if(currentFilter == null) {
+    if (currentFilter == null) {
       currentFilter = new FilterList(Operator.MUST_PASS_ALL)
-    }else {
+    } else {
       val encompassingFilter = new FilterList(Operator.MUST_PASS_ALL)
       encompassingFilter.addFilter(currentFilter)
       currentFilter = encompassingFilter
@@ -78,9 +79,9 @@ class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,
   }
 
   def or = {
-    if(currentFilter == null) {
+    if (currentFilter == null) {
       currentFilter = new FilterList(Operator.MUST_PASS_ONE)
-    }else {
+    } else {
       val encompassingFilter = new FilterList(Operator.MUST_PASS_ONE)
       encompassingFilter.addFilter(currentFilter)
       currentFilter = encompassingFilter
@@ -88,17 +89,18 @@ class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,
     this
   }
 
-  def columnValueMustEqual[F,K,V](column: (T)=>Column[T,R,F,K,V], value:V)(implicit f:ByteConverter[F], k:ByteConverter[K], v:ByteConverter[V]) = {
+  def columnValueMustEqual[F, K, V](column: (T) => Column[T, R, F, K, V], value: V) = {
     val c = column(table.pops)
-    val vc = new SingleColumnValueFilter(c.familyBytes,c.columnBytes,CompareOp.EQUAL,v.toBytes(value))
+    val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.EQUAL,c.valueConverter.toBytes(value))
     vc.setFilterIfMissing(true)
     vc.setLatestVersionOnly(true)
     currentFilter.addFilter(vc)
     this
   }
 
-  def lessThanColumnKey[F,K,V](family: (T) => ColumnFamily[T,R,F,K,V], value:K)(implicit k:ByteConverter[K]) = {
-    val valueFilter = new QualifierFilter(CompareOp.LESS_OR_EQUAL, new BinaryComparator(k.toBytes(value)))
+  def lessThanColumnKey[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], value: K) = {
+    val fam = family(table.pops)
+    val valueFilter = new QualifierFilter(CompareOp.LESS_OR_EQUAL, new BinaryComparator(fam.keyConverter.toBytes(value)))
     val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(family(table.pops).familyBytes))
     val andFilter = new FilterList(Operator.MUST_PASS_ALL)
     andFilter.addFilter(familyFilter)
@@ -107,27 +109,29 @@ class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,
     this
   }
 
-  def greaterThanColumnKey[F,K,V](family: (T) => ColumnFamily[T,R,F,K,V], value:K)(implicit k:ByteConverter[K]) = {
+  def greaterThanColumnKey[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], value: K) = {
+    val fam = family(table.pops)
     val andFilter = new FilterList(Operator.MUST_PASS_ALL)
-    val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(family(table.pops).familyBytes))
-    val valueFilter = new QualifierFilter(CompareOp.GREATER_OR_EQUAL, new BinaryComparator(k.toBytes(value)))
+    val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(fam.familyBytes))
+    val valueFilter = new QualifierFilter(CompareOp.GREATER_OR_EQUAL, new BinaryComparator(fam.keyConverter.toBytes(value)))
     andFilter.addFilter(familyFilter)
     andFilter.addFilter(valueFilter)
     currentFilter.addFilter(andFilter)
     this
   }
 
-//  def columnFamily[F,K,V](family: (T) => ColumnFamily[T,R,F,K,V])(implicit c: ByteConverter[F]): Query[T,R] = {
-//    val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(family(table.pops).familyBytes))
-//    currentFilter.addFilter(familyFilter)
-//    this
-//  }
+  //  def columnFamily[F,K,V](family: (T) => ColumnFamily[T,R,F,K,V])(implicit c: ByteConverter[F]): Query[T,R] = {
+  //    val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(family(table.pops).familyBytes))
+  //    currentFilter.addFilter(familyFilter)
+  //    this
+  //  }
 
 
-  def betweenColumnKeys[F,K,V](family: (T) => ColumnFamily[T,R,F,K,V], lower: K, upper: K)(implicit f:ByteConverter[K]) = {
-    val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(family(table.pops).familyBytes))
-    val begin = new QualifierFilter(CompareOp.GREATER_OR_EQUAL, new BinaryComparator(f.toBytes(lower)))
-    val end = new QualifierFilter(CompareOp.LESS_OR_EQUAL, new BinaryComparator(f.toBytes(upper)))
+  def betweenColumnKeys[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], lower: K, upper: K) = {
+    val fam = family(table.pops)
+    val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(fam.familyBytes))
+    val begin = new QualifierFilter(CompareOp.GREATER_OR_EQUAL, new BinaryComparator(fam.keyConverter.toBytes(lower)))
+    val end = new QualifierFilter(CompareOp.LESS_OR_EQUAL, new BinaryComparator(fam.keyConverter.toBytes(upper)))
     val filterList = new FilterList(Operator.MUST_PASS_ALL)
     filterList.addFilter(familyFilter)
     filterList.addFilter(begin)
@@ -137,9 +141,9 @@ class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,
     this
   }
 
-  def allInFamilies[F](familyList: ((T) => ColumnFamily[T,R,F,_,_])*) = {
+  def allInFamilies[F](familyList: ((T) => ColumnFamily[T, R, F, _, _])*) = {
     val filterList = new FilterList(Operator.MUST_PASS_ONE)
-    for(family <- familyList) {
+    for (family <- familyList) {
       val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(family(table.pops).familyBytes))
       filterList.addFilter(familyFilter)
     }
@@ -148,25 +152,25 @@ class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,
   }
 
   def withFamilies[F](familyList: ((T) => ColumnFamily[T, R, F, _, _])*) = {
-    for(family <- familyList) {
+    for (family <- familyList) {
       val fam = family(table.pops)
       families += fam.familyBytes
     }
     this
   }
 
-  def withColumn[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K)(implicit c: ByteConverter[F], d: ByteConverter[K]) = {
+  def withColumn[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K) = {
     val fam = family(table.pops)
-    columns += (fam.familyBytes -> d.toBytes(columnName))
+    columns += (fam.familyBytes -> fam.keyConverter.toBytes(columnName))
     this
   }
 
-  def withColumn[F, K, V](column: (T) => Column[T, R, F, K, V])(implicit c: ByteConverter[K]) = {
+  def withColumn[F, K, V](column: (T) => Column[T, R, F, K, V]) = {
     val col = column(table.pops)
     columns += (col.familyBytes -> col.columnBytes)
     this
   }
-  
+
   def withColumns[F, K, V](columnList: ((T) => Column[T, R, F, K, V])*) = {
     for (column <- columnList) {
       val col = column(table.pops)
@@ -190,7 +194,7 @@ class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,
     for ((columnFamily, column) <- columns) {
       get.addColumn(columnFamily, column)
     }
-    if(currentFilter != null && currentFilter.getFilters.size() > 0) {
+    if (currentFilter != null && currentFilter.getFilters.size() > 0) {
       get.setFilter(currentFilter)
     }
 
@@ -265,7 +269,7 @@ class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,
     results.toSeq // DONE!
   }
 
-  def executeMap(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true)(implicit c: ByteConverter[R]): Map[R, RR] = {
+  def executeMap(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true): Map[R, RR] = {
     if (keys.isEmpty) return Map.empty[R, RR] // don't get all started with nothing to do
 
     // init our result map and give it a hint of the # of keys we have
@@ -337,7 +341,7 @@ class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,
     for ((columnFamily, column) <- columns) {
       firstGet.addColumn(columnFamily, column)
     }
-    if(currentFilter != null && currentFilter.getFilters.size() > 0) {
+    if (currentFilter != null && currentFilter.getFilters.size() > 0) {
       firstGet.setFilter(currentFilter)
     }
 
@@ -351,7 +355,7 @@ class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,
         firstGet.getFamilyMap.foreach((kv: (Array[Byte], NavigableSet[Array[Byte]])) => {
           get.getFamilyMap.put(kv._1, kv._2)
         })
-        if(currentFilter != null && currentFilter.getFilters.size() > 0) {
+        if (currentFilter != null && currentFilter.getFilters.size() > 0) {
           get.setFilter(currentFilter)
         }
       } else {
@@ -366,43 +370,49 @@ class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,
   }
 
 
-
-  def withStartRow(row:R)(implicit r:ByteConverter[R]) = {
-    startRowBytes = r.toBytes(row)
+  def withStartRow(row: R) = {
+    startRowBytes = table.rowKeyConverter.toBytes(row)
     this
   }
 
-  def withEndRow(row:R)(implicit r:ByteConverter[R]) = {
-    endRowBytes = r.toBytes(row)
+  def withEndRow(row: R) = {
+    endRowBytes = table.rowKeyConverter.toBytes(row)
     this
   }
 
-  def makeScanner(maxVersions:Int =1, cacheBlocks:Boolean=true, cacheSize: Int = 100) = {
+  def makeScanner(maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100) = {
     require(keys.size == 0, "A scanner should not specify keys, use singleOption or execute or executeMap")
     val scan = new Scan()
     scan.setMaxVersions(maxVersions)
     scan.setCaching(cacheSize)
     scan.setCacheBlocks(cacheBlocks)
 
-    if(startRowBytes != null)
+    if (startRowBytes != null) {
       scan.setStartRow(startRowBytes)
-    if(endRowBytes != null)
-     scan.setStopRow(endRowBytes)
+    }
+    if (endRowBytes != null) {
+      scan.setStopRow(endRowBytes)
+    }
 
-    for(family <- families) scan.addFamily(family)
-    for(column <- columns) scan.addColumn(column._1, column._2)
+    for (family <- families) {
+      scan.addFamily(family)
+    }
+    for (column <- columns) {
+      scan.addColumn(column._1, column._2)
+    }
 
-    if(currentFilter != null && currentFilter.getFilters.size > 0) {
+    if (currentFilter != null && currentFilter.getFilters.size > 0) {
       scan.setFilter(currentFilter)
     }
 
     scan
   }
 
-  def scan(handler: (RR) => Unit, maxVersions:Int = 1, cacheBlocks:Boolean = true, cacheSize:Int = 100) {
+  def scan(handler: (RR) => Unit, maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100) {
     table.withTable() {
       htable =>
-        val scan = makeScanner(maxVersions,cacheBlocks,cacheSize)
+        val scan = makeScanner(maxVersions, cacheBlocks, cacheSize)
+
         val scanner = htable.getScanner(scan)
 
         try {
@@ -415,15 +425,18 @@ class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,
     }
   }
 
-  def scanToIterable[I](handler:(RR) => I, maxVersions:Int = 1, cacheBlocks:Boolean = true, cacheSize:Int = 100) = {
+  def scanToIterable[I](handler: (RR) => I, maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100) = {
     val results2 = table.withTable() {
-      htable => 
-        val scan = makeScanner(maxVersions,cacheBlocks, cacheSize)
+      htable =>
+        val scan = makeScanner(maxVersions, cacheBlocks, cacheSize)
         val scanner = htable.getScanner(scan)
-
-      for(result <- scanner; if(result != null)) yield {
-        handler(table.buildRow(result))
-      }
+        try {
+          for (result <- scanner; if (result != null)) yield {
+            handler(table.buildRow(result))
+          }
+        } finally {
+          scanner.close()
+        }
     }
     results2
   }

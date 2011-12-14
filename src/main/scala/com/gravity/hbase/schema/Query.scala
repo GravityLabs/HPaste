@@ -41,31 +41,31 @@ class Query[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R,RR]](table: HbaseTable[T
   val columns = Buffer[(Array[Byte], Array[Byte])]()
 
 
-  def withKey(key: R)(implicit c: ByteConverter[R]) = {
-    keys += c.toBytes(key)
+  def withKey(key: R)= {
+    keys += table.rowKeyConverter.toBytes(key)
     this
   }
 
-  def withKeys(keys: Set[R])(implicit c: ByteConverter[R]) = {
+  def withKeys(keys: Set[R]) = {
     for (key <- keys) {
-      withKey(key)(c)
+      withKey(key)
     }
     this
   }
 
-  def withColumnFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V])(implicit c: ByteConverter[F]): Query[T, R, RR] = {
+  def withColumnFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V]): Query[T, R, RR] = {
     val fam = family(table.pops)
-    families += c.toBytes(fam.familyName)
+    families += fam.familyBytes
     this
   }
 
-  def withColumn[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K)(implicit c: ByteConverter[F], d: ByteConverter[K]): Query[T, R, RR] = {
+  def withColumn[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K): Query[T, R, RR] = {
     val fam = family(table.pops)
-    columns += (fam.familyBytes -> d.toBytes(columnName))
+    columns += (fam.familyBytes -> fam.keyConverter.toBytes(columnName))
     this
   }
 
-  def withColumn[F, K, V](column: (T) => Column[T, R, F, K, V])(implicit c: ByteConverter[K]): Query[T, R, RR] = {
+  def withColumn[F, K, V](column: (T) => Column[T, R, F, K, V]): Query[T, R, RR] = {
     val col = column(table.pops)
     columns += (col.familyBytes -> col.columnBytes)
     this
@@ -156,7 +156,7 @@ class Query[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R,RR]](table: HbaseTable[T
     results.toSeq // DONE!
   }
 
-  def executeMap(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true)(implicit c: ByteConverter[R]): Map[R, RR] = {
+  def executeMap(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true): Map[R, RR] = {
     if (keys.isEmpty) return Map.empty[R, RR] // don't get all started with nothing to do
 
     // init our result map and give it a hint of the # of keys we have

@@ -182,7 +182,7 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult[T,
     * @param family the underlying table's family `val`
     *
     */
-  def familyKeySet[F, K](family: (T) => ColumnFamily[T, R, F, K, _])(implicit c: ByteConverter[F], d: ByteConverter[K]): Set[K] = {
+  def familyKeySet[F, K](family: (T) => ColumnFamily[T, R, F, K, _]): Set[K] = {
     val fm = family(table.pops)
     result.familyKeySet[K](fm)
   }
@@ -320,16 +320,16 @@ class IncrementOp[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: 
   val increment = new Increment(key)
   increment.setWriteToWAL(false)
 
-  def value[F, K, Long](column: (T) => Column[T, R, F, K, Long], value: java.lang.Long)(implicit c: ByteConverter[F], d: ByteConverter[K]) = {
+  def value[F, K, Long](column: (T) => Column[T, R, F, K, Long], value: java.lang.Long) = {
     val col = column(table.pops)
     increment.addColumn(col.familyBytes, col.columnBytes, value)
     this
   }
 
-  def valueMap[F, K, Long](family: (T) => ColumnFamily[T, R, F, K, Long], values: Map[K, Long])(implicit c: ByteConverter[F], d: ByteConverter[K]) = {
+  def valueMap[F, K, Long](family: (T) => ColumnFamily[T, R, F, K, Long], values: Map[K, Long]) = {
     val fam = family(table.pops)
     for ((key, value) <- values) {
-      increment.addColumn(fam.familyBytes, d.toBytes(key), value.asInstanceOf[java.lang.Long])
+      increment.addColumn(fam.familyBytes, fam.keyConverter.toBytes(key), value.asInstanceOf[java.lang.Long])
     }
     this
   }
@@ -342,16 +342,16 @@ class PutOp[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: Array[
   val put = new Put(key)
   put.setWriteToWAL(writeToWAL)
 
-  def value[F, K, V](column: (T) => Column[T, R, F, K, V], value: V)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) = {
+  def value[F, K, V](column: (T) => Column[T, R, F, K, V], value: V) = {
     val col = column(table.asInstanceOf[T])
-    put.add(col.familyBytes, col.columnBytes, e.toBytes(value))
+    put.add(col.familyBytes, col.columnBytes, col.valueConverter.toBytes(value))
     this
   }
 
-  def valueMap[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], values: Map[K, V])(implicit c: ByteConverter[K], d: ByteConverter[V]) = {
+  def valueMap[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], values: Map[K, V]) = {
     val fam = family(table.pops)
     for ((key, value) <- values) {
-      put.add(fam.familyBytes, c.toBytes(key), d.toBytes(value))
+      put.add(fam.familyBytes, fam.keyConverter.toBytes(key), fam.valueConverter.toBytes(value))
     }
     this
   }
@@ -370,10 +370,10 @@ class DeleteOp[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: Arr
     this
   }
 
-  def values[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], qualifiers: Set[K])(implicit vc: ByteConverter[K]) = {
+  def values[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], qualifiers: Set[K]) = {
     val fam = family(table.pops)
     for (q <- qualifiers) {
-      delete.deleteColumns(fam.familyBytes, vc.toBytes(q))
+      delete.deleteColumns(fam.familyBytes, fam.keyConverter.toBytes(q))
     }
     this
   }
@@ -562,6 +562,7 @@ case class DeserializedResult[T <: HbaseTable[T, R, _], R](rowid: AnyRef) {
   */
 class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableName: String, var cache: QueryResultCache[T, R, RR] = new NoOpCache[T, R, RR](), rowKeyClass: Class[R], rowBuilder: (DeserializedResult[T, R], T) => RR)(implicit conf: Configuration, keyConverter: ByteConverter[R]) {
 
+  val rowKeyConverter = keyConverter
   /** Provides the client with an instance of the superclass this table was defined against. */
   def pops = this.asInstanceOf[T]
 
