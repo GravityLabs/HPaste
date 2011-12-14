@@ -88,6 +88,15 @@ class Query2[T <: HbaseTable[T,R,RR],R, RR<: HRow[T,R,RR]](table:HbaseTable[T,R,
     this
   }
 
+  def columnValueMustEqual[F,K,V](column: (T)=>Column[T,R,F,K,V], value:V)(implicit f:ByteConverter[F], k:ByteConverter[K], v:ByteConverter[V]) = {
+    val c = column(table.pops)
+    val vc = new SingleColumnValueFilter(c.familyBytes,c.columnBytes,CompareOp.EQUAL,v.toBytes(value))
+    vc.setFilterIfMissing(true)
+    vc.setLatestVersionOnly(true)
+    currentFilter.addFilter(vc)
+    this
+  }
+
   def lessThanColumnKey[F,K,V](family: (T) => ColumnFamily[T,R,F,K,V], value:K)(implicit k:ByteConverter[K]) = {
     val valueFilter = new QualifierFilter(CompareOp.LESS_OR_EQUAL, new BinaryComparator(k.toBytes(value)))
     val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(family(table.pops).familyBytes))
