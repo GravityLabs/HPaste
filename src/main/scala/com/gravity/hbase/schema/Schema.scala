@@ -24,10 +24,9 @@ import org.apache.hadoop.conf.Configuration
 import java.io._
 import org.apache.hadoop.io.Writable
 import scala.collection._
-import mutable.{ListBuffer, SynchronizedMap, HashMap, Buffer}
+import scala.collection.mutable.Buffer
 import org.joda.time.DateTime
 import com.gravity.hbase.schema._
-import com.google.common.collect._
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -496,7 +495,7 @@ case class DeserializedResult[T <: HbaseTable[T, R, _], R](rowid: AnyRef) {
   def columnValue[V](column: Column[_, _, _, _, _]) = columnValueByName[V](column.family, column.columnNameRef)
 
   def add(family: ColumnFamily[_, _, _, _, _], qualifier: AnyRef, value: AnyRef, timeStamp: DateTime) {
-    val map = values.getOrElseUpdate(family, new HashMap[AnyRef, (AnyRef, DateTime)]())
+    val map = values.getOrElseUpdate(family, new mutable.HashMap[AnyRef, (AnyRef, DateTime)]())
     map.put(qualifier, (value, timeStamp))
   }
 }
@@ -580,7 +579,7 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
         ds.add(f, k, r, ts)
       } catch {
         case ex: Exception => {
-//          println("Unable to deserialize item in family: " + f.familyName)
+          println("Unable to deserialize item in family: " + f.familyName)
         }
       }
     }
@@ -588,8 +587,6 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
   }
 
 
-  private val columns = Buffer[Column[T, R, _, _, _]]()
-  val families = Buffer[ColumnFamily[T, R, _, _, _]]()
 
   def familyBytes = families.map(family => family.familyBytes)
 
@@ -635,9 +632,16 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
 
   def getBufferedTable(name: String) = bufferTablePool.getTable(name)
 
+  private val columns = Buffer[Column[T, R, _, _, _]]()
+  val families = Buffer[ColumnFamily[T, R, _, _, _]]()
+
+
+//  private val columnsByBytes = mutable.Map[(Array[Byte],Array[Byte])]()
+
   def column[F, K, V](columnFamily: ColumnFamily[T, R, F, K, _], columnName: K, valueClass: Class[V])(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) = {
     val c = new Column[T, R, F, K, V](this, columnFamily, columnName)
     columns += c
+
     c
   }
 
