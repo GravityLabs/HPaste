@@ -590,8 +590,6 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
 
   def familyBytes = families.map(family => family.familyBytes)
 
-  /** All tables automatically receive a family called "meta" */
-  val meta = family[String, String, Any]("meta")
 
 
   //alter 'articles', NAME => 'html', VERSIONS =>1, COMPRESSION=>'lzo'
@@ -698,6 +696,10 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
   def delete(key: R)(implicit c: ByteConverter[R]) = new DeleteOp(this, c.toBytes(key))
 
   def increment(key: R)(implicit c: ByteConverter[R]) = new IncrementOp(this, c.toBytes(key))
+
+  /** All tables automatically receive a family called "meta" */
+  val meta = family[String, String, Any]("meta")
+
 }
 
 case class YearDay(year: Int, day: Int)
