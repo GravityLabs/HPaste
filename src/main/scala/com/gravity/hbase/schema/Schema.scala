@@ -110,7 +110,7 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult[T,
     */
   def columnTimestamp[F, K, V](column: (T) => Column[T, R, F, K, V]): Option[DateTime] = {
     val co = column(table.pops)
-    result.columnTimestamp(co)
+    result.columnTimestampAsDate(co)
   }
 
   /** Extracts most recent column timestamp of the specified `family`
@@ -129,7 +129,7 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult[T,
       case Some(familyPairs) => {
         var ts = -1l
         for (kv <- familyPairs) {
-          val tsn = kv._2._2.getMillis
+          val tsn = kv._2._2
           if (tsn > ts) ts = tsn
         }
         if (ts >= 0) {
@@ -435,7 +435,7 @@ case class DeserializedResult[T <: HbaseTable[T, R, _], R](rowid: AnyRef) {
   def getRow[R]() = rowid.asInstanceOf[R]
 
   /** This is a map whose key is the family type, and whose values are maps of column keys to columnvalues paired with their timestamps */
-  val values = new mutable.HashMap[ColumnFamily[_, _, _, _, _], mutable.Map[AnyRef, (AnyRef, DateTime)]]()
+  val values = new mutable.HashMap[ColumnFamily[_, _, _, _, _], mutable.Map[AnyRef, (AnyRef, Long)]]()
 
   def familyValueMap[K, V](fam: ColumnFamily[_, _, _, _, _]) = {
     family(fam) match {
@@ -484,6 +484,12 @@ case class DeserializedResult[T <: HbaseTable[T, R, _], R](rowid: AnyRef) {
     }
   }
 
+  def columnTimestampAsDate(column: Column[_, _, _, _, _]) = columnTimestamp(column) match {
+    case Some(cts) => Some(new DateTime(cts))
+    case None => None
+  }
+
+
   def columnTimestamp(column: Column[_, _, _, _, _]) = columnValueAndTimestamp(column.family, column.columnNameRef) match {
     case Some(cts) => Some(cts._2)
     case None => None
@@ -496,8 +502,8 @@ case class DeserializedResult[T <: HbaseTable[T, R, _], R](rowid: AnyRef) {
 
   def columnValue[V](column: Column[_, _, _, _, _]) = columnValueByName[V](column.family, column.columnNameRef)
 
-  def add(family: ColumnFamily[_, _, _, _, _], qualifier: AnyRef, value: AnyRef, timeStamp: DateTime) {
-    val map = values.getOrElseUpdate(family, new mutable.HashMap[AnyRef, (AnyRef, DateTime)]())
+  def add(family: ColumnFamily[_, _, _, _, _], qualifier: AnyRef, value: AnyRef, timeStamp: Long) {
+    val map = values.getOrElseUpdate(family, new mutable.HashMap[AnyRef, (AnyRef, Long)]())
     map.put(qualifier, (value, timeStamp))
   }
 }
@@ -580,7 +586,7 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
       try {
         val k = c.keyConverter.fromBytes(key).asInstanceOf[AnyRef]
         val r = c.valueConverter.fromBytes(value).asInstanceOf[AnyRef]
-        val ts = new DateTime(kv.getTimestamp)
+        val ts = kv.getTimestamp
 
         ds.add(f, k, r, ts)
       } catch {
