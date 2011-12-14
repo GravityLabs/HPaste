@@ -497,6 +497,7 @@ abstract class BinaryToTextReducer[S <: SettingsBase] extends HReducer[BytesWrit
 
   def makePerValue[T](reader:(PrimitiveInputStream)=>T) = values.map{value=>readWritable(value)(reader)}
 
+
 }
 
 //case class FromTableMapper[T <: HbaseTable[T, R], R, MOK, MOV, S <: SettingsBase](table: T, tableMapper: (QueryResult[T, R], HMapContext[ImmutableBytesWritable, Result, MOK, MOV, S]) => Unit)
