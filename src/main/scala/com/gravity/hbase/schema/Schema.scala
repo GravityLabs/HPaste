@@ -29,6 +29,7 @@ import org.joda.time.DateTime
 import com.gravity.hbase.schema._
 import java.math.BigInteger
 import java.nio.ByteBuffer
+import org.apache.commons.lang.ArrayUtils
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -546,11 +547,13 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
     */
   def converterByBytes(famBytes: Array[Byte], colBytes: Array[Byte]): KeyValueConvertible[_, _, _] = {
 
-    val fullKey = Array.concat(famBytes, colBytes)
+    val fullKey = ArrayUtils.addAll(famBytes,colBytes)
+    val bufferKey = ByteBuffer.wrap(fullKey)
+
 
     //First make sure an overriding column has not been defined
-    val kvc: KeyValueConvertible[_, _, _] = columnsByBytes.getOrElse(java.nio.ByteBuffer.wrap(fullKey), {
-      familiesByBytes(java.nio.ByteBuffer.wrap(famBytes))
+    val kvc: KeyValueConvertible[_, _, _] = columnsByBytes.getOrElse(bufferKey, {
+      familiesByBytes(ByteBuffer.wrap(famBytes))
     })
     if (kvc == null) {
       throw new RuntimeException("Unable to locate family or column definition")
@@ -642,7 +645,12 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
     val c = new Column[T, R, F, K, V](this, columnFamily, columnName)
     columns += c
 
-    columnsByBytes.put(ByteBuffer.wrap(Array.concat(columnFamily.familyBytes, c.columnBytes)), c)
+    val famBytes = columnFamily.familyBytes
+    val colBytes = c.columnBytes
+    val fullKey = ArrayUtils.addAll(famBytes,colBytes)
+    val bufferKey = ByteBuffer.wrap(fullKey)
+
+    columnsByBytes.put(bufferKey, c)
     c
   }
 
