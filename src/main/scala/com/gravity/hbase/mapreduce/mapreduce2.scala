@@ -491,6 +491,16 @@ abstract class BinaryReducer[S <: SettingsBase] extends HReducer[BytesWritable,B
 abstract class BinaryToTextReducer[S <: SettingsBase] extends HReducer[BytesWritable,BytesWritable,NullWritable,Text,S]{
   def writeln(line:String) {write(NullWritable.get(),new Text(line))}
 
+  def writetabs(items:Any*) {
+    val txt = new Text()
+    val sb = new StringBuilder()
+    for(item <- items) {
+      sb.append(item)
+      sb.append("\t")
+    }
+    write(NullWritable.get(),new Text(sb.toString))
+  }
+
   def readKey[T](reader:(PrimitiveInputStream)=>T) = readWritable(key){reader}
 
   def perValue(reader:(PrimitiveInputStream)=>Unit) {values.foreach{value=>readWritable(value)(reader)}}
