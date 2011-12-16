@@ -442,7 +442,24 @@ trait Schema {
   * Inside of a *Row object, it is good to use lazy val and def as opposed to val.
   * Because HRow objects are now the first-class instantiation of a query result, and because they are the type cached in Ehcache, they are good places to cache values.
   */
-abstract class HRow[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](result: DeserializedResult[T, R], table: T) extends QueryResult[T, R](result, table, table.tableName)
+abstract class HRow[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](result: DeserializedResult[T, R], table: T) extends QueryResult[T, R](result, table, table.tableName) {
+
+  def prettyPrint() {println(prettyFormat())}
+
+  def prettyFormat() = {
+    val sb = new StringBuilder()
+    sb.append("Row Key: " + result.rowid + " ("+ result.values.size + " families)" +"\n")
+    for((family,familyMap) <- result.values) {
+      sb.append("\tFamily: " + family.familyName + " (" + familyMap.values.size + " items)\n")
+      for((key,value) <- familyMap) {
+        sb.append("\t\tColumn: " + key + "\n")
+        sb.append("\t\t\tValue: " + value + "\n")
+        sb.append("\t\t\tTimestamp: " + result.columnTimestampByNameAsDate(family,key) + "\n")
+      }
+    }
+    sb.toString
+  }
+}
 
 case class DeserializedResult[T <: HbaseTable[T, R, _], R](rowid: AnyRef) {
 
