@@ -645,10 +645,10 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
          family = kv.getFamily
          key = kv.getQualifier
          value = kv.getValue} {
-      val c = converterByBytes(family, key)
-      val f = c.family
 
       try {
+        val c = converterByBytes(family, key)
+        val f = c.family
         val k = c.keyConverter.fromBytes(key).asInstanceOf[AnyRef]
         val r = c.valueConverter.fromBytes(value).asInstanceOf[AnyRef]
         val ts = kv.getTimestamp
