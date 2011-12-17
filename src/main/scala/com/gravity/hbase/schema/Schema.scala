@@ -569,6 +569,16 @@ case class DeserializedResult[T <: HbaseTable[T, R, _], R](rowid: AnyRef) {
     tsMap.put(qualifier, timeStamp)
     //Add timestamp lookaside
   }
+
+  var errorBuffer : Buffer[(Array[Byte],Array[Byte],Array[Byte],Long)] = _
+  def addErrorBuffer(family:Array[Byte],qualifier:Array[Byte],value:Array[Byte],timestamp:Long) {
+    if(errorBuffer == null) {
+      errorBuffer = Buffer()
+    }
+    errorBuffer.append((family,qualifier,value,timestamp))
+  }
+
+  def hasErrors = (errorBuffer != null)
 }
 
 /**
@@ -656,7 +666,7 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
         ds.add(f, k, r, ts)
       } catch {
         case ex: Exception => {
-          //          println("Unable to deserialize item in family: " + f.familyName)
+          ds.addErrorBuffer(family,key,value,kv.getTimestamp)
         }
       }
     }
