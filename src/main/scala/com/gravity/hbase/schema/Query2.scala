@@ -171,7 +171,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](table: HbaseTab
     this
   }
 
-  def withColumns[F, K, V](columnList: ((T) => Column[T, R, F, K, V])*) = {
+  def withColumns[F, K, V](columnList: ((T) => Column[T, R, F, _, _])*) = {
     for (column <- columnList) {
       val col = column(table.pops)
       columns += (col.familyBytes -> col.columnBytes)
