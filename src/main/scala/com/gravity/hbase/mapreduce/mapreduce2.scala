@@ -527,6 +527,11 @@ abstract class HMapper[MK,MV,MOK,MOV,S<:SettingsBase] extends Mapper[MK,MV,MOK,M
     settings.fromSettings(context.getConfiguration)
   }
 
+
+  override def cleanup(context: Mapper[MK,MV,MOK,MOV]#Context) {
+    cleanup()
+  }
+
   def ctr(message:String, count:Long) {counter(message,count)}
 
   def ctr(message:String){counter(message,1l)}
@@ -540,6 +545,7 @@ abstract class HMapper[MK,MV,MOK,MOV,S<:SettingsBase] extends Mapper[MK,MV,MOK,M
   def value = context.getCurrentValue
 
   def map()
+  def cleanup()
 
   override def map(key: MK, value: MV, context: Mapper[MK,MV,MOK,MOV]#Context) {
     map()
