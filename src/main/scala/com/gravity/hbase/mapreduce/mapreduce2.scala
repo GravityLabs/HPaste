@@ -545,7 +545,7 @@ abstract class HMapper[MK,MV,MOK,MOV,S<:SettingsBase] extends Mapper[MK,MV,MOK,M
   def value = context.getCurrentValue
 
   def map()
-  def cleanup()
+  def cleanup(){}
 
   override def map(key: MK, value: MV, context: Mapper[MK,MV,MOK,MOV]#Context) {
     map()
