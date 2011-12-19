@@ -34,7 +34,7 @@ import org.joda.time.DateTime
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
-class Query[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R,RR]](table: HbaseTable[T, R, RR]) {
+class Query[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]](table: HbaseTable[T, R, RR]) {
 
   val keys = Buffer[Array[Byte]]()
   val families = Buffer[Array[Byte]]()

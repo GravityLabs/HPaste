@@ -115,7 +115,7 @@ class FuncReducer[IK, IV, OK, OV, S <: SettingsBase] extends Reducer[IK, IV, OK,
   }
 }
 
-class FuncTableMapper[T <: HbaseTable[T, R,RR], R,RR<:HRow[T,R,RR], S <: SettingsBase] extends TableMapper[NullWritable, Writable] with OurMapper[ImmutableBytesWritable, Result, NullWritable, Writable, S] {
+class FuncTableMapper[T <: HbaseTable[T, R,RR], R,RR<:HRow[T,R], S <: SettingsBase] extends TableMapper[NullWritable, Writable] with OurMapper[ImmutableBytesWritable, Result, NullWritable, Writable, S] {
 
 
   var jobBase: TableAnnotationJobBase[T, R,RR, S] = _
@@ -135,7 +135,7 @@ class FuncTableMapper[T <: HbaseTable[T, R,RR], R,RR<:HRow[T,R,RR], S <: Setting
   }
 }
 
-class FuncTableExternMapper[T <: HbaseTable[T, R,RR], R,RR <: HRow[T,R,RR], MOK, MOV, S <: SettingsBase] extends TableMapper[MOK, MOV] with OurMapper[ImmutableBytesWritable, Result, MOK, MOV, S] {
+class FuncTableExternMapper[T <: HbaseTable[T, R,RR], R,RR <: HRow[T,R], MOK, MOV, S <: SettingsBase] extends TableMapper[MOK, MOV] with OurMapper[ImmutableBytesWritable, Result, MOK, MOV, S] {
 
 
   var jobBase: TableAnnotationMRJobBase[T, R, RR,_, _,MOK, MOV, S] = _
@@ -223,7 +223,7 @@ class PathMapper[MOK, MOV, S <: SettingsBase] extends Mapper[LongWritable, Text,
 }
 
 
-class TableToPathMapper[T <: HbaseTable[T, R,RR], R,RR <: HRow[T,R,RR], MOK, MOV, S <: SettingsBase] extends TableMapper[MOK, MOV] with OurMapper[ImmutableBytesWritable, Result, MOK, MOV, S] {
+class TableToPathMapper[T <: HbaseTable[T, R,RR], R,RR <: HRow[T,R], MOK, MOV, S <: SettingsBase] extends TableMapper[MOK, MOV] with OurMapper[ImmutableBytesWritable, Result, MOK, MOV, S] {
 
 
   var jobBase: TableToPathMRJobBase[T, R, RR, MOK, MOV, S] = _
@@ -265,7 +265,7 @@ class TableToPathReducer[MOK, MOV, S <: SettingsBase] extends Reducer[MOK, MOV, 
   }
 }
 
-abstract class TableToPathMRJobBase[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R,RR], MOK: Manifest, MOV: Manifest, S <: SettingsBase]
+abstract class TableToPathMRJobBase[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R], MOK: Manifest, MOV: Manifest, S <: SettingsBase]
 (
         name: String,
         val mapTable: T,
@@ -385,7 +385,7 @@ abstract class PathToTableMRJobBase[T <: HbaseTable[T, R,_], R, MOK: Manifest, M
 
 }
 
-abstract class TableAnnotationMRJobBase[T <: HbaseTable[T, R,RR], R,RR <: HRow[T,R,RR], TT <: HbaseTable[TT, TRR, _], TRR, MOK: Manifest, MOV: Manifest, S <: SettingsBase]
+abstract class TableAnnotationMRJobBase[T <: HbaseTable[T, R,RR], R,RR <: HRow[T,R], TT <: HbaseTable[TT, TRR, _], TRR, MOK: Manifest, MOV: Manifest, S <: SettingsBase]
 (name: String, val mapTable: T, val reduceTable: TT,
  val mapper: (RR, (MOK, MOV) => Unit, HpasteContext[S]) => Unit,
  val reducer: (MOK, Iterable[MOV], (OpBase[TT, TRR]) => Unit, HpasteContext[S]) => Unit,
@@ -416,7 +416,7 @@ abstract class TableAnnotationMRJobBase[T <: HbaseTable[T, R,RR], R,RR <: HRow[T
 }
 
 
-abstract class TableAnnotationJobBase[T <: HbaseTable[T, R,RR], R,RR<:HRow[T,R,RR], S <: SettingsBase]
+abstract class TableAnnotationJobBase[T <: HbaseTable[T, R,RR], R,RR<:HRow[T,R], S <: SettingsBase]
 (name: String, val mapTable: T,
  val mapper: (RR, (Writable) => Unit, HpasteContext[S]) => Unit,
  conf: Configuration

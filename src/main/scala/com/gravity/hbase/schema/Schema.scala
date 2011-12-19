@@ -45,7 +45,7 @@ import org.apache.commons.lang.ArrayUtils
   * @param table the underlying [[com.gravity.hbase.schema.HbaseTable]]
   * @param tableName the name of the actual table
   */
-class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult[T, R], val table: HbaseTable[T, R, _], val tableName: String) extends Serializable {
+class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, val table: HbaseTable[T, R, _], val tableName: String) extends Serializable {
 
 
   /** This is a convenience method to allow consumers to check
@@ -437,31 +437,8 @@ trait Schema {
 
 }
 
-/** Standard base class for all Row objects.
-  *
-  * Inside of a *Row object, it is good to use lazy val and def as opposed to val.
-  * Because HRow objects are now the first-class instantiation of a query result, and because they are the type cached in Ehcache, they are good places to cache values.
-  */
-abstract class HRow[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](result: DeserializedResult[T, R], table: T) extends QueryResult[T, R](result, table, table.tableName) {
 
-  def prettyPrint() {println(prettyFormat())}
-
-  def prettyFormat() = {
-    val sb = new StringBuilder()
-    sb.append("Row Key: " + result.rowid + " ("+ result.values.size + " families)" +"\n")
-    for((family,familyMap) <- result.values) {
-      sb.append("\tFamily: " + family.familyName + " (" + familyMap.values.size + " items)\n")
-      for((key,value) <- familyMap) {
-        sb.append("\t\tColumn: " + key + "\n")
-        sb.append("\t\t\tValue: " + value + "\n")
-        sb.append("\t\t\tTimestamp: " + result.columnTimestampByNameAsDate(family,key) + "\n")
-      }
-    }
-    sb.toString
-  }
-}
-
-case class DeserializedResult[T <: HbaseTable[T, R, _], R](rowid: AnyRef) {
+case class DeserializedResult(rowid: AnyRef) {
 
   def isEmpty = values.size == 0
 
@@ -581,20 +558,49 @@ case class DeserializedResult[T <: HbaseTable[T, R, _], R](rowid: AnyRef) {
   def hasErrors = (errorBuffer != null)
 }
 
+/** Standard base class for all Row objects.
+  *
+  * Inside of a *Row object, it is good to use lazy val and def as opposed to val.
+  * Because HRow objects are now the first-class instantiation of a query result, and because they are the type cached in Ehcache, they are good places to cache values.
+  */
+abstract class HRow[T <: HbaseTable[T, R, _], R](result: DeserializedResult, table: HbaseTable[T,R,_]) extends QueryResult[T, R](result, table, table.tableName) {
+
+  def prettyPrint() {println(prettyFormat())}
+
+  def prettyFormat() = {
+    val sb = new StringBuilder()
+    sb.append("Row Key: " + result.rowid + " ("+ result.values.size + " families)" +"\n")
+    for((family,familyMap) <- result.values) {
+      sb.append("\tFamily: " + family.familyName + " (" + familyMap.values.size + " items)\n")
+      for((key,value) <- familyMap) {
+        sb.append("\t\tColumn: " + key + "\n")
+        sb.append("\t\t\tValue: " + value + "\n")
+        sb.append("\t\t\tTimestamp: " + result.columnTimestampByNameAsDate(family,key) + "\n")
+      }
+    }
+    sb.toString
+  }
+}
+
+
 /**
   * Represents a Table.  Expects an instance of HBaseConfiguration to be present.
   * A parameter-type T should be the actual table that is implementing this one (this is to allow syntactic sugar for easily specifying columns during
   * queries).
   * A parameter-type R should be the type of the key for the table.
   */
-class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableName: String, var cache: QueryResultCache[T, R, RR] = new NoOpCache[T, R, RR](), rowKeyClass: Class[R], rowBuilder: (DeserializedResult[T, R], T) => RR)(implicit conf: Configuration, keyConverter: ByteConverter[R]) {
+abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val tableName: String, var cache: QueryResultCache[T, R, RR] = new NoOpCache[T, R, RR](), rowKeyClass: Class[R])(implicit conf: Configuration, keyConverter: ByteConverter[R]) {
+
+  def rowBuilder(result:DeserializedResult) : RR
 
   val rowKeyConverter = keyConverter
   /** Provides the client with an instance of the superclass this table was defined against. */
   def pops = this.asInstanceOf[T]
 
   /** A method injected by the super class that will build a strongly-typed row object.  */
-  def buildRow(result: Result): RR = {rowBuilder(convertResult(result), pops)}
+  def buildRow(result: Result): RR = {
+    rowBuilder(convertResult(result))
+  }
 
   /** A pool of table objects with AutoFlush set to true */
   val tablePool = new HTablePool(conf, 50)
@@ -648,7 +654,7 @@ class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](val tableNa
     val keyValues = result.raw()
     val rowId = keyConverter.fromBytes(result.getRow).asInstanceOf[AnyRef]
 
-    val ds = DeserializedResult[T, R](rowId)
+    val ds = DeserializedResult(rowId)
 
 
     for {kv <- keyValues

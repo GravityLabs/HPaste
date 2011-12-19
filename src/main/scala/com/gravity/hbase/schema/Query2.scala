@@ -44,7 +44,7 @@ import org.apache.hadoop.hbase.filter.FilterList.Operator
   * @tparam RR the row result type
   * @param table the instance of the table to work with
   */
-class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R, RR]](table: HbaseTable[T, R, RR]) {
+class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR]) {
   val keys = Buffer[Array[Byte]]()
   val families = Buffer[Array[Byte]]()
   val columns = Buffer[(Array[Byte], Array[Byte])]()

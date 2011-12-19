@@ -34,7 +34,7 @@ import org.joda.time.DateTime
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
-class ScanQuery[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R,RR]](table: HbaseTable[T, R,RR]) {
+class ScanQuery[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]](table: HbaseTable[T, R,RR]) {
   val scan = new Scan()
   scan.setCaching(100)
   scan.setMaxVersions(1)

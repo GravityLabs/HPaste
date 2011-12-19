@@ -456,7 +456,7 @@ trait BinaryWritable {
   }
 }
 
-trait ToTableWritable[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R,RR]] {
+trait ToTableWritable[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R]] {
   this : MRWritable[NullWritable,Writable] =>
 
   def write(operation: OpBase[T, R]) {
@@ -464,24 +464,24 @@ trait ToTableWritable[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R,RR]] {
   }
 }
 
-abstract class FromTableMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,R,RR],MOK, MOV](table: HbaseTable[T,R,RR], outputKey:Class[MOK], outputValue:Class[MOV])
+abstract class FromTableMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,R],MOK, MOV](table: HbaseTable[T,R,RR], outputKey:Class[MOK], outputValue:Class[MOV])
         extends HMapper[ImmutableBytesWritable, Result, MOK, MOV] {
 
   def row = table.buildRow(context.getCurrentValue)
 }
 
-abstract class FromTableToTableMapper[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R,RR], TT <: HbaseTable[TT,RT,TTRR],RT,TTRR <: HRow[TT,RT,TTRR]](fromTable:HbaseTable[T,R,RR], toTable:HbaseTable[TT,RT,TTRR])
+abstract class FromTableToTableMapper[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R], TT <: HbaseTable[TT,RT,TTRR],RT,TTRR <: HRow[TT,RT]](fromTable:HbaseTable[T,R,RR], toTable:HbaseTable[TT,RT,TTRR])
   extends FromTableMapper[T,R,RR,NullWritable,Writable](fromTable,classOf[NullWritable],classOf[Writable]) with ToTableWritable[TT,RT,TTRR]
 
 
-abstract class FromTableBinaryMapper[T <: HbaseTable[T, R,RR], R,RR <: HRow[T,R,RR]](table: HbaseTable[T,R,RR])
+abstract class FromTableBinaryMapper[T <: HbaseTable[T, R,RR], R,RR <: HRow[T,R]](table: HbaseTable[T,R,RR])
         extends FromTableMapper[T,R,RR, BytesWritable, BytesWritable](table,classOf[BytesWritable],classOf[BytesWritable]) with BinaryWritable
 
 
-abstract class ToTableReducer[T <: HbaseTable[T, R,RR], R,RR <: HRow[T,R,RR], MOK, MOV](table: HbaseTable[T,R,RR])
+abstract class ToTableReducer[T <: HbaseTable[T, R,RR], R,RR <: HRow[T,R], MOK, MOV](table: HbaseTable[T,R,RR])
         extends HReducer[MOK, MOV, NullWritable, Writable] with ToTableWritable[T,R,RR]
 
-abstract class ToTableBinaryReducer[T <: HbaseTable[T, R,RR], R,RR <: HRow[T,R,RR]](table: HbaseTable[T,R,RR])
+abstract class ToTableBinaryReducer[T <: HbaseTable[T, R,RR], R,RR <: HRow[T,R]](table: HbaseTable[T,R,RR])
         extends HReducer[BytesWritable, BytesWritable, NullWritable, Writable] with ToTableWritable[T,R,RR]
 
 abstract class BinaryMapper extends HMapper[BytesWritable,BytesWritable,BytesWritable,BytesWritable] with BinaryWritable

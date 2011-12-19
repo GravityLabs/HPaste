@@ -26,7 +26,7 @@ import org.apache.hadoop.hbase.client.{Get, Scan}
 
 case class ScanCachePolicy(ttlMinutes: Int)
 
-trait QueryResultCache[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,R,RR]] {
+trait QueryResultCache[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,R]] {
 
   def getScanResult(key: Scan): Option[Seq[RR]]
 
@@ -37,7 +37,7 @@ trait QueryResultCache[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,R,RR]] {
   def putResult(key: Get, value: RR, ttl: Int)
 }
 
-class NoOpCache[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R,RR]] extends QueryResultCache[T, R, RR] {
+class NoOpCache[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]] extends QueryResultCache[T, R, RR] {
 
   override def getScanResult(key: Scan): Option[Seq[RR]] = None
 
