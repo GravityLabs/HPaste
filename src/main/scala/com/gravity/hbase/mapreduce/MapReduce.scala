@@ -489,7 +489,7 @@ object Settings {
 
 
 class NoSettings extends SettingsBase {
-
+  def hithere() = "Hi"
 }
 
 class SettingsBase {
