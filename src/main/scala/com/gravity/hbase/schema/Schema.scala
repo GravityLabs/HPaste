@@ -227,22 +227,20 @@ class OpBase[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: Array
   def size = previous.size
 
   def getOperations: Iterable[Writable] = {
-    val puts = Buffer[Put]()
-    val deletes = Buffer[Delete]()
-    val increments = Buffer[Increment]()
+    val calls = Buffer[Writable]()
     previous.foreach {
       case put: PutOp[T, R] => {
-        puts += put.put
+        calls += put.put
       }
       case delete: DeleteOp[T, R] => {
-        deletes += delete.delete
+        calls += delete.delete
       }
       case increment: IncrementOp[T, R] => {
-        increments += increment.increment
+        calls += increment.increment
       }
     }
 
-    deletes ++ puts ++ increments
+    calls
 
   }
 
