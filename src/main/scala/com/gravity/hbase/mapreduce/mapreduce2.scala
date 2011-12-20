@@ -529,6 +529,11 @@ abstract class FromTableMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], M
   def row = table.buildRow(context.getCurrentValue)
 }
 
+/** In a map-only job, this covers a table that will write to itself */
+abstract class TableSelfMapper[T <: HbaseTable[T,R,RR],R, RR <: HRow[T,R]](table:HbaseTable[T,R,RR]) extends FromTableToTableMapper(table,table)
+
+
+
 abstract class FromTableToTableMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], TT <: HbaseTable[TT, RT, TTRR], RT, TTRR <: HRow[TT, RT]](fromTable: HbaseTable[T, R, RR], toTable: HbaseTable[TT, RT, TTRR])
         extends FromTableMapper[T, R, RR, NullWritable, Writable](fromTable, classOf[NullWritable], classOf[Writable]) with ToTableWritable[TT, RT, TTRR]
 
@@ -589,10 +594,15 @@ abstract class HMapper[MK, MV, MOK, MOV] extends Mapper[MK, MV, MOK, MOV] with M
 
   var settings: SettingsClass = _
 
-  override def setup(context: Mapper[MK, MV, MOK, MOV]#Context) {
+  def onStart() {
+
+  }
+
+  final override def setup(context: Mapper[MK, MV, MOK, MOV]#Context) {
     this.context = context
     settings = Class.forName(context.getConfiguration.get("hpaste.settingsclass")).newInstance().asInstanceOf[SettingsClass]
     settings.fromSettings(context.getConfiguration)
+    onStart()
   }
 
 

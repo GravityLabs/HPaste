@@ -109,9 +109,9 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
     *
     * @return `Some` [[org.joda.time.DateTime]] if the column value is present, otherwise `None`
     */
-  def columnFromFamilyTimestamp[F,K,V](family:(T) => ColumnFamily[T,R,F,K,V],columnName:K) = {
+  def columnFromFamilyTimestamp[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K) = {
     val fam = family(table.pops)
-    result.columnTimestampByNameAsDate(fam,columnName.asInstanceOf[AnyRef])
+    result.columnTimestampByNameAsDate(fam, columnName.asInstanceOf[AnyRef])
   }
 
   /** Extracts column timestamp of the specified `column`
@@ -145,7 +145,7 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
       case Some(familyPairs) => {
         var ts = -1l
         for (kv <- familyPairs) {
-          val tsn = result.columnTimestampByName(fam,kv._1).get
+          val tsn = result.columnTimestampByName(fam, kv._1).get
           if (tsn > ts) ts = tsn
         }
         if (ts >= 0) {
@@ -340,9 +340,13 @@ class PutOp[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: Array[
   val put = new Put(key)
   put.setWriteToWAL(writeToWAL)
 
-  def value[F, K, V](column: (T) => Column[T, R, F, K, V], value: V) = {
+  def value[F, K, V](column: (T) => Column[T, R, F, K, V], value: V, timeStamp: DateTime = null) = {
     val col = column(table.asInstanceOf[T])
-    put.add(col.familyBytes, col.columnBytes, col.valueConverter.toBytes(value))
+    if (timeStamp == null) {
+      put.add(col.familyBytes, col.columnBytes, col.valueConverter.toBytes(value))
+    }else {
+      put.add(col.familyBytes, col.columnBytes, timeStamp.getMillis, col.valueConverter.toBytes(value))
+    }
     this
   }
 
@@ -446,7 +450,7 @@ case class DeserializedResult(rowid: AnyRef) {
   def familyValueMap[K, V](fam: ColumnFamily[_, _, _, _, _]) = {
     family(fam) match {
       case Some(famMap) => {
-        famMap.asInstanceOf[Map[K,V]]
+        famMap.asInstanceOf[Map[K, V]]
       }
       case None => Map[K, V]()
     }
@@ -502,21 +506,20 @@ case class DeserializedResult(rowid: AnyRef) {
   }
 
 
-  def columnTimestampAsDate(column: Column[_, _, _, _, _]) = columnTimestamp(column.family,column.columnNameRef) match {
+  def columnTimestampAsDate(column: Column[_, _, _, _, _]) = columnTimestamp(column.family, column.columnNameRef) match {
     case Some(cts) => Some(new DateTime(cts))
     case None => None
   }
 
-  def columnTimestampByName(fam:ColumnFamily[_,_,_,_,_],columnName:AnyRef) = columnTimestamp(fam, columnName) match {
+  def columnTimestampByName(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = columnTimestamp(fam, columnName) match {
     case Some(cts) => Some(cts)
     case None => None
   }
 
-  def columnTimestampByNameAsDate(fam:ColumnFamily[_,_,_,_,_],columnName:AnyRef) = columnTimestamp(fam, columnName) match {
+  def columnTimestampByNameAsDate(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = columnTimestamp(fam, columnName) match {
     case Some(cts) => Some(new DateTime(cts))
     case None => None
   }
-
 
 
   def columnTimestamp(column: Column[_, _, _, _, _]) = columnValue(column.family, column.columnNameRef) match {
@@ -534,23 +537,24 @@ case class DeserializedResult(rowid: AnyRef) {
   /** This is a map whose key is the family type, and whose values are maps of column keys to columnvalues paired with their timestamps */
   val values = new mutable.HashMap[ColumnFamily[_, _, _, _, _], mutable.Map[AnyRef, AnyRef]]()
 
-  val timestampLookaside = new mutable.HashMap[ColumnFamily[_,_,_,_,_],mutable.Map[AnyRef,Long]]()
+  val timestampLookaside = new mutable.HashMap[ColumnFamily[_, _, _, _, _], mutable.Map[AnyRef, Long]]()
 
   def add(family: ColumnFamily[_, _, _, _, _], qualifier: AnyRef, value: AnyRef, timeStamp: Long) {
-    val map = values.getOrElseUpdate(family, new mutable.HashMap[AnyRef,AnyRef]())
+    val map = values.getOrElseUpdate(family, new mutable.HashMap[AnyRef, AnyRef]())
     map.put(qualifier, value)
 
-    val tsMap = timestampLookaside.getOrElseUpdate(family, new mutable.HashMap[AnyRef,Long]())
+    val tsMap = timestampLookaside.getOrElseUpdate(family, new mutable.HashMap[AnyRef, Long]())
     tsMap.put(qualifier, timeStamp)
     //Add timestamp lookaside
   }
 
-  var errorBuffer : Buffer[(Array[Byte],Array[Byte],Array[Byte],Long)] = _
-  def addErrorBuffer(family:Array[Byte],qualifier:Array[Byte],value:Array[Byte],timestamp:Long) {
-    if(errorBuffer == null) {
+  var errorBuffer: Buffer[(Array[Byte], Array[Byte], Array[Byte], Long)] = _
+
+  def addErrorBuffer(family: Array[Byte], qualifier: Array[Byte], value: Array[Byte], timestamp: Long) {
+    if (errorBuffer == null) {
       errorBuffer = Buffer()
     }
-    errorBuffer.append((family,qualifier,value,timestamp))
+    errorBuffer.append((family, qualifier, value, timestamp))
   }
 
   def hasErrors = (errorBuffer != null)
@@ -561,19 +565,19 @@ case class DeserializedResult(rowid: AnyRef) {
   * Inside of a *Row object, it is good to use lazy val and def as opposed to val.
   * Because HRow objects are now the first-class instantiation of a query result, and because they are the type cached in Ehcache, they are good places to cache values.
   */
-abstract class HRow[T <: HbaseTable[T, R, _], R](result: DeserializedResult, table: HbaseTable[T,R,_]) extends QueryResult[T, R](result, table, table.tableName) {
+abstract class HRow[T <: HbaseTable[T, R, _], R](result: DeserializedResult, table: HbaseTable[T, R, _]) extends QueryResult[T, R](result, table, table.tableName) {
 
   def prettyPrint() {println(prettyFormat())}
 
   def prettyFormat() = {
     val sb = new StringBuilder()
-    sb.append("Row Key: " + result.rowid + " ("+ result.values.size + " families)" +"\n")
-    for((family,familyMap) <- result.values) {
+    sb.append("Row Key: " + result.rowid + " (" + result.values.size + " families)" + "\n")
+    for ((family, familyMap) <- result.values) {
       sb.append("\tFamily: " + family.familyName + " (" + familyMap.values.size + " items)\n")
-      for((key,value) <- familyMap) {
+      for ((key, value) <- familyMap) {
         sb.append("\t\tColumn: " + key + "\n")
         sb.append("\t\t\tValue: " + value + "\n")
-        sb.append("\t\t\tTimestamp: " + result.columnTimestampByNameAsDate(family,key) + "\n")
+        sb.append("\t\t\tTimestamp: " + result.columnTimestampByNameAsDate(family, key) + "\n")
       }
     }
     sb.toString
@@ -589,7 +593,7 @@ abstract class HRow[T <: HbaseTable[T, R, _], R](result: DeserializedResult, tab
   */
 abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val tableName: String, var cache: QueryResultCache[T, R, RR] = new NoOpCache[T, R, RR](), rowKeyClass: Class[R])(implicit conf: Configuration, keyConverter: ByteConverter[R]) {
 
-  def rowBuilder(result:DeserializedResult) : RR
+  def rowBuilder(result: DeserializedResult): RR
 
   val rowKeyConverter = keyConverter
   /** Provides the client with an instance of the superclass this table was defined against. */
@@ -631,7 +635,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     */
   def converterByBytes(famBytes: Array[Byte], colBytes: Array[Byte]): KeyValueConvertible[_, _, _] = {
 
-    val fullKey = ArrayUtils.addAll(famBytes,colBytes)
+    val fullKey = ArrayUtils.addAll(famBytes, colBytes)
     val bufferKey = ByteBuffer.wrap(fullKey)
 
 
@@ -670,7 +674,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
         ds.add(f, k, r, ts)
       } catch {
         case ex: Exception => {
-          ds.addErrorBuffer(family,key,value,kv.getTimestamp)
+          ds.addErrorBuffer(family, key, value, kv.getTimestamp)
         }
       }
     }
@@ -732,7 +736,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
     val famBytes = columnFamily.familyBytes
     val colBytes = c.columnBytes
-    val fullKey = ArrayUtils.addAll(famBytes,colBytes)
+    val fullKey = ArrayUtils.addAll(famBytes, colBytes)
     val bufferKey = ByteBuffer.wrap(fullKey)
 
     columnsByBytes.put(bufferKey, c)
