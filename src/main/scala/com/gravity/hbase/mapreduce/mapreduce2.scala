@@ -462,7 +462,10 @@ abstract class HTask[IK, IV, OK, OV, S <: SettingsBase](val taskId: HTaskID, val
   }
 }
 
-
+/** This trait recognizes that mappers and reducers both write key-value pairs, so allows code to be abstracted across mapper and reducer implementations.  It is implemented
+  * by HMapper and HReducer, so there should be no need to implement it again.  Instead, write convenience functions that use this trait as a self-type.
+  *
+  */
 trait MRWritable[OK, OV] {
   def write(key: OK, value: OV)
 }
