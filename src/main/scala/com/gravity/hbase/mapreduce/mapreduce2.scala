@@ -21,7 +21,6 @@ import com.gravity.hbase.schema._
 import org.apache.hadoop.conf.Configuration
 import java.lang.Iterable
 import com.gravity.hbase.schema.HbaseTable
-import org.apache.hadoop.hbase.mapreduce.TableInputFormat
 import com.gravity.hadoop.GravityTableOutputFormat
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable
 import org.apache.hadoop.fs.{FileSystem, Path}
@@ -36,6 +35,7 @@ import org.apache.hadoop.mapreduce.{Partitioner, Job, Reducer, Mapper}
 import scala.collection.mutable.Buffer
 import org.apache.hadoop.io._
 import java.io.{DataInputStream, ByteArrayInputStream, ByteArrayOutputStream}
+import org.apache.hadoop.hbase.mapreduce.{MultiTableOutputFormat, TableInputFormat}
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -338,6 +338,20 @@ case class HPathInput(paths: Seq[String]) extends HInput {
   }
 }
 
+/** Allows the output to be written to multiple tables. Currently the list of tables passed in is
+  * purely for documentation.  There is no check in the output that will keep you from writing to other tables.
+  */
+case class HMultiTableOutput(writeToTransactionLog:Boolean, tables:HbaseTable[_,_,_]*) extends HOutput {
+  override def toString = "Output: The following tables: " + tables.map(_.tableName).mkString("{",",","}")
+
+
+  override def init(job:Job) {
+    if(!writeToTransactionLog)
+      job.getConfiguration.setBoolean(MultiTableOutputFormat.WAL_PROPERTY,MultiTableOutputFormat.WAL_OFF)
+    job.setOutputFormatClass(classOf[MultiTableOutputFormat])
+  }
+}
+
 /**
   * Outputs to an HPaste Table
   */
@@ -452,6 +466,9 @@ trait BinaryWritable {
   }
 }
 
+/**Can read reducer input composed of BytesWritable
+  *
+  */
 trait BinaryReadable {
   this : HReducer[BytesWritable,BytesWritable,_,_] =>
 
@@ -462,11 +479,26 @@ trait BinaryReadable {
     def makePerValue[T](reader: (PrimitiveInputStream) => T) = values.map {value => readWritable(value)(reader)}
 }
 
+/** Can write to a specific table
+  *
+  */
 trait ToTableWritable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] {
   this: MRWritable[NullWritable, Writable] =>
 
   def write(operation: OpBase[T, R]) {
     operation.getOperations.foreach {op => write(NullWritable.get(), op)}
+  }
+}
+
+/** Can write to multiple tables
+  *
+  */
+trait MultiTableWritable {
+  this: MRWritable[ImmutableBytesWritable,Writable] =>
+
+  def write[T <: HbaseTable[T,R,_],R](operation: OpBase[T,R]) {
+    val tableName = new ImmutableBytesWritable(operation.table.tableName.getBytes("UTF-8"))
+    operation.getOperations.foreach{op => write(tableName,op)}
   }
 }
 
@@ -490,12 +522,14 @@ abstract class BinaryToTableReducer[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R]](t
 abstract class ToTableReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], MOK, MOV](table: HbaseTable[T, R, RR])
         extends HReducer[MOK, MOV, NullWritable, Writable] with ToTableWritable[T, R, RR]
 
+abstract class BinaryToMultiTableReducer(tables: HbaseTable[_,_,_]*) extends ToMultiTableReducer[BytesWritable,BytesWritable](tables:_*)
+
+abstract class ToMultiTableReducer[MOK,MOV](tables: HbaseTable[_,_,_]*) extends HReducer[MOK,MOV,ImmutableBytesWritable,Writable] with MultiTableWritable
+
 abstract class ToTableBinaryReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
         extends HReducer[BytesWritable, BytesWritable, NullWritable, Writable] with ToTableWritable[T, R, RR] with BinaryReadable
 
 abstract class TextToBinaryMapper extends HMapper[LongWritable,Text,BytesWritable,BytesWritable] with BinaryWritable {
-
-
 }
 
 abstract class BinaryMapper extends HMapper[BytesWritable, BytesWritable, BytesWritable, BytesWritable] with BinaryWritable
@@ -506,7 +540,6 @@ abstract class BinaryToTextReducer extends HReducer[BytesWritable, BytesWritable
   def writeln(line: String) {write(NullWritable.get(), new Text(line))}
 
   def writetabs(items: Any*) {
-    val txt = new Text()
     val sb = new StringBuilder()
     for (item <- items) {
       sb.append(item)

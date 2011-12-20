@@ -205,7 +205,7 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
   * An individual data modification operation (put, increment, or delete usually)
   * These operations are chained together by the client, and then executed in bulk.
   */
-class OpBase[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) {
+class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) {
 
   previous += this
 
