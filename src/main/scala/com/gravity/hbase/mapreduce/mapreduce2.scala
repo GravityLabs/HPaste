@@ -118,6 +118,16 @@ case class BigMemoryConf(mapMemoryMB: Int, reduceMemoryMB: Int, mapBufferMB: Int
   }
 }
 
+case object TemporaryMemoryOverrideConf extends HConfigLet {
+  override def configure(job: Job) {
+    val conf = job.getConfiguration
+    conf.set("mapred.map.child.java.opts", "-Xmx1024m -server -Djava.net.preferIPv4Stack=true")
+    conf.set("mapred.reduce.child.java.opts", "-Xmx1024m -server -Djava.net.preferIPv4Stack=true")
+    conf.setInt("mapred.job.map.memory.mb", 1824)
+    conf.setInt("mapred.job.reduce.memory.mb", 1824)
+  }
+}
+
 
 /**
   * A job encompasses a series of tasks that cooperate to build output.  Each task is usually an individual map or map/reduce operation.
