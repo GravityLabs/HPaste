@@ -46,6 +46,8 @@ class PrimitiveInputStream(input: InputStream) extends DataInputStream(input) {
   def readObj[T](implicit c: ComplexByteConverter[T]) = {
     c.read(this)
   }
+
+  def skipLong() {this.skipBytes(8)}
 }
 
 /** Expresses an output stream that can write ordered primitives into a binary output, and can also use the ByteConverter[T] interface to write serializable objects.
