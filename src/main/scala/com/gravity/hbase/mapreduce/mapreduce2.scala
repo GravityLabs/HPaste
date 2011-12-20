@@ -496,9 +496,17 @@ trait ToTableWritable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] {
 trait MultiTableWritable {
   this: MRWritable[ImmutableBytesWritable,Writable] =>
 
+  val validTableNames : Set[String]
+
+  /** Perform a buffered write to one of the tables specified.  If the table is not in the specified list, will throw an exception saying so.
+    */
   def write[T <: HbaseTable[T,R,_],R](operation: OpBase[T,R]) {
-    val tableName = new ImmutableBytesWritable(operation.table.tableName.getBytes("UTF-8"))
-    operation.getOperations.foreach{op => write(tableName,op)}
+    if(validTableNames.contains(operation.table.tableName)) {
+      val tableName = new ImmutableBytesWritable(operation.table.tableName.getBytes("UTF-8"))
+      operation.getOperations.foreach{op => write(tableName,op)}
+    }else {
+      throw new RuntimeException("Attempted to write to table: " + operation.table.tableName + ", when allowed tables are : " + validTableNames.mkString("{",",","}"))
+    }
   }
 }
 
@@ -524,7 +532,9 @@ abstract class ToTableReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], MO
 
 abstract class BinaryToMultiTableReducer(tables: HbaseTable[_,_,_]*) extends ToMultiTableReducer[BytesWritable,BytesWritable](tables:_*)
 
-abstract class ToMultiTableReducer[MOK,MOV](tables: HbaseTable[_,_,_]*) extends HReducer[MOK,MOV,ImmutableBytesWritable,Writable] with MultiTableWritable
+abstract class ToMultiTableReducer[MOK,MOV](tables: HbaseTable[_,_,_]*) extends HReducer[MOK,MOV,ImmutableBytesWritable,Writable] with MultiTableWritable {
+  val validTableNames = tables.map(_.tableName).toSet
+}
 
 abstract class ToTableBinaryReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
         extends HReducer[BytesWritable, BytesWritable, NullWritable, Writable] with ToTableWritable[T, R, RR] with BinaryReadable
