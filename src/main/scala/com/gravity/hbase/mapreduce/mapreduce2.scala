@@ -484,11 +484,19 @@ abstract class FromTableBinaryMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,
         extends FromTableMapper[T, R, RR, BytesWritable, BytesWritable](table, classOf[BytesWritable], classOf[BytesWritable]) with BinaryWritable
 
 
+abstract class BinaryToTableReducer[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R]](table: HbaseTable[T,R,RR])
+      extends ToTableReducer[T, R,RR, BytesWritable,BytesWritable](table) with BinaryReadable
+
 abstract class ToTableReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], MOK, MOV](table: HbaseTable[T, R, RR])
         extends HReducer[MOK, MOV, NullWritable, Writable] with ToTableWritable[T, R, RR]
 
 abstract class ToTableBinaryReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
         extends HReducer[BytesWritable, BytesWritable, NullWritable, Writable] with ToTableWritable[T, R, RR] with BinaryReadable
+
+abstract class TextToBinaryMapper extends HMapper[LongWritable,Text,BytesWritable,BytesWritable] with BinaryWritable {
+
+
+}
 
 abstract class BinaryMapper extends HMapper[BytesWritable, BytesWritable, BytesWritable, BytesWritable] with BinaryWritable
 
