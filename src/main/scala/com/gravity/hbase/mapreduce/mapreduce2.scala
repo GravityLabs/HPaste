@@ -128,6 +128,12 @@ case object TemporaryMemoryOverrideConf extends HConfigLet {
   }
 }
 
+case class LongRunningJobConf(timeoutInSeconds: Int) extends HConfigLet {
+  override def configure(job: Job) {
+    job.getConfiguration.setInt("mapred.task.timeout", timeoutInSeconds)
+  }
+}
+
 
 /**
   * A job encompasses a series of tasks that cooperate to build output.  Each task is usually an individual map or map/reduce operation.
