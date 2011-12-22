@@ -30,6 +30,7 @@ import com.gravity.hbase.schema._
 import java.math.BigInteger
 import java.nio.ByteBuffer
 import org.apache.commons.lang.ArrayUtils
+import java.util.HashMap
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -171,6 +172,7 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
   def family[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V]): Map[K, V] = {
     val fm = family(table.pops)
     result.familyValueMap[K, V](fm)
+
   }
 
   /** Extracts and deserializes only the keys (qualifiers) of the family as a `Set[K]`
@@ -344,7 +346,7 @@ class PutOp[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: Array[
     val col = column(table.asInstanceOf[T])
     if (timeStamp == null) {
       put.add(col.familyBytes, col.columnBytes, col.valueConverter.toBytes(value))
-    }else {
+    } else {
       put.add(col.familyBytes, col.columnBytes, timeStamp.getMillis, col.valueConverter.toBytes(value))
     }
     this
@@ -407,6 +409,7 @@ class ColumnFamily[T <: HbaseTable[T, R, _], R, F, K, V](val table: HbaseTable[T
   val valueConverter = e
   val familyBytes = c.toBytes(familyName)
 
+
   def family = this
 }
 
@@ -450,22 +453,30 @@ case class DeserializedResult(rowid: AnyRef) {
   def familyValueMap[K, V](fam: ColumnFamily[_, _, _, _, _]) = {
     family(fam) match {
       case Some(famMap) => {
-        famMap.asInstanceOf[Map[K, V]]
+        famMap.asInstanceOf[java.util.HashMap[K,V]]
       }
-      case None => Map[K, V]()
+      case None => new java.util.HashMap[K, V]()
     }
   }
 
   def familyKeySet[K](fam: ColumnFamily[_, _, _, _, _]) = {
     family(fam) match {
       case Some(famMap) => {
-        famMap.keySet.asInstanceOf[Set[K]]
+        famMap.keySet.asInstanceOf[java.util.Set[K]]
       }
-      case None => Set[K]()
+      case None => new java.util.HashSet[K]()
     }
   }
 
-  def family(family: ColumnFamily[_, _, _, _, _]) = values.get(family)
+  def family(family: ColumnFamily[_, _, _, _, _]) = {
+      val res = values.get(family)
+      if (res == null) {
+        None
+      }
+      else {
+        Some(res)
+      }
+  }
 
   def familyOf(column: Column[_, _, _, _, _]) = family(column.family)
 
@@ -488,20 +499,22 @@ case class DeserializedResult(rowid: AnyRef) {
   def columnValue(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = {
     family(fam) match {
       case Some(valueMap) => {
-        valueMap.get(columnName)
+        val res = valueMap.get(columnName)
+        if(res == null) None
+        else Some(res)
       }
       case None => None
     }
   }
 
   def columnTimestamp(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = {
-    timestampLookaside.get(fam) match {
-      case Some(famMap) => {
-        famMap.get(columnName)
-      }
-      case None => {
-        None
-      }
+    val res = timestampLookaside.get(fam)
+    if(res != null) {
+      val colRes = res.get(columnName)
+      if(colRes == 0l) None
+      else Some(colRes)
+    }else {
+      None
     }
   }
 
@@ -535,15 +548,23 @@ case class DeserializedResult(rowid: AnyRef) {
   def columnValueTyped[V](column: Column[_, _, _, _, _]) = columnValueByName[V](column.family, column.columnNameRef)
 
   /** This is a map whose key is the family type, and whose values are maps of column keys to columnvalues paired with their timestamps */
-  val values = new mutable.HashMap[ColumnFamily[_, _, _, _, _], mutable.Map[AnyRef, AnyRef]]()
+  val values = new java.util.HashMap[ColumnFamily[_, _, _, _, _], java.util.HashMap[AnyRef, AnyRef]]()
 
-  val timestampLookaside = new mutable.HashMap[ColumnFamily[_, _, _, _, _], mutable.Map[AnyRef, Long]]()
+  val timestampLookaside = new java.util.HashMap[ColumnFamily[_, _, _, _, _], java.util.HashMap[AnyRef, Long]]()
 
   def add(family: ColumnFamily[_, _, _, _, _], qualifier: AnyRef, value: AnyRef, timeStamp: Long) {
-    val map = values.getOrElseUpdate(family, new mutable.HashMap[AnyRef, AnyRef]())
+    var map = values.get(family)
+    if(map == null) {
+      map = new java.util.HashMap[AnyRef,AnyRef]()
+      values.put(family,map)
+    }
     map.put(qualifier, value)
 
-    val tsMap = timestampLookaside.getOrElseUpdate(family, new mutable.HashMap[AnyRef, Long]())
+    var tsMap = timestampLookaside.get(family)
+    if(tsMap == null) {
+      tsMap = new java.util.HashMap[AnyRef,Long]()
+      timestampLookaside.put(family,tsMap)
+    }
     tsMap.put(qualifier, timeStamp)
     //Add timestamp lookaside
   }
@@ -742,6 +763,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     columnsByBytes.put(bufferKey, c)
     c
   }
+
 
   def family[F, K, V](familyName: F, compressed: Boolean = false, versions: Int = 1)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) = {
     val family = new ColumnFamily[T, R, F, K, V](this, familyName, compressed, versions)
