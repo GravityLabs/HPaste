@@ -600,13 +600,17 @@ abstract class HRow[T <: HbaseTable[T, R, _], R](result: DeserializedResult, tab
   def prettyFormat() = {
     val sb = new StringBuilder()
     sb.append("Row Key: " + result.rowid + " (" + result.values.size + " families)" + "\n")
-    result.values.zipWithIndex.foreach{case (familyMap: HashMap[AnyRef, AnyRef], familyIdx: Int) =>
-      val family = table.familyByIndex(familyIdx)
-      sb.append("\tFamily: " + family.familyName + " (" + familyMap.values.size + " items)\n")
-      for ((key, value) <- familyMap) {
-        sb.append("\t\tColumn: " + key + "\n")
-        sb.append("\t\t\tValue: " + value + "\n")
-        sb.append("\t\t\tTimestamp: " + result.columnTimestampByNameAsDate(family, key) + "\n")
+    for(i <- 0 until result.values.length) {
+      val familyMap = result.values(i)
+      if(familyMap != null) {
+        val family = table.familyByIndex(i)
+        sb.append("\tFamily: " + family.familyName + " (" + familyMap.values.size + " items)\n")
+        for ((key, value) <- familyMap) {
+          sb.append("\t\tColumn: " + key + "\n")
+          sb.append("\t\t\tValue: " + value + "\n")
+          sb.append("\t\t\tTimestamp: " + result.columnTimestampByNameAsDate(family, key) + "\n")
+        }
+
       }
     }
     sb.toString
