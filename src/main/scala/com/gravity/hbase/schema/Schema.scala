@@ -24,7 +24,7 @@ import org.apache.hadoop.conf.Configuration
 import java.io._
 import org.apache.hadoop.io.Writable
 import scala.collection._
-import scala.collection.mutable.Buffer
+import mutable.{ArrayBuffer, Buffer}
 import org.joda.time.DateTime
 import com.gravity.hbase.schema._
 import java.math.BigInteger
@@ -403,7 +403,7 @@ trait KeyValueConvertible[F, K, V] {
 /**
   * Represents the specification of a Column Family
   */
-class ColumnFamily[T <: HbaseTable[T, R, _], R, F, K, V](val table: HbaseTable[T, R, _], val familyName: F, val compressed: Boolean = false, val versions: Int = 1)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
+class ColumnFamily[T <: HbaseTable[T, R, _], R, F, K, V](val table: HbaseTable[T, R, _], val familyName: F, val compressed: Boolean = false, val versions: Int = 1,val index:Int)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
   val familyConverter = c
   val keyConverter = d
   val valueConverter = e
@@ -443,7 +443,7 @@ trait Schema {
 }
 
 
-case class DeserializedResult(rowid: AnyRef) {
+case class DeserializedResult(rowid: AnyRef, famCount:Int) {
 
   def isEmpty = values.size == 0
 
@@ -469,7 +469,8 @@ case class DeserializedResult(rowid: AnyRef) {
   }
 
   def family(family: ColumnFamily[_, _, _, _, _]) = {
-      val res = values.get(family)
+
+      val res = values(family.index)
       if (res == null) {
         None
       }
@@ -508,7 +509,7 @@ case class DeserializedResult(rowid: AnyRef) {
   }
 
   def columnTimestamp(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = {
-    val res = timestampLookaside.get(fam)
+    val res = timestampLookaside(fam.index)
     if(res != null) {
       val colRes = res.get(columnName)
       if(colRes == 0l) None
@@ -547,23 +548,29 @@ case class DeserializedResult(rowid: AnyRef) {
 
   def columnValueTyped[V](column: Column[_, _, _, _, _]) = columnValueByName[V](column.family, column.columnNameRef)
 
-  /** This is a map whose key is the family type, and whose values are maps of column keys to columnvalues paired with their timestamps */
-  val values = new java.util.HashMap[ColumnFamily[_, _, _, _, _], java.util.HashMap[AnyRef, AnyRef]]()
 
-  val timestampLookaside = new java.util.HashMap[ColumnFamily[_, _, _, _, _], java.util.HashMap[AnyRef, Long]]()
+  var values = new Array[java.util.HashMap[AnyRef,AnyRef]](famCount)
+
+  var timestampLookaside = new Array[java.util.HashMap[AnyRef,Long]](famCount)
+
+
+  /** This is a map whose key is the family type, and whose values are maps of column keys to columnvalues paired with their timestamps */
+//  val values = new java.util.HashMap[ColumnFamily[_, _, _, _, _], java.util.HashMap[AnyRef, AnyRef]]()
+
+//  val timestampLookaside = new java.util.HashMap[ColumnFamily[_, _, _, _, _], java.util.HashMap[AnyRef, Long]]()
 
   def add(family: ColumnFamily[_, _, _, _, _], qualifier: AnyRef, value: AnyRef, timeStamp: Long) {
-    var map = values.get(family)
+    var map = values(family.index)
     if(map == null) {
       map = new java.util.HashMap[AnyRef,AnyRef]()
-      values.put(family,map)
+      values(family.index) = map
     }
     map.put(qualifier, value)
 
-    var tsMap = timestampLookaside.get(family)
+    var tsMap = timestampLookaside(family.index)
     if(tsMap == null) {
       tsMap = new java.util.HashMap[AnyRef,Long]()
-      timestampLookaside.put(family,tsMap)
+      timestampLookaside(family.index) = tsMap
     }
     tsMap.put(qualifier, timeStamp)
     //Add timestamp lookaside
@@ -593,7 +600,8 @@ abstract class HRow[T <: HbaseTable[T, R, _], R](result: DeserializedResult, tab
   def prettyFormat() = {
     val sb = new StringBuilder()
     sb.append("Row Key: " + result.rowid + " (" + result.values.size + " families)" + "\n")
-    for ((family, familyMap) <- result.values) {
+    result.values.zipWithIndex.foreach{case (familyMap: HashMap[AnyRef, AnyRef], familyIdx: Int) =>
+      val family = table.familyByIndex(familyIdx)
       sb.append("\tFamily: " + family.familyName + " (" + familyMap.values.size + " items)\n")
       for ((key, value) <- familyMap) {
         sb.append("\t\tColumn: " + key + "\n")
@@ -677,7 +685,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     val keyValues = result.raw()
     val rowId = keyConverter.fromBytes(result.getRow).asInstanceOf[AnyRef]
 
-    val ds = DeserializedResult(rowId)
+    val ds = DeserializedResult(rowId,families.size)
 
 
     for {kv <- keyValues
@@ -704,6 +712,16 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
 
   def familyBytes = families.map(family => family.familyBytes)
+
+  def familyByIndex(idx:Int) = familyArray(idx)
+  lazy val familyArray = {
+    val arr = new Array[ColumnFamily[_,_,_,_,_]](families.length)
+    families.foreach{fam=>
+      arr(fam.index) = fam
+    }
+    arr
+  }
+
 
 
   //alter 'articles', NAME => 'html', VERSIONS =>1, COMPRESSION=>'lzo'
@@ -744,8 +762,8 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
   def getBufferedTable(name: String) = bufferTablePool.getTable(name)
 
-  private val columns = Buffer[Column[T, R, _, _, _]]()
-  val families = Buffer[ColumnFamily[T, R, _, _, _]]()
+  private val columns = ArrayBuffer[Column[T, R, _, _, _]]()
+  val families = ArrayBuffer[ColumnFamily[T, R, _, _, _]]()
 
 
   private val columnsByBytes = mutable.Map[ByteBuffer, KeyValueConvertible[_, _, _]]()
@@ -764,9 +782,11 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     c
   }
 
+  var familyIdx = 0
 
   def family[F, K, V](familyName: F, compressed: Boolean = false, versions: Int = 1)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) = {
-    val family = new ColumnFamily[T, R, F, K, V](this, familyName, compressed, versions)
+    val family = new ColumnFamily[T, R, F, K, V](this, familyName, compressed, versions,familyIdx)
+    familyIdx = familyIdx + 1
     families += family
     familiesByBytes.put(ByteBuffer.wrap(family.familyBytes), family)
     family
