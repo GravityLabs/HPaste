@@ -237,18 +237,18 @@ class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _], key: A
 
   previous += this
 
-  def put(key: R, writeToWAL: Boolean = true)(implicit c: ByteConverter[R]) = {
-    val po = new PutOp(table, c.toBytes(key), previous, writeToWAL)
+  def put(key: R, writeToWAL: Boolean = true) = {
+    val po = new PutOp(table,  table.rowKeyConverter.toBytes(key), previous, writeToWAL)
     po
   }
 
-  def increment(key: R)(implicit c: ByteConverter[R]) = {
-    val inc = new IncrementOp(table, c.toBytes(key), previous)
+  def increment(key: R) = {
+    val inc = new IncrementOp(table, table.rowKeyConverter.toBytes(key), previous)
     inc
   }
 
-  def delete(key: R)(implicit c: ByteConverter[R]) = {
-    val del = new DeleteOp(table, c.toBytes(key), previous)
+  def delete(key: R) = {
+    val del = new DeleteOp(table, table.rowKeyConverter.toBytes(key), previous)
     del
   }
 
