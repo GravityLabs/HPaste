@@ -295,6 +295,9 @@ case class HTableInput[T <: HbaseTable[T, _, _]](table: T, families: Families[T]
   override def init(job: Job) {
     println("Setting input table to: " + table.tableName)
 
+    //Disabling speculative execution because it is never useful for a table input.
+    job.getConfiguration.set("mapred.map.tasks.speculative.execution", "false")
+
     val scanner = scan
     scanner.setCacheBlocks(false)
     scanner.setCaching(scanCache)
@@ -367,6 +370,7 @@ case class HTableOutput[T <: HbaseTable[T, _, _]](table: T) extends HOutput {
 
   override def init(job: Job) {
     println("Initializing output table to: " + table.tableName)
+    job.getConfiguration.set("mapred.reduce.tasks.speculative.execution", "false")
     job.getConfiguration.set(GravityTableOutputFormat.OUTPUT_TABLE, table.tableName)
     job.setOutputFormatClass(classOf[GravityTableOutputFormat[ImmutableBytesWritable]])
   }
