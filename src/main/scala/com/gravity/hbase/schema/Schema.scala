@@ -80,7 +80,7 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
     */
   def column[F, K, V](column: (T) => Column[T, R, F, K, V]) = {
     val co = column(table.pops)
-    val colVal = result.columnValueTyped[V](co)
+    val colVal = result.columnValueSpecific(co)
     if(colVal == null) None
     else Some[V](colVal.asInstanceOf[V])
   }
@@ -98,7 +98,7 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
     */
   def columnFromFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K) = {
     val fam = family(table.pops)
-    val colVal = result.columnValueByName[V](fam, columnName.asInstanceOf[AnyRef])
+    val colVal = result.columnValue(fam, columnName.asInstanceOf[AnyRef])
     if(colVal == null) None
     else Some[V](colVal.asInstanceOf[V])
   }
@@ -530,16 +530,10 @@ case class DeserializedResult(rowid: AnyRef, famCount:Int) {
   }
 
 
-  def columnValueByName[V](fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = {
-    val colVal = columnValue(fam,columnName)
-    if(colVal != null) colVal.asInstanceOf[V]
-    else null
-  }
 
-  def columnValueTyped[V](column: Column[_, _, _, _, _]) = {
-    val colVal = columnValueByName[V](column.family,column.columnNameRef)
-    if(colVal == null) null
-    else colVal.asInstanceOf[V]
+
+  def columnValueSpecific(column: Column[_,_,_,_,_])= {
+    columnValue(column.family,column.columnNameRef)
   }
 
 
