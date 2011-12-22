@@ -31,6 +31,7 @@ import java.math.BigInteger
 import java.nio.ByteBuffer
 import org.apache.commons.lang.ArrayUtils
 import java.util.HashMap
+import org.apache.hadoop.hbase.KeyValue
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -81,8 +82,12 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
   def column[F, K, V](column: (T) => Column[T, R, F, K, V]) = {
     val co = column(table.pops)
     val colVal = result.columnValueSpecific(co)
-    if(colVal == null) None
-    else Some[V](colVal.asInstanceOf[V])
+    if (colVal == null) {
+      None
+    }
+    else {
+      Some[V](colVal.asInstanceOf[V])
+    }
   }
 
   /** Extracts and deserializes the value of the `family` + `columnName` specified
@@ -99,8 +104,12 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
   def columnFromFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K) = {
     val fam = family(table.pops)
     val colVal = result.columnValue(fam, columnName.asInstanceOf[AnyRef])
-    if(colVal == null) None
-    else Some[V](colVal.asInstanceOf[V])
+    if (colVal == null) {
+      None
+    }
+    else {
+      Some[V](colVal.asInstanceOf[V])
+    }
   }
 
   /** Extracts and deserializes the Timestamp of the `family` + `columnName` specified
@@ -117,8 +126,12 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
   def columnFromFamilyTimestamp[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K) = {
     val fam = family(table.pops)
     val colVal = result.columnTimestampByNameAsDate(fam, columnName.asInstanceOf[AnyRef])
-    if(colVal == null) None
-    else Some(colVal)
+    if (colVal == null) {
+      None
+    }
+    else {
+      Some(colVal)
+    }
   }
 
   /** Extracts column timestamp of the specified `column`
@@ -134,8 +147,12 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
   def columnTimestamp[F, K, V](column: (T) => Column[T, R, F, K, V]): Option[DateTime] = {
     val co = column(table.pops)
     val res = result.columnTimestampAsDate(co)
-    if(res == null) None
-    else Some(res)
+    if (res == null) {
+      None
+    }
+    else {
+      Some(res)
+    }
   }
 
   /** Extracts most recent column timestamp of the specified `family`
@@ -151,7 +168,7 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
   def familyLatestTimestamp[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V]): Option[DateTime] = {
     val fam = family(table.pops)
     val familyPairs = result.familyMap(fam)
-    if(familyPairs != null) {
+    if (familyPairs != null) {
       var ts = -1l
       for (kv <- familyPairs) {
         val tsn = result.columnTimestampByName(fam, kv._1)
@@ -164,7 +181,7 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
         None
       }
 
-    }else {
+    } else {
       None
     }
   }
@@ -412,7 +429,7 @@ trait KeyValueConvertible[F, K, V] {
 /**
   * Represents the specification of a Column Family
   */
-class ColumnFamily[T <: HbaseTable[T, R, _], R, F, K, V](val table: HbaseTable[T, R, _], val familyName: F, val compressed: Boolean = false, val versions: Int = 1,val index:Int)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
+class ColumnFamily[T <: HbaseTable[T, R, _], R, F, K, V](val table: HbaseTable[T, R, _], val familyName: F, val compressed: Boolean = false, val versions: Int = 1, val index: Int)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
   val familyConverter = c
   val keyConverter = d
   val valueConverter = e
@@ -452,7 +469,7 @@ trait Schema {
 }
 
 
-case class DeserializedResult(rowid: AnyRef, famCount:Int) {
+case class DeserializedResult(rowid: AnyRef, famCount: Int) {
 
   def isEmpty = values.size == 0
 
@@ -461,23 +478,24 @@ case class DeserializedResult(rowid: AnyRef, famCount:Int) {
 
   def familyValueMap[K, V](fam: ColumnFamily[_, _, _, _, _]) = {
     val famMap = family(fam)
-    if(famMap != null) {
-      famMap.asInstanceOf[java.util.HashMap[K,V]]
-    }else {
+    if (famMap != null) {
+      famMap.asInstanceOf[java.util.HashMap[K, V]]
+    } else {
       new java.util.HashMap[K, V]()
     }
   }
 
   def familyKeySet[K](fam: ColumnFamily[_, _, _, _, _]) = {
     val famMap = family(fam)
-    if(famMap != null) {
-        famMap.keySet.asInstanceOf[java.util.Set[K]]
-    }else {
-    new java.util.HashSet[K]()}
+    if (famMap != null) {
+      famMap.keySet.asInstanceOf[java.util.Set[K]]
+    } else {
+      new java.util.HashSet[K]()
+    }
   }
 
   def family(family: ColumnFamily[_, _, _, _, _]) = {
-      values(family.index)
+    values(family.index)
   }
 
   def familyOf(column: Column[_, _, _, _, _]) = family(column.family)
@@ -486,78 +504,81 @@ case class DeserializedResult(rowid: AnyRef, famCount:Int) {
 
   def hasColumn(column: Column[_, _, _, _, _]) = {
     val valueMap = familyOf(column)
-    if(valueMap == null || valueMap.size == 0) false else true
+    if (valueMap == null || valueMap.size == 0) false else true
   }
 
   def columnValue(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = {
     val valueMap = family(fam)
-    if(valueMap == null) {
+    if (valueMap == null) {
       null
-    }else {
+    } else {
       valueMap.get(columnName)
     }
   }
 
   def columnTimestamp(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = {
     val res = timestampLookaside(fam.index)
-    if(res != null) {
+    if (res != null) {
       val colRes = res.get(columnName)
       colRes
     }
-    else
+    else {
       0l
+    }
   }
 
 
   def columnTimestampAsDate(column: Column[_, _, _, _, _]) = {
-    val cts = columnTimestamp(column.family,column.columnNameRef)
-    if(cts > 0) {
+    val cts = columnTimestamp(column.family, column.columnNameRef)
+    if (cts > 0) {
       new DateTime(cts)
-    }else {
+    } else {
       null
     }
   }
 
   def columnTimestampByName(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = {
-    val cts = columnTimestamp(fam,columnName)
+    val cts = columnTimestamp(fam, columnName)
     cts
   }
 
   def columnTimestampByNameAsDate(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = {
-    val cts = columnTimestamp(fam,columnName)
-    if(cts > 0) new DateTime(cts)
-    else null
+    val cts = columnTimestamp(fam, columnName)
+    if (cts > 0) {
+      new DateTime(cts)
+    }
+    else {
+      null
+    }
   }
 
 
-
-
-  def columnValueSpecific(column: Column[_,_,_,_,_])= {
-    columnValue(column.family,column.columnNameRef)
+  def columnValueSpecific(column: Column[_, _, _, _, _]) = {
+    columnValue(column.family, column.columnNameRef)
   }
 
 
-  var values = new Array[java.util.HashMap[AnyRef,AnyRef]](famCount)
+  var values = new Array[java.util.HashMap[AnyRef, AnyRef]](famCount)
 
-  var timestampLookaside = new Array[java.util.HashMap[AnyRef,Long]](famCount)
+  var timestampLookaside = new Array[java.util.HashMap[AnyRef, Long]](famCount)
 
 
   /** This is a map whose key is the family type, and whose values are maps of column keys to columnvalues paired with their timestamps */
-//  val values = new java.util.HashMap[ColumnFamily[_, _, _, _, _], java.util.HashMap[AnyRef, AnyRef]]()
+  //  val values = new java.util.HashMap[ColumnFamily[_, _, _, _, _], java.util.HashMap[AnyRef, AnyRef]]()
 
-//  val timestampLookaside = new java.util.HashMap[ColumnFamily[_, _, _, _, _], java.util.HashMap[AnyRef, Long]]()
+  //  val timestampLookaside = new java.util.HashMap[ColumnFamily[_, _, _, _, _], java.util.HashMap[AnyRef, Long]]()
 
   def add(family: ColumnFamily[_, _, _, _, _], qualifier: AnyRef, value: AnyRef, timeStamp: Long) {
     var map = values(family.index)
-    if(map == null) {
-      map = new java.util.HashMap[AnyRef,AnyRef]()
+    if (map == null) {
+      map = new java.util.HashMap[AnyRef, AnyRef]()
       values(family.index) = map
     }
     map.put(qualifier, value)
 
     var tsMap = timestampLookaside(family.index)
-    if(tsMap == null) {
-      tsMap = new java.util.HashMap[AnyRef,Long]()
+    if (tsMap == null) {
+      tsMap = new java.util.HashMap[AnyRef, Long]()
       timestampLookaside(family.index) = tsMap
     }
     tsMap.put(qualifier, timeStamp)
@@ -588,9 +609,9 @@ abstract class HRow[T <: HbaseTable[T, R, _], R](result: DeserializedResult, tab
   def prettyFormat() = {
     val sb = new StringBuilder()
     sb.append("Row Key: " + result.rowid + " (" + result.values.size + " families)" + "\n")
-    for(i <- 0 until result.values.length) {
+    for (i <- 0 until result.values.length) {
       val familyMap = result.values(i)
-      if(familyMap != null) {
+      if (familyMap != null) {
         val family = table.familyByIndex(i)
         sb.append("\tFamily: " + family.familyName + " (" + familyMap.values.size + " items)\n")
         for ((key, value) <- familyMap) {
@@ -647,6 +668,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
   })
 
 
+
   /** Looks up a KeyValueConvertible by the family and column bytes provided.
     * Because of the rules of the system, the lookup goes as follows:
     * 1. Find a column first.  If you find a column first, it means there is a strongly-typed column defined.
@@ -670,34 +692,100 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     kvc
   }
 
-  /** Converts a Result object to a DeserializedResult object, which is a map of maps that contains the deserialized objects in the payload.
-    *
+  /** Converts a result to a DeserializedObject. A conservative implementation that is slower than convertResultRaw but will always be more stable against
+    * binary changes to Hbase's KeyValue format.
     */
   def convertResult(result: Result) = {
     val keyValues = result.raw()
-    val rowId = keyConverter.fromBytes(result.getRow).asInstanceOf[AnyRef]
+    val buff = result.getBytes.get()
 
-    val ds = DeserializedResult(rowId,families.size)
+    val rowId = keyConverter.fromBytes(buff, keyValues.head.getRowOffset, keyValues.head.getRowLength).asInstanceOf[AnyRef]
+
+    val ds = DeserializedResult(rowId, families.size)
 
 
     for {kv <- keyValues
          family = kv.getFamily
-         key = kv.getQualifier
-         value = kv.getValue} {
+          key = kv.getQualifier
+        } {
+
+      try {
+        val c = converterByBytes(family, key)
+        val f = c.family
+        val k = c.keyConverter.fromBytes(buff, kv.getQualifierOffset, kv.getQualifierLength).asInstanceOf[AnyRef]
+        val r = c.valueConverter.fromBytes(buff, kv.getValueOffset, kv.getValueLength).asInstanceOf[AnyRef]
+        val ts = kv.getTimestamp
+
+        ds.add(f, k, r, ts)
+      } catch {
+        case ex: Exception => {
+          //ds.addErrorBuffer(family, key, value, kv.getTimestamp)
+        }
+      }
+    }
+    ds
+  }
+
+  /** Converts a result to a DeserializedObject, avoiding the Result object's inner parsing by moving it out and directly into the deserializers.
+    *
+    */
+  def convertResultRaw(result: Result) = {
+
+
+    val bytes = result.getBytes()
+    val buf = bytes.get()
+    var offset = bytes.getOffset
+    val finalOffset = bytes.getSize + offset
+    var row: Array[Byte] = null
+    var ds: DeserializedResult = null
+
+    while (offset < finalOffset) {
+      val keyLength = Bytes.toInt(buf, offset)
+      offset = offset + Bytes.SIZEOF_INT
+
+      val keyOffset = offset + KeyValue.ROW_OFFSET
+      val rowLength = Bytes.toShort(buf, keyOffset)
+      val familyOffset = offset + KeyValue.ROW_OFFSET + Bytes.SIZEOF_SHORT + rowLength + Bytes.SIZEOF_BYTE
+      val familyLength = buf(familyOffset - 1)
+      val family = new Array[Byte](familyLength)
+      System.arraycopy(buf, familyOffset, family, 0, familyLength)
+
+      val qualifierOffset = familyOffset + familyLength
+      val qualifierLength = keyLength - (KeyValue.KEY_INFRASTRUCTURE_SIZE + rowLength + familyLength)
+      val key = new Array[Byte](qualifierLength)
+      System.arraycopy(buf, qualifierOffset, key, 0, qualifierLength)
+
+      val valueOffset = keyOffset + keyLength
+      val valueLength = Bytes.toInt(buf, offset + Bytes.SIZEOF_INT)
+      val value = new Array[Byte](valueLength)
+      System.arraycopy(buf, valueOffset, value, 0, valueLength)
+
+      val tsOffset = keyOffset + keyLength - KeyValue.TIMESTAMP_TYPE_SIZE
+      val ts = Bytes.toLong(buf, tsOffset)
+
+      if (row == null) {
+        val rowOffset = keyOffset + Bytes.SIZEOF_SHORT
+        row = new Array[Byte](rowLength)
+        System.arraycopy(buf, rowOffset, row, 0, rowLength)
+        val rowId = keyConverter.fromBytes(result.getRow).asInstanceOf[AnyRef]
+        ds = DeserializedResult(rowId, families.size)
+      }
 
       try {
         val c = converterByBytes(family, key)
         val f = c.family
         val k = c.keyConverter.fromBytes(key).asInstanceOf[AnyRef]
         val r = c.valueConverter.fromBytes(value).asInstanceOf[AnyRef]
-        val ts = kv.getTimestamp
-
+        println("Adding value " + r)
         ds.add(f, k, r, ts)
       } catch {
         case ex: Exception => {
-          ds.addErrorBuffer(family, key, value, kv.getTimestamp)
+          println("Adding error buffer")
+          ds.addErrorBuffer(family, key, value, ts)
         }
       }
+
+      offset = offset + keyLength
     }
     ds
   }
@@ -705,15 +793,16 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
   def familyBytes = families.map(family => family.familyBytes)
 
-  def familyByIndex(idx:Int) = familyArray(idx)
+  def familyByIndex(idx: Int) = familyArray(idx)
+
   lazy val familyArray = {
-    val arr = new Array[ColumnFamily[_,_,_,_,_]](families.length)
-    families.foreach{fam=>
-      arr(fam.index) = fam
+    val arr = new Array[ColumnFamily[_, _, _, _, _]](families.length)
+    families.foreach {
+      fam =>
+        arr(fam.index) = fam
     }
     arr
   }
-
 
 
   //alter 'articles', NAME => 'html', VERSIONS =>1, COMPRESSION=>'lzo'
@@ -777,7 +866,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
   var familyIdx = 0
 
   def family[F, K, V](familyName: F, compressed: Boolean = false, versions: Int = 1)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) = {
-    val family = new ColumnFamily[T, R, F, K, V](this, familyName, compressed, versions,familyIdx)
+    val family = new ColumnFamily[T, R, F, K, V](this, familyName, compressed, versions, familyIdx)
     familyIdx = familyIdx + 1
     families += family
     familiesByBytes.put(ByteBuffer.wrap(family.familyBytes), family)

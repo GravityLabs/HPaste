@@ -69,7 +69,9 @@ class PrimitiveOutputStream(output: OutputStream) extends DataOutputStream(outpu
 abstract class ByteConverter[T] {
   def toBytes(t: T): Array[Byte]
 
-  def fromBytes(bytes: Array[Byte]): T
+  def fromBytes(bytes: Array[Byte]): T = fromBytes(bytes, 0, bytes.length)
+
+  def fromBytes(bytes: Array[Byte], offset:Int, length:Int) : T
 
   def fromByteString(str: String): T = {
     fromBytes(Bytes.toBytesBinary(str))
@@ -102,6 +104,11 @@ abstract class ComplexByteConverter[T] extends ByteConverter[T] {
   }
 
   def write(data: T, output: PrimitiveOutputStream)
+
+  override def fromBytes(bytes: Array[Byte], offset:Int, length:Int) : T = {
+    val din = new PrimitiveInputStream(new ByteArrayInputStream(bytes,offset,length))
+    read(din)
+  }
 
   override def fromBytes(bytes: Array[Byte]): T = {
     val din = new PrimitiveInputStream(new ByteArrayInputStream(bytes))

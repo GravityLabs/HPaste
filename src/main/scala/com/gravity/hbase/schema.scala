@@ -48,12 +48,12 @@ package object schema {
 
   implicit object AnyConverter extends ByteConverter[Any] {
     override def toBytes(t:Any) = throw new RuntimeException("Any not supported")
-    override def fromBytes(bytes: Array[Byte]) = throw new RuntimeException("Any not supported")
+    override def fromBytes(bytes: Array[Byte], offset:Int, length:Int) = throw new RuntimeException("Any not supported")
   }
 
   implicit object StringConverter extends ByteConverter[String] {
     override def toBytes(t: String) = Bytes.toBytes(t)
-    override def fromBytes(bytes: Array[Byte]) = Bytes.toString(bytes)
+    override def fromBytes(bytes: Array[Byte], offset:Int, length:Int) = Bytes.toString(bytes,offset,length)
   }
 
   implicit object StringSeqConverter extends SeqConverter[String]
@@ -62,35 +62,37 @@ package object schema {
 
   implicit object IntConverter extends ByteConverter[Int] {
     override def toBytes(t:Int) = Bytes.toBytes(t)
-    override def fromBytes(bytes: Array[Byte]) = Bytes.toInt(bytes)
+    override def fromBytes(bytes: Array[Byte], offset:Int, length:Int) = Bytes.toInt(bytes,offset,length)
   }
   implicit object IntSeqConverter extends SeqConverter[Int]
   implicit object IntSetConverter extends SetConverter[Int]
 
   implicit object ShortConverter extends ByteConverter[Short] {
     override def toBytes(t:Short) = Bytes.toBytes(t)
-    override def fromBytes(bytes: Array[Byte]) = Bytes.toShort(bytes)
+    override def fromBytes(bytes: Array[Byte], offset:Int, length:Int) = Bytes.toShort(bytes,offset,length)
   }
   implicit object ShortSeqConverter extends SeqConverter[Short]
   implicit object ShortSetConverter extends SetConverter[Short]
 
   implicit object BooleanConverter extends ByteConverter[Boolean] {
     override def toBytes(t:Boolean) = Bytes.toBytes(t)
-    override def fromBytes(bytes: Array[Byte]) = Bytes.toBoolean(bytes)
+    override def fromBytes(bytes: Array[Byte], offset:Int, length:Int) = {
+      (bytes(offset) != 0)
+    }
   }
   implicit object BooleanSeqConverter extends SeqConverter[Boolean]
   implicit object BooleanSetConverter extends SetConverter[Boolean]
 
   implicit object LongConverter extends ByteConverter[Long] {
     override def toBytes(t: Long) = Bytes.toBytes(t)
-    override def fromBytes(bytes: Array[Byte]) = Bytes.toLong(bytes)
+    override def fromBytes(bytes: Array[Byte], offset:Int, length:Int) = Bytes.toLong(bytes,offset,length)
   }
   implicit object LongSeqConverter extends SeqConverter[Long]
   implicit object LongSetConverter extends SetConverter[Long]
 
   implicit object DoubleConverter extends ByteConverter[Double] {
     override def toBytes(t: Double) = Bytes.toBytes(t)
-    override def fromBytes(bytes: Array[Byte]) = Bytes.toDouble(bytes)
+    override def fromBytes(bytes: Array[Byte], offset:Int, length:Int) = Bytes.toDouble(bytes,offset)
   }
   implicit object DoubleSeqConverter extends SeqConverter[Double]
   implicit object DoubleSetConverter extends SetConverter[Double]
@@ -98,7 +100,7 @@ package object schema {
 
   implicit object FloatConverter extends ByteConverter[Float] {
     override def toBytes(t: Float) = Bytes.toBytes(t)
-    override def fromBytes(bytes: Array[Byte]) = Bytes.toFloat(bytes)
+    override def fromBytes(bytes: Array[Byte], offset:Int, length:Int) = Bytes.toFloat(bytes,offset)
   }
   implicit object FloatSeqConverter extends SeqConverter[Float]
   implicit object FloatSetConverter extends SetConverter[Float]
@@ -107,7 +109,7 @@ package object schema {
   implicit object CommaSetConverter extends ByteConverter[CommaSet] {
     val SPLITTER = ",".r
     override def toBytes(t:CommaSet) = Bytes.toBytes(t.items.mkString(","))
-    override def fromBytes(bytes:Array[Byte]) = new CommaSet(SPLITTER.split(Bytes.toString(bytes)).toSet)
+    override def fromBytes(bytes: Array[Byte], offset:Int, length:Int) = new CommaSet(SPLITTER.split(Bytes.toString(bytes,offset,length)).toSet)
   }
   implicit object CommaSetSeqConverter extends SeqConverter[CommaSet]
   implicit object CommaSetSetConverter extends SetConverter[CommaSet]
@@ -116,8 +118,8 @@ package object schema {
   implicit object YearDayConverter extends ByteConverter[YearDay] {
     val SPLITTER = "_".r
     override def toBytes(t:YearDay) = Bytes.toBytes(t.year.toString + "_" + t.day.toString)
-    override def fromBytes(bytes:Array[Byte]) = {
-      val strRep = Bytes.toString(bytes)
+    override def fromBytes(bytes:Array[Byte],offset:Int, length:Int) = {
+      val strRep = Bytes.toString(bytes,offset,length)
       val strRepSpl = SPLITTER.split(strRep)
       val year = strRepSpl(0).toInt
       val day = strRepSpl(1).toInt
