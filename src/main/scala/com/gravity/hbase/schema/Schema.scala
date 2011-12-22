@@ -915,11 +915,11 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
   def query2 = new Query2(this)
 
-  def put(key: R, writeToWAL: Boolean = true)(implicit c: ByteConverter[R]) = new PutOp(this, c.toBytes(key))
+  def put(key: R, writeToWAL: Boolean = true) = new PutOp(this, keyConverter.toBytes(key))
 
-  def delete(key: R)(implicit c: ByteConverter[R]) = new DeleteOp(this, c.toBytes(key))
+  def delete(key: R) = new DeleteOp(this, keyConverter.toBytes(key))
 
-  def increment(key: R)(implicit c: ByteConverter[R]) = new IncrementOp(this, c.toBytes(key))
+  def increment(key: R) = new IncrementOp(this, keyConverter.toBytes(key))
 
   /** All tables automatically receive a family called "meta" */
   val meta = family[String, String, Any]("meta")
