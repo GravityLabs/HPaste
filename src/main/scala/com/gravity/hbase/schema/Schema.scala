@@ -80,7 +80,9 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
     */
   def column[F, K, V](column: (T) => Column[T, R, F, K, V]) = {
     val co = column(table.pops)
-    result.columnValueTyped[V](co)
+    val colVal = result.columnValueTyped[V](co)
+    if(colVal == null) None
+    else Some[V](colVal.asInstanceOf[V])
   }
 
   /** Extracts and deserializes the value of the `family` + `columnName` specified
@@ -96,7 +98,9 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
     */
   def columnFromFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K) = {
     val fam = family(table.pops)
-    result.columnValueByName[V](fam, columnName.asInstanceOf[AnyRef])
+    val colVal = result.columnValueByName[V](fam, columnName.asInstanceOf[AnyRef])
+    if(colVal == null) None
+    else Some[V](colVal.asInstanceOf[V])
   }
 
   /** Extracts and deserializes the Timestamp of the `family` + `columnName` specified
@@ -112,7 +116,9 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
     */
   def columnFromFamilyTimestamp[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K) = {
     val fam = family(table.pops)
-    result.columnTimestampByNameAsDate(fam, columnName.asInstanceOf[AnyRef])
+    val colVal = result.columnTimestampByNameAsDate(fam, columnName.asInstanceOf[AnyRef])
+    if(colVal == null) None
+    else Some(colVal)
   }
 
   /** Extracts column timestamp of the specified `column`
@@ -127,7 +133,9 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
     */
   def columnTimestamp[F, K, V](column: (T) => Column[T, R, F, K, V]): Option[DateTime] = {
     val co = column(table.pops)
-    result.columnTimestampAsDate(co)
+    val res = result.columnTimestampAsDate(co)
+    if(res == null) None
+    else Some(res)
   }
 
   /** Extracts most recent column timestamp of the specified `family`
@@ -142,21 +150,22 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
     */
   def familyLatestTimestamp[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V]): Option[DateTime] = {
     val fam = family(table.pops)
-    result.familyMap(fam) match {
-      case Some(familyPairs) => {
-        var ts = -1l
-        for (kv <- familyPairs) {
-          val tsn = result.columnTimestampByName(fam, kv._1).get
-          if (tsn > ts) ts = tsn
-        }
-        if (ts >= 0) {
-          Some(new DateTime(ts))
-        }
-        else {
-          None
-        }
+    val familyPairs = result.familyMap(fam)
+    if(familyPairs != null) {
+      var ts = -1l
+      for (kv <- familyPairs) {
+        val tsn = result.columnTimestampByName(fam, kv._1)
+        if (tsn > ts) ts = tsn
       }
-      case None => None
+      if (ts > 0) {
+        Some(new DateTime(ts))
+      }
+      else {
+        None
+      }
+
+    }else {
+      None
     }
   }
 
@@ -451,32 +460,24 @@ case class DeserializedResult(rowid: AnyRef, famCount:Int) {
 
 
   def familyValueMap[K, V](fam: ColumnFamily[_, _, _, _, _]) = {
-    family(fam) match {
-      case Some(famMap) => {
-        famMap.asInstanceOf[java.util.HashMap[K,V]]
-      }
-      case None => new java.util.HashMap[K, V]()
+    val famMap = family(fam)
+    if(famMap != null) {
+      famMap.asInstanceOf[java.util.HashMap[K,V]]
+    }else {
+      new java.util.HashMap[K, V]()
     }
   }
 
   def familyKeySet[K](fam: ColumnFamily[_, _, _, _, _]) = {
-    family(fam) match {
-      case Some(famMap) => {
+    val famMap = family(fam)
+    if(famMap != null) {
         famMap.keySet.asInstanceOf[java.util.Set[K]]
-      }
-      case None => new java.util.HashSet[K]()
-    }
+    }else {
+    new java.util.HashSet[K]()}
   }
 
   def family(family: ColumnFamily[_, _, _, _, _]) = {
-
-      val res = values(family.index)
-      if (res == null) {
-        None
-      }
-      else {
-        Some(res)
-      }
+      values(family.index)
   }
 
   def familyOf(column: Column[_, _, _, _, _]) = family(column.family)
@@ -484,27 +485,16 @@ case class DeserializedResult(rowid: AnyRef, famCount:Int) {
   def familyMap(fam: ColumnFamily[_, _, _, _, _]) = family(fam)
 
   def hasColumn(column: Column[_, _, _, _, _]) = {
-    familyOf(column) match {
-      case Some(valueMap) => {
-        if (valueMap.size > 0) {
-          true
-        }
-        else {
-          false
-        }
-      }
-      case None => false
-    }
+    val valueMap = familyOf(column)
+    if(valueMap == null || valueMap.size == 0) false else true
   }
 
   def columnValue(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = {
-    family(fam) match {
-      case Some(valueMap) => {
-        val res = valueMap.get(columnName)
-        if(res == null) None
-        else Some(res)
-      }
-      case None => None
+    val valueMap = family(fam)
+    if(valueMap == null) {
+      null
+    }else {
+      valueMap.get(columnName)
     }
   }
 
@@ -512,41 +502,45 @@ case class DeserializedResult(rowid: AnyRef, famCount:Int) {
     val res = timestampLookaside(fam.index)
     if(res != null) {
       val colRes = res.get(columnName)
-      if(colRes == 0l) None
-      else Some(colRes)
+      colRes
+    }
+    else
+      0l
+  }
+
+
+  def columnTimestampAsDate(column: Column[_, _, _, _, _]) = {
+    val cts = columnTimestamp(column.family,column.columnNameRef)
+    if(cts > 0) {
+      new DateTime(cts)
     }else {
-      None
+      null
     }
   }
 
-
-  def columnTimestampAsDate(column: Column[_, _, _, _, _]) = columnTimestamp(column.family, column.columnNameRef) match {
-    case Some(cts) => Some(new DateTime(cts))
-    case None => None
+  def columnTimestampByName(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = {
+    val cts = columnTimestamp(fam,columnName)
+    cts
   }
 
-  def columnTimestampByName(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = columnTimestamp(fam, columnName) match {
-    case Some(cts) => Some(cts)
-    case None => None
-  }
-
-  def columnTimestampByNameAsDate(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = columnTimestamp(fam, columnName) match {
-    case Some(cts) => Some(new DateTime(cts))
-    case None => None
+  def columnTimestampByNameAsDate(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = {
+    val cts = columnTimestamp(fam,columnName)
+    if(cts > 0) new DateTime(cts)
+    else null
   }
 
 
-  def columnTimestamp(column: Column[_, _, _, _, _]) = columnValue(column.family, column.columnNameRef) match {
-    case Some(cts) => Some(0l)
-    case None => None
+  def columnValueByName[V](fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = {
+    val colVal = columnValue(fam,columnName)
+    if(colVal != null) colVal.asInstanceOf[V]
+    else null
   }
 
-  def columnValueByName[V](fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = columnValue(fam, columnName) match {
-    case Some(cts) => Some(cts.asInstanceOf[V])
-    case None => None
+  def columnValueTyped[V](column: Column[_, _, _, _, _]) = {
+    val colVal = columnValueByName[V](column.family,column.columnNameRef)
+    if(colVal == null) null
+    else colVal.asInstanceOf[V]
   }
-
-  def columnValueTyped[V](column: Column[_, _, _, _, _]) = columnValueByName[V](column.family, column.columnNameRef)
 
 
   var values = new Array[java.util.HashMap[AnyRef,AnyRef]](famCount)
