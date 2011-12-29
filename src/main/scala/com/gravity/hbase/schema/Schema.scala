@@ -205,7 +205,6 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
     *
     * @tparam F the type of the column family name
     * @tparam K the type of the column family qualifier
-    * @tparam V the type of the column family value
     *
     * @param family the underlying table's family `val`
     *
@@ -703,12 +702,12 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
     val ds = DeserializedResult(rowId, families.size)
 
+    var itr = 0
 
-    for {kv <- keyValues
-         family = kv.getFamily
-          key = kv.getQualifier
-        } {
-
+    while(itr < keyValues.length) {
+      val kv = keyValues(itr)
+      val family = kv.getFamily
+      val key = kv.getQualifier
       try {
         val c = converterByBytes(family, key)
         val f = c.family
@@ -721,7 +720,10 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
         case ex: Exception => {
           //ds.addErrorBuffer(family, key, value, kv.getTimestamp)
         }
+      } finally {
+        itr = itr + 1
       }
+
     }
     ds
   }
