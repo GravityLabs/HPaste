@@ -223,6 +223,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T
 
   def execute(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true): Seq[RR] = {
     if (keys.isEmpty) return Seq.empty[RR] // no keys..? nothing to see here... move along... move along.
+    require(! keys.isEmpty, "execute assumes that you have called withKeys() or withKey().  If you are trying to do a scan, you should call Scan()")
 
     val results = Buffer[RR]() // buffer for storing all results retrieved
 
