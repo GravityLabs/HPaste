@@ -30,8 +30,8 @@ import com.gravity.hbase.schema._
 import java.math.BigInteger
 import java.nio.ByteBuffer
 import org.apache.commons.lang.ArrayUtils
-import java.util.HashMap
 import org.apache.hadoop.hbase.KeyValue
+import java.util.{Arrays, HashMap}
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -673,13 +673,12 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     * 1. Find a column first.  If you find a column first, it means there is a strongly-typed column defined.
     * 2. If no column, then find the family.
     *
-    * TODO: Replace this with a hashmap lookup before launching, it's horribly slow.
+    * TODO: Replace hashmap lookup with binarySearch
     */
   def converterByBytes(famBytes: Array[Byte], colBytes: Array[Byte]): KeyValueConvertible[_, _, _] = {
 
     val fullKey = ArrayUtils.addAll(famBytes, colBytes)
     val bufferKey = ByteBuffer.wrap(fullKey)
-
 
     //First make sure an overriding column has not been defined
     val kvc: KeyValueConvertible[_, _, _] = columnsByBytes.getOrElse(bufferKey, {
@@ -698,7 +697,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     val keyValues = result.raw()
     val buff = result.getBytes.get()
 
-    val rowId = keyConverter.fromBytes(buff, keyValues.head.getRowOffset, keyValues.head.getRowLength).asInstanceOf[AnyRef]
+    val rowId = keyConverter.fromBytes(buff, keyValues(0).getRowOffset, keyValues(0).getRowLength).asInstanceOf[AnyRef]
 
     val ds = DeserializedResult(rowId, families.size)
 
