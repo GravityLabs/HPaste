@@ -50,6 +50,30 @@ object HJobRegistry {
 
 }
 
+
+object Settings {
+
+  object None extends NoSettings
+
+}
+
+
+class NoSettings extends SettingsBase {
+  def hithere() = "Hi"
+}
+
+class SettingsBase {
+  def fromSettings(conf: Configuration) {
+
+  }
+
+  def toSettings(conf: Configuration) {
+
+  }
+
+  def jobNameQualifier = ""
+}
+
 ///*
 //Experimental support for a non declarative constructor for hjobs.
 // */
