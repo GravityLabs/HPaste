@@ -195,7 +195,11 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _, S]*) {
 
       val job = task.makeJob(previousTask)
       job.setJarByClass(getClass)
-      job.setJobName(name + " : " + task.taskId.name + " (" + (idx + 1) + " of " + tasks.size + ")")
+      if(settings.jobNameQualifier.length > 0)
+        job.setJobName(name + " : " + task.taskId.name + " (" + (idx + 1) + " of " + tasks.size + ")" + " ["+settings.jobNameQualifier+"]")
+      else
+        job.setJobName(name + " : " + task.taskId.name + " (" + (idx + 1) + " of " + tasks.size + ")")
+
 
       previousTask = task
       idx = idx + 1
