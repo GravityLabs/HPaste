@@ -155,7 +155,8 @@ case class LongRunningJobConf(timeoutInSeconds: Int) extends HConfigLet {
   * To use the job, create a class with a parameterless constructor that inherits HJob, and pass the tasks into the constructor as a sequence.
   */
 class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _, S]*) {
-  def run(settings: S, conf: Configuration, dryRun: Boolean = false) = {
+  type RunResult = (Boolean, Seq[(HTask[_,_,_,_,S],Job)])
+  def run(settings: S, conf: Configuration, dryRun: Boolean = false) : RunResult = {
     require(tasks.size > 0, "HJob requires at least one task to be defined")
     conf.setStrings("hpaste.jobchain.jobclass", getClass.getName)
 
@@ -218,35 +219,29 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _, S]*) {
       }
     }
 
-    def runrecursively(tasks: Seq[HTask[_, _, _, _, S]]): Boolean = {
+    val taskJobBuffer = Buffer[(HTask[_,_,_,_,S],Job)]()
+
+    def runrecursively(tasks: Seq[HTask[_, _, _, _, S]]): RunResult = {
       val jobs = tasks.map {
         task =>
-          makeJob(task)
+          val job = makeJob(task)
+          taskJobBuffer.add((task,job))
+          job
       }
 
       jobs.foreach {
         job =>
           if (!job.waitForCompletion(true)) {
-            return false
+            return (false,taskJobBuffer)
           }
-        //        job.submit()
       }
-      //      var allDone = false
-      //      while(!allDone) {
-      //        Thread.sleep(500)
-      //        if(jobs.exists(_.isComplete == false)) {
-      //          allDone = false
-      //        }else {
-      //          allDone = true
-      //        }
-      //      }
 
       if (jobs.exists(_.isSuccessful == false)) {
-        false
+        (false,taskJobBuffer)
       } else {
         val nextTasks = tasks.flatMap(_.nextTasks)
         if (nextTasks.size == 0) {
-          true
+          (true,taskJobBuffer)
         } else {
           runrecursively(nextTasks)
 
@@ -262,7 +257,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _, S]*) {
     if (!dryRun) {
       runrecursively(firstTasks)
     } else {
-      true
+      (true,taskJobBuffer)
     }
   }
 
