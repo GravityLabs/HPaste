@@ -28,8 +28,8 @@ import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp
 import org.apache.hadoop.hbase.filter.{Filter, FilterList, SingleColumnValueFilter}
 import scala.collection._
 import java.util.NavigableSet
-import scala.collection.mutable.Buffer
 import org.joda.time.DateTime
+import scala.collection.mutable.{ListBuffer, Buffer}
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -187,125 +187,73 @@ class MapConverter[K, V](implicit c: ByteConverter[K], d: ByteConverter[V]) exte
 //  }
 //}
 
-class SetConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Set[T]] {
+class SetConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Set[T]] with CollStream[T] {
 
   override def write(set: Set[T], output: PrimitiveOutputStream) {
-    val length = set.size
-    output.writeInt(length)
-
-    set.foreach {
-      itm =>
-        val bytes = c.toBytes(itm)
-        output.writeInt(bytes.length)
-        output.write(bytes)
-    }
+    writeColl(set,set.size,output,c)
   }
 
   override def read(input: PrimitiveInputStream): Set[T] = {
-    val length = input.readInt()
-    Set((for (i <- 0 until length) yield {
-      val arrLength = input.readInt()
-      val arr = new Array[Byte](arrLength)
-      input.read(arr)
-      c.fromBytes(arr)
-    }): _*)
+    readColl(input, c).toSet
   }
 }
 
-class IndexedSeqConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[IndexedSeq[T]] {
-  override def write(seq: IndexedSeq[T], output: PrimitiveOutputStream) {
-    writeSeq(seq, output)
-  }
 
-  def writeSeq(seq: IndexedSeq[T], output: PrimitiveOutputStream) {
-    val length = seq.size
-    output.writeInt(length)
-
-
-    for (t <- seq) {
-      val bytes = c.toBytes(t)
-      output.writeInt(bytes.length)
-      output.write(bytes)
-    }
-  }
-
-  override def read(input: PrimitiveInputStream) = readSeq(input)
-
-  def readSeq(input: PrimitiveInputStream) = {
-    val length = input.readInt()
-
-    IndexedSeq((for (i <- 0 until length) yield {
-      val arrLength = input.readInt()
-      val arr = new Array[Byte](arrLength)
-      input.read(arr)
-      c.fromBytes(arr)
-    }): _*)
-  }
-
-}
-
-
-class SeqConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Seq[T]] {
+class SeqConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Seq[T]] with CollStream[T]{
   override def write(seq: Seq[T], output: PrimitiveOutputStream) {
-    writeSeq(seq, output)
+    writeColl(seq,seq.length,output,c)
   }
 
-  def writeSeq(seq: Seq[T], output: PrimitiveOutputStream) {
-    val length = seq.size
-    output.writeInt(length)
-
-
-    for (t <- seq) {
-      val bytes = c.toBytes(t)
-      output.writeInt(bytes.length)
-      output.write(bytes)
-    }
-  }
-
-  override def read(input: PrimitiveInputStream) = readSeq(input)
-
-  def readSeq(input: PrimitiveInputStream) = {
-    val length = input.readInt()
-
-    Seq((for (i <- 0 until length) yield {
-      val arrLength = input.readInt()
-      val arr = new Array[Byte](arrLength)
-      input.read(arr)
-      c.fromBytes(arr)
-    }): _*)
-  }
-
+  override def read(input: PrimitiveInputStream) = readColl(input,c).toSeq
 }
 
-class BufferConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Buffer[T]] {
+class BufferConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Buffer[T]] with CollStream[T]{
   override def write(buf: Buffer[T], output: PrimitiveOutputStream) {
     writeBuf(buf, output)
   }
 
   def writeBuf(buf: Buffer[T], output: PrimitiveOutputStream) {
-    val length = buf.size
+    writeColl(buf,buf.length,output,c)
+  }
+
+  override def read(input: PrimitiveInputStream) =readColl(input,c)
+}
+
+trait CollStream[T] {
+
+  def writeColl(items:Iterable[T], length:Int, output:PrimitiveOutputStream, c:ByteConverter[T]) {
+    val cpx = c.asInstanceOf[ComplexByteConverter[T]]
+
     output.writeInt(length)
 
-    for (t <- buf) {
+    val iter = items.iterator
+    while(iter.hasNext) {
+      val t = iter.next()
       val bytes = c.toBytes(t)
       output.writeInt(bytes.length)
       output.write(bytes)
     }
   }
 
-  override def read(input: PrimitiveInputStream) = readBuf(input)
-
-  def readBuf(input: PrimitiveInputStream) = {
+  def readColl(input:PrimitiveInputStream, c:ByteConverter[T]) : Buffer[T] = {
     val length = input.readInt()
+    val cpx = c.asInstanceOf[ComplexByteConverter[T]]
 
-    Buffer((for (i <- 0 until length) yield {
+    var i = 0
+    val buff = Buffer[T]()
+    while(i < length) {
       val arrLength = input.readInt()
-      val arr = new Array[Byte](arrLength)
-      input.read(arr)
-      c.fromBytes(arr)
-    }): _*)
+      if(cpx != null) {
+        buff += cpx.read(input)
+      }else {
+        val arr = new Array[Byte](arrLength)
+        input.read(arr)
+        buff += c.fromBytes(arr)
+      }
+      i = i + 1
+    }
+
+    buff
   }
-
 }
-
 
