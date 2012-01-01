@@ -686,7 +686,6 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     * 1. Find a column first.  If you find a column first, it means there is a strongly-typed column defined.
     * 2. If no column, then find the family.
     *
-    * TODO: Replace hashmap lookup with binarySearch
     */
   def converterByBytes(famBytes: Array[Byte], colBytes: Array[Byte]): KeyValueConvertible[_, _, _] = {
 
