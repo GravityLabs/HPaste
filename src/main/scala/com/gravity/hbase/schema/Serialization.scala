@@ -127,17 +127,19 @@ class MapConverter[K, V](implicit c: ByteConverter[K], d: ByteConverter[V]) exte
     for ((k, v) <- map) {
       val keyBytes = c.toBytes(k)
       val valBytes = d.toBytes(v)
-      output.writeInt(keyBytes.size)
+      output.writeInt(keyBytes.length)
       output.write(keyBytes)
-      output.writeInt(valBytes.size)
+      output.writeInt(valBytes.length)
       output.write(valBytes)
     }
   }
 
   override def read(input: PrimitiveInputStream) = {
     val length = input.readInt()
-    //    val map = mutable.Map[K,V]()
-    Map[K, V]((for (i <- 0 until length) yield {
+    val kvarr = Array.ofDim[(K,V)](length)
+
+    var i = 0
+    while(i < length) {
       val keyLength = input.readInt
       val keyArr = new Array[Byte](keyLength)
       input.read(keyArr)
@@ -148,11 +150,42 @@ class MapConverter[K, V](implicit c: ByteConverter[K], d: ByteConverter[V]) exte
       input.read(valArr)
       val value = d.fromBytes(valArr)
 
-      (key -> value)
-    }): _*)
+      kvarr(i) = (key -> value)
+      i = i+1
+    }
+    Map[K,V](kvarr:_*)
   }
 }
 
+//TODO: T is not available at runtime, and Arrays are not generic.  Figure out classmanifest workaround
+//class ArrayConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Array[T]] {
+//  override def write(set: Array[T], output: PrimitiveOutputStream) {
+//    val length = set.length
+//    output.writeInt(length)
+//    var i = 0
+//    while(i < length) {
+//      val itm = set(i)
+//      val bytes = c.toBytes(itm)
+//      output.writeInt(bytes.length)
+//      output.write(bytes)
+//      i = i+1
+//    }
+//  }
+//
+//  override def read(input: PrimitiveInputStream) : Array[T] = {
+//    val length = input.readInt()
+//    val arr = Array.ofDim[T](length)
+//    var i = 0
+//    while(i < length) {
+//      val byteLength = input.readInt()
+//      val itmArr = new Array[Byte](byteLength)
+//      val itm = c.fromBytes(itmArr)
+//      arr(i) = itm
+//      i = i + 1
+//    }
+//    arr
+//  }
+//}
 
 class SetConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Set[T]] {
 
@@ -163,7 +196,7 @@ class SetConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter
     set.foreach {
       itm =>
         val bytes = c.toBytes(itm)
-        output.writeInt(bytes.size)
+        output.writeInt(bytes.length)
         output.write(bytes)
     }
   }
@@ -189,9 +222,10 @@ class SeqConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter
     val length = seq.size
     output.writeInt(length)
 
+
     for (t <- seq) {
       val bytes = c.toBytes(t)
-      output.writeInt(bytes.size)
+      output.writeInt(bytes.length)
       output.write(bytes)
     }
   }
@@ -222,7 +256,7 @@ class BufferConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConver
 
     for (t <- buf) {
       val bytes = c.toBytes(t)
-      output.writeInt(bytes.size)
+      output.writeInt(bytes.length)
       output.write(bytes)
     }
   }
