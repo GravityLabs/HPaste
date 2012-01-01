@@ -212,6 +212,38 @@ class SetConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter
   }
 }
 
+class IndexedSeqConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[IndexedSeq[T]] {
+  override def write(seq: IndexedSeq[T], output: PrimitiveOutputStream) {
+    writeSeq(seq, output)
+  }
+
+  def writeSeq(seq: IndexedSeq[T], output: PrimitiveOutputStream) {
+    val length = seq.size
+    output.writeInt(length)
+
+
+    for (t <- seq) {
+      val bytes = c.toBytes(t)
+      output.writeInt(bytes.length)
+      output.write(bytes)
+    }
+  }
+
+  override def read(input: PrimitiveInputStream) = readSeq(input)
+
+  def readSeq(input: PrimitiveInputStream) = {
+    val length = input.readInt()
+
+    IndexedSeq((for (i <- 0 until length) yield {
+      val arrLength = input.readInt()
+      val arr = new Array[Byte](arrLength)
+      input.read(arr)
+      c.fromBytes(arr)
+    }): _*)
+  }
+
+}
+
 
 class SeqConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Seq[T]] {
   override def write(seq: Seq[T], output: PrimitiveOutputStream) {
