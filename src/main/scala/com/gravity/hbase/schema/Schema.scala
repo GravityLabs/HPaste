@@ -32,6 +32,7 @@ import java.nio.ByteBuffer
 import org.apache.commons.lang.ArrayUtils
 import org.apache.hadoop.hbase.KeyValue
 import java.util.{Arrays, HashMap}
+import org.apache.hadoop.hbase.util.Bytes.ByteArrayComparator
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -667,6 +668,34 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
   })
 
 
+  var famLookup : Array[Array[Byte]] = null
+  var colFamLookup : Array[Array[Byte]] = null
+  var famIdx : IndexedSeq[KeyValueConvertible[_,_,_]] = null
+  var colFamIdx : IndexedSeq[KeyValueConvertible[_,_,_]] = null
+
+  val bc = new ByteArrayComparator()
+
+  implicit val o = new math.Ordering[Array[Byte]] {
+    def compare(a: Array[Byte], b: Array[Byte]): Int = {
+      if (a eq null) {
+        if (b eq null) 0
+        else -1
+      }
+      else if (b eq null) 1
+      else {
+        val L = math.min(a.length, b.length)
+        var i = 0
+        while (i < L) {
+          if (a(i) < b(i)) return -1
+          else if (b(i) < a(i)) return 1
+          i += 1
+        }
+        if (L < b.length) -1
+        else if (L < a.length) 1
+        else 0
+      }
+    }
+  }
 
   /** Looks up a KeyValueConvertible by the family and column bytes provided.
     * Because of the rules of the system, the lookup goes as follows:
@@ -677,17 +706,40 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     */
   def converterByBytes(famBytes: Array[Byte], colBytes: Array[Byte]): KeyValueConvertible[_, _, _] = {
 
-    val fullKey = ArrayUtils.addAll(famBytes, colBytes)
-    val bufferKey = ByteBuffer.wrap(fullKey)
-
-    //First make sure an overriding column has not been defined
-    val kvc: KeyValueConvertible[_, _, _] = columnsByBytes.getOrElse(bufferKey, {
-      familiesByBytes(ByteBuffer.wrap(famBytes))
-    })
-    if (kvc == null) {
-      throw new RuntimeException("Unable to locate family or column definition")
+    if(famLookup == null) {
+      famLookup = Array.ofDim[Array[Byte]](families.size)
+      for((fam,idx) <- families.zipWithIndex) {
+        famLookup(idx) = fam.familyBytes
+      }
+      Arrays.sort(famLookup, bc)
+      famIdx = families.sortBy(_.familyBytes).toIndexedSeq
     }
-    kvc
+
+    if(colFamLookup == null) {
+      colFamLookup = Array.ofDim[Array[Byte]](columns.size)
+
+
+      for((col,idx) <- columns.zipWithIndex) {
+        colFamLookup(idx) = ArrayUtils.addAll(col.familyBytes,col.columnBytes)
+      }
+      Arrays.sort(colFamLookup, bc)
+      colFamIdx = columns.sortBy(col=>ArrayUtils.addAll(col.familyBytes,col.columnBytes)).toIndexedSeq
+    }
+
+    val fullKey = ArrayUtils.addAll(famBytes, colBytes)
+    val resIdx = Arrays.binarySearch(colFamLookup,fullKey,bc)
+    if(resIdx > -1) {
+      colFamIdx(resIdx)
+    }else {
+      val resFamIdx = Arrays.binarySearch(famLookup,famBytes,bc)
+      if(resFamIdx > -1) {
+        famIdx(resFamIdx)
+      }
+      else
+        throw new RuntimeException("Unable to locate family or column definition")
+    }
+
+
   }
 
   /** Converts a result to a DeserializedObject. A conservative implementation that is slower than convertResultRaw but will always be more stable against
@@ -717,6 +769,8 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
         ds.add(f, k, r, ts)
       } catch {
         case ex: Exception => {
+          println(ex.getMessage)
+          println(ex.getStackTraceString)
           //ds.addErrorBuffer(family, key, value, kv.getTimestamp)
         }
       } finally {
