@@ -222,7 +222,6 @@ class BufferConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConver
 trait CollStream[T] {
 
   def writeColl(items:Iterable[T], length:Int, output:PrimitiveOutputStream, c:ByteConverter[T]) {
-    val cpx = c.asInstanceOf[ComplexByteConverter[T]]
 
     output.writeInt(length)
 
