@@ -236,7 +236,7 @@ trait CollStream[T] {
 
   def readColl(input:PrimitiveInputStream, c:ByteConverter[T]) : Buffer[T] = {
     val length = input.readInt()
-    val cpx = c.asInstanceOf[ComplexByteConverter[T]]
+    val cpx = if(c.isInstanceOf[ComplexByteConverter[T]]) c.asInstanceOf[ComplexByteConverter[T]] else null
 
     var i = 0
     val buff = Buffer[T]()
