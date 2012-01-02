@@ -156,7 +156,7 @@ case class LongRunningJobConf(timeoutInSeconds: Int) extends HConfigLet {
   */
 class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _, S]*) {
   type RunResult = (Boolean, Seq[(HTask[_,_,_,_,S],Job)])
-  def run(settings: S, conf: Configuration, dryRun: Boolean = false) : RunResult = {
+  def run(settings: S, conf: Configuration, dryRun: Boolean = false, skipToTask:String=null) : RunResult = {
     require(tasks.size > 0, "HJob requires at least one task to be defined")
     conf.setStrings("hpaste.jobchain.jobclass", getClass.getName)
 
@@ -224,10 +224,15 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _, S]*) {
     def runrecursively(tasks: Seq[HTask[_, _, _, _, S]]): RunResult = {
       val jobs = tasks.map {
         task =>
-          val job = makeJob(task)
-          taskJobBuffer.add((task,job))
-          job
-      }
+          if(skipToTask != null && task.taskId.name != skipToTask) {
+            println("Skipping task: " + task.taskId.name + " because we're skipping to : " + skipToTask)
+            None
+          }else {
+            val job = makeJob(task)
+            taskJobBuffer.add((task,job))
+            Some(job)
+          }
+      }.flatten
 
       jobs.foreach {
         job =>
