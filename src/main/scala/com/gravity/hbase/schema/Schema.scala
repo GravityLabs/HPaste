@@ -729,6 +729,9 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     * binary changes to Hbase's KeyValue format.
     */
   def convertResult(result: Result) = {
+    if(result.isEmpty) {
+      throw new RuntimeException("Attempting to deserialize an empty result.  If you want to handle the eventuality of an empty result, call singleOption() instead of single()")
+    }
     val keyValues = result.raw()
     val buff = result.getBytes.get()
 
