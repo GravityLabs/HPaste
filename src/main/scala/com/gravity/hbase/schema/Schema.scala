@@ -33,6 +33,7 @@ import org.apache.commons.lang.ArrayUtils
 import org.apache.hadoop.hbase.KeyValue
 import java.util.{Arrays, HashMap}
 import org.apache.hadoop.hbase.util.Bytes.ByteArrayComparator
+import com.gravity.hbase.AnyNotSupportedException
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -754,9 +755,12 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
         ds.add(f, k, r, ts)
       } catch {
+        case ex: AnyNotSupportedException => {
+          //This means a column came back that is no longer part of the specification
+        }
         case ex: Exception => {
-          println(ex.getMessage)
-          println(ex.getStackTraceString)
+//          println(ex.getMessage)
+//          println(ex.getStackTraceString)
           //ds.addErrorBuffer(family, key, value, kv.getTimestamp)
         }
       } finally {
