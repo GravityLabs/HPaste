@@ -719,6 +719,7 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, R
                                                                                                                         io: HIO[MK, MV, ROK, ROV, S] = HIO(),
                                                                                                                         mapper: HMapper[MK, MV, MOK, MOV],
                                                                                                                         reducer: HReducer[MOK, MOV, ROK, ROV],
+                                                                                                                        combiner: HReducer[MOK,MOV,MOK,MOV] = null,
                                                                                                                         partitioner: HPartitioner[MOK, MOV] = null,
                                                                                                                         groupingComparator: HBinaryComparator = null)
         extends HTask[MK, MV, ROK, ROV, S](id, configs, io) {
@@ -736,6 +737,9 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, R
     }
     if (groupingComparator != null) {
       job.setGroupingComparatorClass(groupingComparator.getClass)
+    }
+    if(combiner != null) {
+      job.setCombinerClass(combiner.getClass)
     }
     //    job.setGroupingComparatorClass()
     //    job.setSortComparatorClass()
