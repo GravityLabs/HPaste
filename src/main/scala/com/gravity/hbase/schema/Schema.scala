@@ -765,21 +765,27 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
       val key = kv.getQualifier
       try {
         val c = converterByBytes(family, key)
-        val f = c.family
-        val k = c.keyConverter.fromBytes(buff, kv.getQualifierOffset, kv.getQualifierLength).asInstanceOf[AnyRef]
-        val r = c.valueConverter.fromBytes(buff, kv.getValueOffset, kv.getValueLength).asInstanceOf[AnyRef]
-        val ts = kv.getTimestamp
+        if(!c.isInstanceOf[ByteConverter[Any]]) {
+          val f = c.family
+          val k = c.keyConverter.fromBytes(buff, kv.getQualifierOffset, kv.getQualifierLength).asInstanceOf[AnyRef]
+          val r = c.valueConverter.fromBytes(buff, kv.getValueOffset, kv.getValueLength).asInstanceOf[AnyRef]
+          val ts = kv.getTimestamp
 
-        ds.add(f, k, r, ts)
+          ds.add(f, k, r, ts)
+        }else {
+          //TODO: Just like AnyNotSupportException, add a counter here because this means a column was removed, but the data is still in the database.
+        }
       } catch {
         case ex: AnyNotSupportedException => {
           //This means a column came back that is no longer part of the specification
-          //println("Attempted to lookup column: " + new String(key) + " in family: " + new String(family) + " and didn't find a serializer")
+          //TODO: Keep counters of columns that were encountered and we were unable to deserialize
+//          println("Attempted to lookup column: " + new String(key) + " in family: " + new String(family) + " and didn't find a serializer")
+//          ds.addErrorBuffer(family, key, value, kv.getTimestamp)
         }
         case ex: Exception => {
           //          println(ex.getMessage)
           //          println(ex.getStackTraceString)
-          //ds.addErrorBuffer(family, key, value, kv.getTimestamp)
+  //        ds.addErrorBuffer(family, key, value, kv.getTimestamp)
         }
       } finally {
         itr = itr + 1
