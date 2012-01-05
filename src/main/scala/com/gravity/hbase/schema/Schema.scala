@@ -239,7 +239,7 @@ class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _], key: A
   previous += this
 
   def put(key: R, writeToWAL: Boolean = true) = {
-    val po = new PutOp(table,  table.rowKeyConverter.toBytes(key), previous, writeToWAL)
+    val po = new PutOp(table, table.rowKeyConverter.toBytes(key), previous, writeToWAL)
     po
   }
 
@@ -607,6 +607,22 @@ abstract class HRow[T <: HbaseTable[T, R, _], R](result: DeserializedResult, tab
 
   def prettyPrint() {println(prettyFormat())}
 
+  def prettyPrintNoValues() {println(prettyFormatNoValues())}
+
+  def prettyFormatNoValues() = {
+    val sb = new StringBuilder()
+    sb.append("Row Key: " + result.rowid + " (" + result.values.size + " families)" + "\n")
+    for (i <- 0 until result.values.length) {
+      val familyMap = result.values(i)
+      if (familyMap != null) {
+        val family = table.familyByIndex(i)
+        sb.append("\tFamily: " + family.familyName + " (" + familyMap.values.size + " items)\n")
+      }
+    }
+    sb.toString
+  }
+
+
   def prettyFormat() = {
     val sb = new StringBuilder()
     sb.append("Row Key: " + result.rowid + " (" + result.values.size + " families)" + "\n")
@@ -669,16 +685,16 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
   })
 
 
-  var famLookup : Array[Array[Byte]] = null
-  var colFamLookup : Array[Array[Byte]] = null
-  var famIdx : IndexedSeq[KeyValueConvertible[_,_,_]] = null
-  var colFamIdx : IndexedSeq[KeyValueConvertible[_,_,_]] = null
+  var famLookup: Array[Array[Byte]] = null
+  var colFamLookup: Array[Array[Byte]] = null
+  var famIdx: IndexedSeq[KeyValueConvertible[_, _, _]] = null
+  var colFamIdx: IndexedSeq[KeyValueConvertible[_, _, _]] = null
 
   val bc = new ByteArrayComparator()
 
   implicit val o = new math.Ordering[Array[Byte]] {
     def compare(a: Array[Byte], b: Array[Byte]): Int = {
-      bc.compare(a,b)
+      bc.compare(a, b)
     }
   }
 
@@ -690,37 +706,38 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     */
   def converterByBytes(famBytes: Array[Byte], colBytes: Array[Byte]): KeyValueConvertible[_, _, _] = {
 
-    if(famLookup == null) {
+    if (famLookup == null) {
       famLookup = Array.ofDim[Array[Byte]](families.size)
-      for((fam,idx) <- families.zipWithIndex) {
+      for ((fam, idx) <- families.zipWithIndex) {
         famLookup(idx) = fam.familyBytes
       }
       Arrays.sort(famLookup, bc)
       famIdx = families.sortBy(_.familyBytes).toIndexedSeq
     }
 
-    if(colFamLookup == null) {
+    if (colFamLookup == null) {
       colFamLookup = Array.ofDim[Array[Byte]](columns.size)
 
 
-      for((col,idx) <- columns.zipWithIndex) {
-        colFamLookup(idx) = ArrayUtils.addAll(col.familyBytes,col.columnBytes)
+      for ((col, idx) <- columns.zipWithIndex) {
+        colFamLookup(idx) = ArrayUtils.addAll(col.familyBytes, col.columnBytes)
       }
       Arrays.sort(colFamLookup, bc)
-      colFamIdx = columns.sortBy(col=>ArrayUtils.addAll(col.familyBytes,col.columnBytes)).toIndexedSeq
+      colFamIdx = columns.sortBy(col => ArrayUtils.addAll(col.familyBytes, col.columnBytes)).toIndexedSeq
     }
 
     val fullKey = ArrayUtils.addAll(famBytes, colBytes)
-    val resIdx = Arrays.binarySearch(colFamLookup,fullKey,bc)
-    if(resIdx > -1) {
+    val resIdx = Arrays.binarySearch(colFamLookup, fullKey, bc)
+    if (resIdx > -1) {
       colFamIdx(resIdx)
-    }else {
-      val resFamIdx = Arrays.binarySearch(famLookup,famBytes,bc)
-      if(resFamIdx > -1) {
+    } else {
+      val resFamIdx = Arrays.binarySearch(famLookup, famBytes, bc)
+      if (resFamIdx > -1) {
         famIdx(resFamIdx)
       }
-      else
+      else {
         throw new RuntimeException("Unable to locate family or column definition")
+      }
     }
 
 
@@ -730,7 +747,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     * binary changes to Hbase's KeyValue format.
     */
   def convertResult(result: Result) = {
-    if(result.isEmpty) {
+    if (result.isEmpty) {
       throw new RuntimeException("Attempting to deserialize an empty result.  If you want to handle the eventuality of an empty result, call singleOption() instead of single()")
     }
     val keyValues = result.raw()
@@ -742,7 +759,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
     var itr = 0
 
-    while(itr < keyValues.length) {
+    while (itr < keyValues.length) {
       val kv = keyValues(itr)
       val family = kv.getFamily
       val key = kv.getQualifier
@@ -757,10 +774,11 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
       } catch {
         case ex: AnyNotSupportedException => {
           //This means a column came back that is no longer part of the specification
+          //println("Attempted to lookup column: " + new String(key) + " in family: " + new String(family) + " and didn't find a serializer")
         }
         case ex: Exception => {
-//          println(ex.getMessage)
-//          println(ex.getStackTraceString)
+          //          println(ex.getMessage)
+          //          println(ex.getStackTraceString)
           //ds.addErrorBuffer(family, key, value, kv.getTimestamp)
         }
       } finally {

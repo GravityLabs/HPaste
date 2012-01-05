@@ -45,6 +45,116 @@ import org.apache.hadoop.hbase.filter.FilterList.Operator
   * @param table the instance of the table to work with
   */
 class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR]) {
+
+  def filter(filterFx:(FilterBuilder)=>Unit) = {
+    val fb = new FilterBuilder()
+    filterFx(fb)
+    currentFilter = fb.coreList
+    this
+  }
+
+
+  class FilterBuilder() {
+    var coreList: FilterList = _
+    val clauseBuilder = new ClauseBuilder()
+
+    private def addFilter(filter: FilterList) {
+      coreList = filter
+      //      coreList.addFilter(filter)
+    }
+
+    def or(clauses: ((ClauseBuilder) => Filter)*) = {
+      val orFilter = new FilterList(FilterList.Operator.MUST_PASS_ONE)
+      for (ctx <- clauses) {
+        val filter = ctx(clauseBuilder)
+        orFilter.addFilter(filter)
+      }
+      addFilter(orFilter)
+      this
+    }
+
+    def and(clauses: ((ClauseBuilder) => Filter)*) = {
+      val andFilter = new FilterList(FilterList.Operator.MUST_PASS_ALL)
+      for (cfx <- clauses) {
+        val filter = cfx(clauseBuilder)
+        andFilter.addFilter(filter)
+      }
+
+      addFilter(andFilter)
+      this
+    }
+
+  }
+
+  class ClauseBuilder() {
+
+
+    def columnValueMustEqual[F, K, V](column: (T) => Column[T, R, F, K, V], value: V) = {
+      val c = column(table.pops)
+      val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.EQUAL, c.valueConverter.toBytes(value))
+      vc.setFilterIfMissing(true)
+      vc.setLatestVersionOnly(true)
+      vc
+    }
+
+    def lessThanColumnKey[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], value: K) = {
+      val fam = family(table.pops)
+      val valueFilter = new QualifierFilter(CompareOp.LESS_OR_EQUAL, new BinaryComparator(fam.keyConverter.toBytes(value)))
+      val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(family(table.pops).familyBytes))
+      val andFilter = new FilterList(Operator.MUST_PASS_ALL)
+      andFilter.addFilter(familyFilter)
+      andFilter.addFilter(valueFilter)
+      andFilter
+    }
+
+    def greaterThanColumnKey[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], value: K) = {
+      val fam = family(table.pops)
+      val andFilter = new FilterList(Operator.MUST_PASS_ALL)
+      val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(fam.familyBytes))
+      val valueFilter = new QualifierFilter(CompareOp.GREATER_OR_EQUAL, new BinaryComparator(fam.keyConverter.toBytes(value)))
+      andFilter.addFilter(familyFilter)
+      andFilter.addFilter(valueFilter)
+      andFilter
+    }
+
+    //  def columnFamily[F,K,V](family: (T) => ColumnFamily[T,R,F,K,V])(implicit c: ByteConverter[F]): Query[T,R] = {
+    //    val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(family(table.pops).familyBytes))
+    //    currentFilter.addFilter(familyFilter)
+    //    this
+    //  }
+
+
+    def betweenColumnKeys[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], lower: K, upper: K) = {
+      val fam = family(table.pops)
+      val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(fam.familyBytes))
+      val begin = new QualifierFilter(CompareOp.GREATER_OR_EQUAL, new BinaryComparator(fam.keyConverter.toBytes(lower)))
+      val end = new QualifierFilter(CompareOp.LESS_OR_EQUAL, new BinaryComparator(fam.keyConverter.toBytes(upper)))
+
+
+      val filterList = new FilterList(Operator.MUST_PASS_ALL)
+      filterList.addFilter(familyFilter)
+      filterList.addFilter(begin)
+      filterList.addFilter(end)
+      filterList
+    }
+
+    def inFamily[F](family: (T) => ColumnFamily[T, R, F, _, _]) = {
+      val fam = family(table.pops)
+      val ff = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(fam.familyBytes))
+      ff
+    }
+
+    def allInFamilies[F](familyList: ((T) => ColumnFamily[T, R, F, _, _])*) = {
+      val filterList = new FilterList(Operator.MUST_PASS_ONE)
+      for (family <- familyList) {
+        val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(family(table.pops).familyBytes))
+        filterList.addFilter(familyFilter)
+      }
+      filterList
+    }
+  }
+
+
   val keys = Buffer[Array[Byte]]()
   val families = Buffer[Array[Byte]]()
   val columns = Buffer[(Array[Byte], Array[Byte])]()
@@ -91,7 +201,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T
 
   def columnValueMustEqual[F, K, V](column: (T) => Column[T, R, F, K, V], value: V) = {
     val c = column(table.pops)
-    val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.EQUAL,c.valueConverter.toBytes(value))
+    val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.EQUAL, c.valueConverter.toBytes(value))
     vc.setFilterIfMissing(true)
     vc.setLatestVersionOnly(true)
     currentFilter.addFilter(vc)
@@ -223,7 +333,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T
 
   def execute(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true): Seq[RR] = {
     if (keys.isEmpty) return Seq.empty[RR] // no keys..? nothing to see here... move along... move along.
-    require(! keys.isEmpty, "execute assumes that you have called withKeys() or withKey().  If you are trying to do a scan, you should call Scan()")
+    require(!keys.isEmpty, "execute assumes that you have called withKeys() or withKey().  If you are trying to do a scan, you should call Scan()")
 
     val results = Buffer[RR]() // buffer for storing all results retrieved
 
@@ -417,8 +527,12 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T
         val scanner = htable.getScanner(scan)
 
         try {
-          for (result <- scanner) {
-            handler(table.buildRow(result))
+          var done = false
+          while (!done) {
+            val result = scanner.next()
+            if (result != null) {
+              handler(table.buildRow(result))
+            } else {done = true}
           }
         } finally {
           scanner.close()
@@ -465,6 +579,25 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T
         }
     }
     results2
+  }
+
+
+}
+
+object Query2 {
+  def p(depth: Int = 1, msg: Any) {
+    println(("\t" * depth) + msg)
+  }
+
+  def printFilter(depth: Int, f: Filter) {
+    p(depth, "Filter All Remaining: " + f.filterAllRemaining())
+    p(depth, "Has Filter Row: " + f.hasFilterRow)
+    p(depth, "To String: " + f.toString)
+    if (f.isInstanceOf[FilterList]) {
+      val fl = f.asInstanceOf[FilterList]
+      p(depth, "Operator: " + fl.getOperator())
+      fl.getFilters.foreach(sf => printFilter(depth + 1, sf))
+    }
   }
 
 }
