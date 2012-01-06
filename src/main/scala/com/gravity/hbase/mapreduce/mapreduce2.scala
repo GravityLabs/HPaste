@@ -36,6 +36,8 @@ import scala.collection.mutable.Buffer
 import org.apache.hadoop.io._
 import java.io.{DataInputStream, ByteArrayInputStream, ByteArrayOutputStream}
 import org.apache.hadoop.hbase.mapreduce.{MultiTableOutputFormat, TableInputFormat}
+import org.joda.time.DateTime
+import scala.collection._
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -155,7 +157,7 @@ case class LongRunningJobConf(timeoutInSeconds: Int) extends HConfigLet {
   * To use the job, create a class with a parameterless constructor that inherits HJob, and pass the tasks into the constructor as a sequence.
   */
 class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _, S]*) {
-  type RunResult = (Boolean, Seq[(HTask[_,_,_,_,S],Job)])
+  type RunResult = (Boolean, Seq[(HTask[_,_,_,_,S],Job)], mutable.Map[String,DateTime], mutable.Map[String,DateTime])
   def run(settings: S, conf: Configuration, dryRun: Boolean = false, skipToTask:String=null) : RunResult = {
     require(tasks.size > 0, "HJob requires at least one task to be defined")
     conf.setStrings("hpaste.jobchain.jobclass", getClass.getName)
@@ -220,6 +222,8 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _, S]*) {
     }
 
     val taskJobBuffer = Buffer[(HTask[_,_,_,_,S],Job)]()
+    val taskStartTimes = mutable.Map[String,DateTime]()
+    val taskEndTimes = mutable.Map[String,DateTime]()
 
     def runrecursively(tasks: Seq[HTask[_, _, _, _, S]]): RunResult = {
       val jobs = tasks.map {
@@ -236,17 +240,20 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _, S]*) {
 
       jobs.foreach {
         job =>
+          taskStartTimes(job.getJobName) = new DateTime()
+          val result = job.waitForCompletion(true)
+          taskEndTimes(job.getJobName) = new DateTime()
           if (!job.waitForCompletion(true)) {
-            return (false,taskJobBuffer)
+            return (false,taskJobBuffer,taskStartTimes,taskEndTimes)
           }
       }
 
       if (jobs.exists(_.isSuccessful == false)) {
-        (false,taskJobBuffer)
+        (false,taskJobBuffer,taskStartTimes,taskEndTimes)
       } else {
         val nextTasks = tasks.flatMap(_.nextTasks)
         if (nextTasks.size == 0) {
-          (true,taskJobBuffer)
+          (true,taskJobBuffer,taskStartTimes,taskEndTimes)
         } else {
           runrecursively(nextTasks)
 
@@ -262,7 +269,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _, S]*) {
     if (!dryRun) {
       runrecursively(firstTasks)
     } else {
-      (true,taskJobBuffer)
+      (true,taskJobBuffer,taskStartTimes,taskEndTimes)
     }
   }
 
