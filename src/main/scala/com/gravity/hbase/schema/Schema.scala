@@ -30,10 +30,10 @@ import com.gravity.hbase.schema._
 import java.math.BigInteger
 import java.nio.ByteBuffer
 import org.apache.commons.lang.ArrayUtils
-import org.apache.hadoop.hbase.KeyValue
 import java.util.{Arrays, HashMap}
 import org.apache.hadoop.hbase.util.Bytes.ByteArrayComparator
 import com.gravity.hbase.AnyNotSupportedException
+import org.apache.hadoop.hbase.{HColumnDescriptor, KeyValue}
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -430,7 +430,7 @@ trait KeyValueConvertible[F, K, V] {
 /**
   * Represents the specification of a Column Family
   */
-class ColumnFamily[T <: HbaseTable[T, R, _], R, F, K, V](val table: HbaseTable[T, R, _], val familyName: F, val compressed: Boolean = false, val versions: Int = 1, val index: Int)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
+class ColumnFamily[T <: HbaseTable[T, R, _], R, F, K, V](val table: HbaseTable[T, R, _], val familyName: F, val compressed: Boolean = false, val versions: Int = 1, val index: Int,val ttlInSeconds:Int = HColumnDescriptor.DEFAULT_TTL)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
   val familyConverter = c
   val keyConverter = d
   val valueConverter = e
@@ -904,7 +904,8 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
   def familyDef(family: ColumnFamily[T, _, _, _, _]) = {
     val compression = if (family.compressed) ", COMPRESSION=>'lzo'" else ""
-    "{NAME => '%s', VERSIONS => %d%s}".format(Bytes.toString(family.familyBytes), family.versions, compression)
+    val ttl = if(family.ttlInSeconds < HColumnDescriptor.DEFAULT_TTL) ", TTL=>'"+family.ttlInSeconds+"'" else ""
+    "{NAME => '%s', VERSIONS => %d%s%s}".format(Bytes.toString(family.familyBytes), family.versions, compression,ttl)
   }
 
 
@@ -934,8 +935,8 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
   var familyIdx = 0
 
-  def family[F, K, V](familyName: F, compressed: Boolean = false, versions: Int = 1)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) = {
-    val family = new ColumnFamily[T, R, F, K, V](this, familyName, compressed, versions, familyIdx)
+  def family[F, K, V](familyName: F, compressed: Boolean = false, versions: Int = 1, rowTtlInSeconds:Int=Int.MaxValue)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) = {
+    val family = new ColumnFamily[T, R, F, K, V](this, familyName, compressed, versions, familyIdx,rowTtlInSeconds)
     familyIdx = familyIdx + 1
     families += family
     familiesByBytes.put(ByteBuffer.wrap(family.familyBytes), family)
