@@ -893,7 +893,9 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
   }
 
   def alterScript(tableNameOverride: String = tableName, families: Seq[ColumnFamily[T, _, _, _, _]] = families) = {
-    var alter = "disable '" + tableNameOverride + "'\n"
+
+    var alter = "flush '" + tableNameOverride + "'\n"
+    alter += "disable '" + tableNameOverride + "'\n"
     alter += "alter '" + tableNameOverride + "', "
     alter += (for (family <- families) yield {
       familyDef(family)
