@@ -195,8 +195,9 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
           println("WARNING: Task " + task.taskId.name + " specifies previous task " + task.taskId.requiredTask.taskId.name + " which was not submitted to the job.  Make sure you did this intentionally")
           null
 //          throw new RuntimeException("Task " + task.taskId.name + " requires task " + task.taskId.requiredTask.taskId.name + " which has not been submitted to the job")
+        }else {
+          task.taskId.requiredTask
         }
-        task.taskId.requiredTask
       }
     }
 
