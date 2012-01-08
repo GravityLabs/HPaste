@@ -615,7 +615,7 @@ abstract class FromTableToTableMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T
 abstract class FromTableBinaryMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
         extends FromTableMapper[T, R, RR, BytesWritable, BytesWritable](table, classOf[BytesWritable], classOf[BytesWritable]) with BinaryWritable
 
-abstract class FromTableBinaryMapperInit[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
+abstract class FromTableBinaryMapperFx[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
         extends FromTableMapper[T, R, RR, BytesWritable, BytesWritable](table, classOf[BytesWritable], classOf[BytesWritable]) with BinaryWritable with DelayedInit {
 
   private var initCode: () => Unit = _
@@ -630,36 +630,31 @@ abstract class FromTableBinaryMapperInit[T <: HbaseTable[T, R, RR], R, RR <: HRo
 }
 
 
-abstract class FromTableBinaryMapperFx[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR], mapFx: (RR, FromTableBinaryMapper[T, R, RR]) => Unit) extends FromTableBinaryMapper[T, R, RR](table) {
-  def map() {
-    mapFx(row, this)
-  }
-}
-
-object MRFx {
-
-  def ftb[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](fromTable: HbaseTable[T, R, RR], mapFx: (RR, FromTableBinaryMapper[T, R, RR]) => Unit) = new FromTableBinaryMapperFx(fromTable, mapFx) {
-  }
-
-  def fromToTableMR[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], T2 <: HbaseTable[T2, R2, RR2], R2, RR2 <: HRow[T2, R2]](name: String, prev: String, fromTable: HbaseTable[T, R, RR], toTable: HbaseTable[T2, R2, RR2])(mapFx: (RR, FromTableBinaryMapper[T, R, RR]) => Unit)(reduceFx: (BytesWritable, Iterable[BytesWritable], ToTableBinaryReducer[T2, R2, RR2]) => Unit) = {
-    val mrt = new HMapReduceTask(
-      HTaskID(name, prev),
-      HTaskConfigs(),
-      HIO(HTableInput(fromTable.asInstanceOf[T]), HTableOutput(toTable.asInstanceOf[T2])),
-      new FromTableBinaryMapper(fromTable) {
-        def map() {
-          mapFx(row, this)
-        }
-      },
-      new ToTableBinaryReducer(toTable) {
-        def reduce() {
-          reduceFx(key, values, this)
-        }
-      }
-    ) {}
-    mrt
-  }
-}
+//
+//object MRFx {
+//
+//  def ftb[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](fromTable: HbaseTable[T, R, RR], mapFx: (RR, FromTableBinaryMapper[T, R, RR]) => Unit) = new FromTableBinaryMapperFx(fromTable, mapFx) {
+//  }
+//
+//  def fromToTableMR[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], T2 <: HbaseTable[T2, R2, RR2], R2, RR2 <: HRow[T2, R2]](name: String, prev: String, fromTable: HbaseTable[T, R, RR], toTable: HbaseTable[T2, R2, RR2])(mapFx: (RR, FromTableBinaryMapper[T, R, RR]) => Unit)(reduceFx: (BytesWritable, Iterable[BytesWritable], ToTableBinaryReducer[T2, R2, RR2]) => Unit) = {
+//    val mrt = new HMapReduceTask(
+//      HTaskID(name, prev),
+//      HTaskConfigs(),
+//      HIO(HTableInput(fromTable.asInstanceOf[T]), HTableOutput(toTable.asInstanceOf[T2])),
+//      new FromTableBinaryMapper(fromTable) {
+//        def map() {
+//          mapFx(row, this)
+//        }
+//      },
+//      new ToTableBinaryReducer(toTable) {
+//        def reduce() {
+//          reduceFx(key, values, this)
+//        }
+//      }
+//    ) {}
+//    mrt
+//  }
+//}
 
 abstract class BinaryToTableReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
         extends ToTableReducer[T, R, RR, BytesWritable, BytesWritable](table) with BinaryReadable
@@ -676,7 +671,7 @@ abstract class ToMultiTableReducer[MOK, MOV](tables: HbaseTable[_, _, _]*) exten
 abstract class ToTableBinaryReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
         extends HReducer[BytesWritable, BytesWritable, NullWritable, Writable] with ToTableWritable[T, R, RR] with BinaryReadable
 
-abstract class ToTableBinaryReducerInit[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
+abstract class ToTableBinaryReducerFx[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
         extends HReducer[BytesWritable, BytesWritable, NullWritable, Writable] with ToTableWritable[T, R, RR] with BinaryReadable with DelayedInit {
   private var initCode: () => Unit = _
 
