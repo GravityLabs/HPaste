@@ -156,13 +156,13 @@ case class LongRunningJobConf(timeoutInSeconds: Int) extends HConfigLet {
   *
   * To use the job, create a class with a parameterless constructor that inherits HJob, and pass the tasks into the constructor as a sequence.
   */
-class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _, S]*) {
-  type RunResult = (Boolean, Seq[(HTask[_,_,_,_,S],Job)], mutable.Map[String,DateTime], mutable.Map[String,DateTime])
+class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
+  type RunResult = (Boolean, Seq[(HTask[_,_,_,_],Job)], mutable.Map[String,DateTime], mutable.Map[String,DateTime])
   def run(settings: S, conf: Configuration, dryRun: Boolean = false, skipToTask:String=null) : RunResult = {
     require(tasks.size > 0, "HJob requires at least one task to be defined")
     conf.setStrings("hpaste.jobchain.jobclass", getClass.getName)
 
-    var previousTask: HTask[_, _, _, _, S] = null
+    var previousTask: HTask[_, _, _, _] = null
 
     def taskByName(name: String) = tasks.find(_.taskId.name == name)
 
@@ -184,8 +184,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _, S]*) {
     var idx = 0
 
 
-    def makeJob(task: HTask[_, _, _, _, S]) = {
-      task.settings = settings
+    def makeJob(task: HTask[_, _, _, _]) = {
       val taskConf = new Configuration(conf)
       taskConf.setInt("hpaste.jobchain.mapper.idx", idx)
       taskConf.setInt("hpaste.jobchain.reducer.idx", idx)
@@ -209,7 +208,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _, S]*) {
       job
     }
 
-    def declare(tasks: Seq[HTask[_, _, _, _, S]], level: String = "\t") {
+    def declare(tasks: Seq[HTask[_, _, _, _]], level: String = "\t") {
       tasks.map {
         task =>
           println(level + "Task: " + task.taskId.name)
@@ -221,11 +220,11 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _, S]*) {
       }
     }
 
-    val taskJobBuffer = Buffer[(HTask[_,_,_,_,S],Job)]()
+    val taskJobBuffer = Buffer[(HTask[_,_,_,_],Job)]()
     val taskStartTimes = mutable.Map[String,DateTime]()
     val taskEndTimes = mutable.Map[String,DateTime]()
 
-    def runrecursively(tasks: Seq[HTask[_, _, _, _, S]]): RunResult = {
+    def runrecursively(tasks: Seq[HTask[_, _, _, _]]): RunResult = {
       val jobs = tasks.map {
         task =>
           if(skipToTask != null && task.taskId.name != skipToTask) {
@@ -275,12 +274,12 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _, S]*) {
 
   def getMapperFunc[MK, MV, MOK, MOV](idx: Int) = {
     val task = tasks(idx)
-    if (task.isInstanceOf[HMapReduceTask[MK, MV, MOK, MOV, _, _, S]]) {
-      val tk = task.asInstanceOf[HMapReduceTask[MK, MV, MOK, MOV, _, _, S]]
+    if (task.isInstanceOf[HMapReduceTask[MK, MV, MOK, MOV, _, _]]) {
+      val tk = task.asInstanceOf[HMapReduceTask[MK, MV, MOK, MOV, _, _]]
       tk.mapper
     }
-    else if (task.isInstanceOf[HMapTask[MK, MV, MOK, MOV, S]]) {
-      val tk = task.asInstanceOf[HMapTask[MK, MV, MOK, MOV, S]]
+    else if (task.isInstanceOf[HMapTask[MK, MV, MOK, MOV]]) {
+      val tk = task.asInstanceOf[HMapTask[MK, MV, MOK, MOV]]
       tk.mapper
     } else {
       throw new RuntimeException("Unable to find mapper for index " + idx)
@@ -289,8 +288,8 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _, S]*) {
 
   def getReducerFunc[MOK, MOV, ROK, ROV](idx: Int) = {
     val task = tasks(idx)
-    if (task.isInstanceOf[HMapReduceTask[_, _, MOK, MOV, ROK, ROV, S]]) {
-      val tk = task.asInstanceOf[HMapReduceTask[_, _, MOK, MOV, ROK, ROV, S]]
+    if (task.isInstanceOf[HMapReduceTask[_, _, MOK, MOV, ROK, ROV]]) {
+      val tk = task.asInstanceOf[HMapReduceTask[_, _, MOK, MOV, ROK, ROV]]
       tk.reducer
     } else {
       throw new RuntimeException("Unable to find reducer for index " + idx)
@@ -458,28 +457,27 @@ case class HRandomSequenceOutput[K, V]() extends HOutput {
 
 }
 
-case class HIO[IK, IV, OK, OV, S <: SettingsBase](var input: HInput = HRandomSequenceInput[IK, IV](), var output: HOutput = HRandomSequenceOutput[OK, OV]())
+case class HIO[IK, IV, OK, OV](var input: HInput = HRandomSequenceInput[IK, IV](), var output: HOutput = HRandomSequenceOutput[OK, OV]())
 
 
 /**
   * This is a single task in an HJob.  It is usually a single hadoop job (an HJob being composed of several).
   */
-abstract class HTask[IK, IV, OK, OV, S <: SettingsBase](val taskId: HTaskID, val configLets: HTaskConfigs = HTaskConfigs(), val hio: HIO[IK, IV, OK, OV, S] = HIO()) {
+abstract class HTask[IK, IV, OK, OV](val taskId: HTaskID, val configLets: HTaskConfigs = HTaskConfigs(), val hio: HIO[IK, IV, OK, OV] = HIO()) {
   var configuration: Configuration = _
-  var settings: S = _
 
 
-  var previousTask: HTask[_, _, _, _, S] = _
-  val nextTasks = Buffer[HTask[_, _, _, _, S]]()
+  var previousTask: HTask[_, _, _, _] = _
+  val nextTasks = Buffer[HTask[_, _, _, _]]()
 
-  def configure(conf: Configuration, previousTask: HTask[_, _, _, _, S]) {
+  def configure(conf: Configuration, previousTask: HTask[_, _, _, _]) {
 
     configuration = conf
   }
 
   def decorateJob(job: Job)
 
-  def makeJob(previousTask: HTask[_, _, _, _, S]) = {
+  def makeJob(previousTask: HTask[_, _, _, _]) = {
 
     val job = new Job(configuration)
 
@@ -576,6 +574,48 @@ abstract class FromTableToTableMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T
 abstract class FromTableBinaryMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
         extends FromTableMapper[T, R, RR, BytesWritable, BytesWritable](table, classOf[BytesWritable], classOf[BytesWritable]) with BinaryWritable
 
+
+object MRFx {
+  type MRFx[T <: HbaseTable[T,R,RR],R,RR<:HRow[T,R]] = (RR,FromTableBinaryMapper[T,R,RR])=>Unit
+  type TBWriter[T <: HbaseTable[T,R,RR],R,RR<:HRow[T,R]] = (OpBase[T,R])=>Unit
+  type RFx[T <: HbaseTable[T,R,RR],R,RR<:HRow[T,R]] = (BytesWritable,Iterable[BytesWritable],ToTableBinaryReducer[T,R,RR]) => Unit
+
+  def fromToTableMR[T <: HbaseTable[T,R,RR],R,RR<:HRow[T,R], T2 <: HbaseTable[T2,R2,RR2],R2,RR2<:HRow[T2,R2]](name:String,prev:String,fromTable:HbaseTable[T,R,RR], toTable:HbaseTable[T2,R2,RR2])(mapFx:MRFx[T,R,RR])(reduceFx:RFx[T2,R2,RR2]) = {
+    HMapReduceTask(
+      HTaskID(name,prev),
+      HTaskConfigs(),
+      HIO(HTableInput(fromTable.asInstanceOf[T]),HTableOutput(toTable.asInstanceOf[T2])),
+      new FromTableBinaryMapper(fromTable) {
+        def map() {
+          mapFx(row,this)
+        }
+      },
+      new ToTableBinaryReducer(toTable) {
+        def reduce() {
+          reduceFx(key,values,this)
+        }
+      }
+    )
+  }
+
+  def fromTableFx[T <: HbaseTable[T,R,RR],R,RR<:HRow[T,R]](table:HbaseTable[T,R,RR])(mapfx:(RR)=>Iterable[(BytesWritable,BytesWritable)]) = {
+    new FromTableBinaryMapper(table) {
+      def map() {
+        for((key,value) <- mapfx(row)) {
+          write(key,value)
+        }
+      }
+    }
+  }
+
+  def toTableFx[T <: HbaseTable[T,R,RR],R,RR<:HRow[T,R]](table:HbaseTable[T,R,RR])(reduceFx:(BytesWritable,Iterable[BytesWritable])=>OpBase[T,R]) = {
+    new ToTableBinaryReducer(table) {
+      def reduce() {
+        write(reduceFx(key,values))
+      }
+    }
+  }
+}
 
 abstract class BinaryToTableReducer[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R]](table: HbaseTable[T,R,RR])
       extends ToTableReducer[T, R,RR, BytesWritable,BytesWritable](table) with BinaryReadable
@@ -705,7 +745,7 @@ abstract class HReducer[MOK, MOV, ROK, ROV] extends Reducer[MOK, MOV, ROK, ROV] 
 }
 
 object HMapReduceTask {
-  def apply[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, ROV: Manifest, S <: SettingsBase](name: String, mapper: HMapper[MK, MV, MOK, MOV], reducer: HReducer[MOK, MOV, ROK, ROV]): HMapReduceTask[MK, MV, MOK, MOV, ROK, ROV, S] = {
+  def apply[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, ROV: Manifest](name: String, mapper: HMapper[MK, MV, MOK, MOV], reducer: HReducer[MOK, MOV, ROK, ROV]): HMapReduceTask[MK, MV, MOK, MOV, ROK, ROV] = {
     HMapReduceTask(
       HTaskID(name),
       HTaskConfigs(),
@@ -720,16 +760,16 @@ object HMapReduceTask {
 /**
   * An HTask that wraps a standard mapper and reducer function.
   */
-case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, ROV: Manifest, S <: SettingsBase](
+case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, ROV: Manifest](
                                                                                                                         id: HTaskID,
                                                                                                                         configs: HTaskConfigs = HTaskConfigs(),
-                                                                                                                        io: HIO[MK, MV, ROK, ROV, S] = HIO(),
+                                                                                                                        io: HIO[MK, MV, ROK, ROV] = HIO(),
                                                                                                                         mapper: HMapper[MK, MV, MOK, MOV],
                                                                                                                         reducer: HReducer[MOK, MOV, ROK, ROV],
                                                                                                                         combiner: HReducer[MOK,MOV,MOK,MOV] = null,
                                                                                                                         partitioner: HPartitioner[MOK, MOV] = null,
                                                                                                                         groupingComparator: HBinaryComparator = null)
-        extends HTask[MK, MV, ROK, ROV, S](id, configs, io) {
+        extends HTask[MK, MV, ROK, ROV](id, configs, io) {
 
 
   def decorateJob(job: Job) {
@@ -788,7 +828,7 @@ case class HTaskID(name: String, previousTaskName: String = null)
 /**
   * A Task for a mapper-only job
   */
-case class HMapTask[MK, MV, MOK: Manifest, MOV: Manifest, S <: SettingsBase](id: HTaskID, configs: HTaskConfigs = HTaskConfigs(), io: HIO[MK, MV, MOK, MOV, S] = HIO(), mapper: HMapper[MK, MV, MOK, MOV]) extends HTask[MK, MV, MOK, MOV, S](id, configs, io) {
+case class HMapTask[MK, MV, MOK: Manifest, MOV: Manifest](id: HTaskID, configs: HTaskConfigs = HTaskConfigs(), io: HIO[MK, MV, MOK, MOV] = HIO(), mapper: HMapper[MK, MV, MOK, MOV]) extends HTask[MK, MV, MOK, MOV](id, configs, io) {
   def decorateJob(job: Job) {
     job.setMapperClass(mapper.getClass)
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
@@ -801,7 +841,7 @@ case class HMapTask[MK, MV, MOK: Manifest, MOV: Manifest, S <: SettingsBase](id:
 /**
   * A task for a Mapper / Combiner / Reducer combo
   */
-case class HMapCombineReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV, S <: SettingsBase](id: HTaskID, configs: HTaskConfigs = HTaskConfigs(), io: HIO[MK, MV, ROK, ROV, S] = HIO(), mapper: HMapper[MK, MV, MOK, MOV], combiner: HReducer[MOK, MOV, ROK, ROV], reducer: HReducer[MOK, MOV, ROK, ROV]) extends HTask[MK, MV, ROK, ROV, S](id, configs, io) {
+case class HMapCombineReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV](id: HTaskID, configs: HTaskConfigs = HTaskConfigs(), io: HIO[MK, MV, ROK, ROV] = HIO(), mapper: HMapper[MK, MV, MOK, MOV], combiner: HReducer[MOK, MOV, ROK, ROV], reducer: HReducer[MOK, MOV, ROK, ROV]) extends HTask[MK, MV, ROK, ROV](id, configs, io) {
   def decorateJob(job: Job) {
     job.setMapperClass(mapper.getClass)
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
