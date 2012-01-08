@@ -43,15 +43,6 @@ import scala.collection._
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
-/*
-Where the currently running job gets registered in the mapper or reducer process.  This is how mapper/reducer functions get wired up.
- */
-object HJobRegistry {
-  var job: HJob[_] = null
-
-
-}
-
 
 object Settings {
 
@@ -150,6 +141,27 @@ case class LongRunningJobConf(timeoutInSeconds: Int) extends HConfigLet {
   }
 }
 
+object HJob {
+  def job(name: String) = new HJobBuilder(name)
+
+
+}
+
+class HJobBuilder(name: String) {
+  private val tasks = Buffer[HTask[_, _, _, _]]()
+
+  def withTask(task: HTask[_, _, _, _]) = {
+    tasks += task
+    this
+  }
+
+  def build[S <: SettingsBase] = new HJob[S](name, tasks: _*)
+
+}
+
+class HTaskBuilder(name: String, previous: HTask[_, _, _, _]) {
+
+}
 
 /**
   * A job encompasses a series of tasks that cooperate to build output.  Each task is usually an individual map or map/reduce operation.
@@ -157,8 +169,9 @@ case class LongRunningJobConf(timeoutInSeconds: Int) extends HConfigLet {
   * To use the job, create a class with a parameterless constructor that inherits HJob, and pass the tasks into the constructor as a sequence.
   */
 class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
-  type RunResult = (Boolean, Seq[(HTask[_,_,_,_],Job)], mutable.Map[String,DateTime], mutable.Map[String,DateTime])
-  def run(settings: S, conf: Configuration, dryRun: Boolean = false, skipToTask:String=null) : RunResult = {
+  type RunResult = (Boolean, Seq[(HTask[_, _, _, _], Job)], mutable.Map[String, DateTime], mutable.Map[String, DateTime])
+
+  def run(settings: S, conf: Configuration, dryRun: Boolean = false, skipToTask: String = null): RunResult = {
     require(tasks.size > 0, "HJob requires at least one task to be defined")
     conf.setStrings("hpaste.jobchain.jobclass", getClass.getName)
 
@@ -166,15 +179,34 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
 
     def taskByName(name: String) = tasks.find(_.taskId.name == name)
 
-    for (task <- tasks) {
+    def getPreviousTask(task: HTask[_, _, _, _]) = {
       if (task.taskId.previousTaskName != null) {
-        val previousTask = taskByName(task.taskId.previousTaskName).get
-        task.previousTask = previousTask
-        previousTask.nextTasks += task
+        try {
+          taskByName(task.taskId.previousTaskName).get
+        } catch {
+          case ex: Exception => {
+            throw new RuntimeException("Task " + task.taskId.name + " requires task " + task.taskId.previousTaskName + " which was not submitted to the job")
+          }
+        }
+      } else {
+        if (!tasks.exists(_.taskId.name == task.taskId.requiredTask.taskId.name)) {
+          throw new RuntimeException("Task " + task.taskId.name + " requires task " + task.taskId.requiredTask.taskId.name + " which has not been submitted to the job")
+        }
+        task.taskId.requiredTask
+      }
+    }
 
-        //If there is a previous HTask, then initialize the input of this task as the output of that task.
-        if (previousTask.hio.output.isInstanceOf[HRandomSequenceOutput[_, _]] && task.hio.input.isInstanceOf[HRandomSequenceInput[_, _]]) {
-          task.hio.input.asInstanceOf[HRandomSequenceInput[_, _]].previousPath = previousTask.hio.output.asInstanceOf[HRandomSequenceOutput[_, _]].path
+    for (task <- tasks) {
+      if (task.taskId.previousTaskName != null || task.taskId.requiredTask != null) {
+        previousTask = getPreviousTask(task)
+        task.previousTask = previousTask
+        if (task.previousTask != null) {
+          previousTask.nextTasks += task
+
+          //If there is a previous HTask, then initialize the input of this task as the output of that task.
+          if (previousTask.hio.output.isInstanceOf[HRandomSequenceOutput[_, _]] && task.hio.input.isInstanceOf[HRandomSequenceInput[_, _]]) {
+            task.hio.input.asInstanceOf[HRandomSequenceInput[_, _]].previousPath = previousTask.hio.output.asInstanceOf[HRandomSequenceOutput[_, _]].path
+          }
         }
 
         //        task.hio.input = previousTask.hio.output
@@ -197,10 +229,12 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
 
       val job = task.makeJob(previousTask)
       job.setJarByClass(getClass)
-      if(settings.jobNameQualifier.length > 0)
-        job.setJobName(name + " : " + task.taskId.name + " (" + (idx + 1) + " of " + tasks.size + ")" + " ["+settings.jobNameQualifier+"]")
-      else
+      if (settings.jobNameQualifier.length > 0) {
+        job.setJobName(name + " : " + task.taskId.name + " (" + (idx + 1) + " of " + tasks.size + ")" + " [" + settings.jobNameQualifier + "]")
+      }
+      else {
         job.setJobName(name + " : " + task.taskId.name + " (" + (idx + 1) + " of " + tasks.size + ")")
+      }
 
 
       previousTask = task
@@ -212,7 +246,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
       tasks.map {
         task =>
           println(level + "Task: " + task.taskId.name)
-          println(level + "\twill run after " + (if (task.previousTask == null) "nothing" else task.taskId.previousTaskName))
+          println(level + "\twill run after " + (if (task.previousTask == null) "nothing" else task.previousTask.taskId.name))
           println(level + "Input: " + task.hio.input)
           println(level + "Output: " + task.hio.output)
 
@@ -220,19 +254,19 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
       }
     }
 
-    val taskJobBuffer = Buffer[(HTask[_,_,_,_],Job)]()
-    val taskStartTimes = mutable.Map[String,DateTime]()
-    val taskEndTimes = mutable.Map[String,DateTime]()
+    val taskJobBuffer = Buffer[(HTask[_, _, _, _], Job)]()
+    val taskStartTimes = mutable.Map[String, DateTime]()
+    val taskEndTimes = mutable.Map[String, DateTime]()
 
     def runrecursively(tasks: Seq[HTask[_, _, _, _]]): RunResult = {
       val jobs = tasks.map {
         task =>
-          if(skipToTask != null && task.taskId.name != skipToTask) {
+          if (skipToTask != null && task.taskId.name != skipToTask) {
             println("Skipping task: " + task.taskId.name + " because we're skipping to : " + skipToTask)
             None
-          }else {
+          } else {
             val job = makeJob(task)
-            taskJobBuffer.add((task,job))
+            taskJobBuffer.add((task, job))
             Some(job)
           }
       }.flatten
@@ -243,16 +277,16 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
           val result = job.waitForCompletion(true)
           taskEndTimes(job.getJobName) = new DateTime()
           if (!job.waitForCompletion(true)) {
-            return (false,taskJobBuffer,taskStartTimes,taskEndTimes)
+            return (false, taskJobBuffer, taskStartTimes, taskEndTimes)
           }
       }
 
       if (jobs.exists(_.isSuccessful == false)) {
-        (false,taskJobBuffer,taskStartTimes,taskEndTimes)
+        (false, taskJobBuffer, taskStartTimes, taskEndTimes)
       } else {
         val nextTasks = tasks.flatMap(_.nextTasks)
         if (nextTasks.size == 0) {
-          (true,taskJobBuffer,taskStartTimes,taskEndTimes)
+          (true, taskJobBuffer, taskStartTimes, taskEndTimes)
         } else {
           runrecursively(nextTasks)
 
@@ -268,7 +302,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
     if (!dryRun) {
       runrecursively(firstTasks)
     } else {
-      (true,taskJobBuffer,taskStartTimes,taskEndTimes)
+      (true, taskJobBuffer, taskStartTimes, taskEndTimes)
     }
   }
 
@@ -384,13 +418,14 @@ case class HPathInput(paths: Seq[String]) extends HInput {
 /** Allows the output to be written to multiple tables. Currently the list of tables passed in is
   * purely for documentation.  There is no check in the output that will keep you from writing to other tables.
   */
-case class HMultiTableOutput(writeToTransactionLog:Boolean, tables:HbaseTable[_,_,_]*) extends HOutput {
-  override def toString = "Output: The following tables: " + tables.map(_.tableName).mkString("{",",","}")
+case class HMultiTableOutput(writeToTransactionLog: Boolean, tables: HbaseTable[_, _, _]*) extends HOutput {
+  override def toString = "Output: The following tables: " + tables.map(_.tableName).mkString("{", ",", "}")
 
 
-  override def init(job:Job) {
-    if(!writeToTransactionLog)
-      job.getConfiguration.setBoolean(MultiTableOutputFormat.WAL_PROPERTY,MultiTableOutputFormat.WAL_OFF)
+  override def init(job: Job) {
+    if (!writeToTransactionLog) {
+      job.getConfiguration.setBoolean(MultiTableOutputFormat.WAL_PROPERTY, MultiTableOutputFormat.WAL_OFF)
+    }
     job.setOutputFormatClass(classOf[MultiTableOutputFormat])
   }
 }
@@ -512,17 +547,17 @@ trait BinaryWritable {
   }
 }
 
-/**Can read reducer input composed of BytesWritable
+/** Can read reducer input composed of BytesWritable
   *
   */
 trait BinaryReadable {
-  this : HReducer[BytesWritable,BytesWritable,_,_] =>
+  this: HReducer[BytesWritable, BytesWritable, _, _] =>
 
   def readKey[T](reader: (PrimitiveInputStream) => T) = readWritable(key) {reader}
 
-    def perValue(reader: (PrimitiveInputStream) => Unit) {values.foreach {value => readWritable(value)(reader)}}
+  def perValue(reader: (PrimitiveInputStream) => Unit) {values.foreach {value => readWritable(value)(reader)}}
 
-    def makePerValue[T](reader: (PrimitiveInputStream) => T) = values.map {value => readWritable(value)(reader)}
+  def makePerValue[T](reader: (PrimitiveInputStream) => T) = values.map {value => readWritable(value)(reader)}
 }
 
 /** Can write to a specific table
@@ -540,18 +575,18 @@ trait ToTableWritable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] {
   *
   */
 trait MultiTableWritable {
-  this: MRWritable[ImmutableBytesWritable,Writable] =>
+  this: MRWritable[ImmutableBytesWritable, Writable] =>
 
-  val validTableNames : Set[String]
+  val validTableNames: Set[String]
 
   /** Perform a buffered write to one of the tables specified.  If the table is not in the specified list, will throw an exception saying so.
     */
-  def write[T <: HbaseTable[T,R,_],R](operation: OpBase[T,R]) {
-    if(validTableNames.contains(operation.table.tableName)) {
+  def write[T <: HbaseTable[T, R, _], R](operation: OpBase[T, R]) {
+    if (validTableNames.contains(operation.table.tableName)) {
       val tableName = new ImmutableBytesWritable(operation.table.tableName.getBytes("UTF-8"))
-      operation.getOperations.foreach{op => write(tableName,op)}
-    }else {
-      throw new RuntimeException("Attempted to write to table: " + operation.table.tableName + ", when allowed tables are : " + validTableNames.mkString("{",",","}"))
+      operation.getOperations.foreach {op => write(tableName, op)}
+    } else {
+      throw new RuntimeException("Attempted to write to table: " + operation.table.tableName + ", when allowed tables are : " + validTableNames.mkString("{", ",", "}"))
     }
   }
 }
@@ -563,76 +598,95 @@ abstract class FromTableMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], M
 }
 
 /** In a map-only job, this covers a table that will write to itself */
-abstract class TableSelfMapper[T <: HbaseTable[T,R,RR],R, RR <: HRow[T,R]](table:HbaseTable[T,R,RR]) extends FromTableToTableMapper(table,table)
-
+abstract class TableSelfMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR]) extends FromTableToTableMapper(table, table)
 
 
 abstract class FromTableToTableMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], TT <: HbaseTable[TT, RT, TTRR], RT, TTRR <: HRow[TT, RT]](fromTable: HbaseTable[T, R, RR], toTable: HbaseTable[TT, RT, TTRR])
-        extends FromTableMapper[T, R, RR, NullWritable, Writable](fromTable, classOf[NullWritable], classOf[Writable]) with ToTableWritable[TT, RT, TTRR]
+        extends FromTableMapper[T, R, RR, NullWritable, Writable](fromTable, classOf[NullWritable], classOf[Writable]) with ToTableWritable[TT, RT, TTRR] {
+
+}
 
 
 abstract class FromTableBinaryMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
         extends FromTableMapper[T, R, RR, BytesWritable, BytesWritable](table, classOf[BytesWritable], classOf[BytesWritable]) with BinaryWritable
 
+abstract class FromTableBinaryMapperInit[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
+        extends FromTableMapper[T, R, RR, BytesWritable, BytesWritable](table, classOf[BytesWritable], classOf[BytesWritable]) with BinaryWritable with DelayedInit {
+
+  private var initCode: () => Unit = _
+
+  override def delayedInit(body: => Unit) {
+    initCode = (() => body)
+  }
+
+  def map() {
+    initCode()
+  }
+}
+
+
+abstract class FromTableBinaryMapperFx[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR], mapFx: (RR, FromTableBinaryMapper[T, R, RR]) => Unit) extends FromTableBinaryMapper[T, R, RR](table) {
+  def map() {
+    mapFx(row, this)
+  }
+}
 
 object MRFx {
-  type MRFx[T <: HbaseTable[T,R,RR],R,RR<:HRow[T,R]] = (RR,FromTableBinaryMapper[T,R,RR])=>Unit
-  type TBWriter[T <: HbaseTable[T,R,RR],R,RR<:HRow[T,R]] = (OpBase[T,R])=>Unit
-  type RFx[T <: HbaseTable[T,R,RR],R,RR<:HRow[T,R]] = (BytesWritable,Iterable[BytesWritable],ToTableBinaryReducer[T,R,RR]) => Unit
 
-  def fromToTableMR[T <: HbaseTable[T,R,RR],R,RR<:HRow[T,R], T2 <: HbaseTable[T2,R2,RR2],R2,RR2<:HRow[T2,R2]](name:String,prev:String,fromTable:HbaseTable[T,R,RR], toTable:HbaseTable[T2,R2,RR2])(mapFx:MRFx[T,R,RR])(reduceFx:RFx[T2,R2,RR2]) = {
-    HMapReduceTask(
-      HTaskID(name,prev),
+  def ftb[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](fromTable: HbaseTable[T, R, RR], mapFx: (RR, FromTableBinaryMapper[T, R, RR]) => Unit) = new FromTableBinaryMapperFx(fromTable, mapFx) {
+  }
+
+  def fromToTableMR[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], T2 <: HbaseTable[T2, R2, RR2], R2, RR2 <: HRow[T2, R2]](name: String, prev: String, fromTable: HbaseTable[T, R, RR], toTable: HbaseTable[T2, R2, RR2])(mapFx: (RR, FromTableBinaryMapper[T, R, RR]) => Unit)(reduceFx: (BytesWritable, Iterable[BytesWritable], ToTableBinaryReducer[T2, R2, RR2]) => Unit) = {
+    val mrt = new HMapReduceTask(
+      HTaskID(name, prev),
       HTaskConfigs(),
-      HIO(HTableInput(fromTable.asInstanceOf[T]),HTableOutput(toTable.asInstanceOf[T2])),
+      HIO(HTableInput(fromTable.asInstanceOf[T]), HTableOutput(toTable.asInstanceOf[T2])),
       new FromTableBinaryMapper(fromTable) {
         def map() {
-          mapFx(row,this)
+          mapFx(row, this)
         }
       },
       new ToTableBinaryReducer(toTable) {
         def reduce() {
-          reduceFx(key,values,this)
+          reduceFx(key, values, this)
         }
       }
-    )
-  }
-
-  def fromTableFx[T <: HbaseTable[T,R,RR],R,RR<:HRow[T,R]](table:HbaseTable[T,R,RR])(mapfx:(RR)=>Iterable[(BytesWritable,BytesWritable)]) = {
-    new FromTableBinaryMapper(table) {
-      def map() {
-        for((key,value) <- mapfx(row)) {
-          write(key,value)
-        }
-      }
-    }
-  }
-
-  def toTableFx[T <: HbaseTable[T,R,RR],R,RR<:HRow[T,R]](table:HbaseTable[T,R,RR])(reduceFx:(BytesWritable,Iterable[BytesWritable])=>OpBase[T,R]) = {
-    new ToTableBinaryReducer(table) {
-      def reduce() {
-        write(reduceFx(key,values))
-      }
-    }
+    ) {}
+    mrt
   }
 }
 
-abstract class BinaryToTableReducer[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R]](table: HbaseTable[T,R,RR])
-      extends ToTableReducer[T, R,RR, BytesWritable,BytesWritable](table) with BinaryReadable
+abstract class BinaryToTableReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
+        extends ToTableReducer[T, R, RR, BytesWritable, BytesWritable](table) with BinaryReadable
 
 abstract class ToTableReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], MOK, MOV](table: HbaseTable[T, R, RR])
         extends HReducer[MOK, MOV, NullWritable, Writable] with ToTableWritable[T, R, RR]
 
-abstract class BinaryToMultiTableReducer(tables: HbaseTable[_,_,_]*) extends ToMultiTableReducer[BytesWritable,BytesWritable](tables:_*)
+abstract class BinaryToMultiTableReducer(tables: HbaseTable[_, _, _]*) extends ToMultiTableReducer[BytesWritable, BytesWritable](tables: _*)
 
-abstract class ToMultiTableReducer[MOK,MOV](tables: HbaseTable[_,_,_]*) extends HReducer[MOK,MOV,ImmutableBytesWritable,Writable] with MultiTableWritable {
+abstract class ToMultiTableReducer[MOK, MOV](tables: HbaseTable[_, _, _]*) extends HReducer[MOK, MOV, ImmutableBytesWritable, Writable] with MultiTableWritable {
   val validTableNames = tables.map(_.tableName).toSet
 }
 
 abstract class ToTableBinaryReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
         extends HReducer[BytesWritable, BytesWritable, NullWritable, Writable] with ToTableWritable[T, R, RR] with BinaryReadable
 
-abstract class TextToBinaryMapper extends HMapper[LongWritable,Text,BytesWritable,BytesWritable] with BinaryWritable {
+abstract class ToTableBinaryReducerInit[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
+        extends HReducer[BytesWritable, BytesWritable, NullWritable, Writable] with ToTableWritable[T, R, RR] with BinaryReadable with DelayedInit {
+  private var initCode: () => Unit = _
+
+  override def delayedInit(body: => Unit) {
+    initCode = (() => body)
+  }
+
+  def reduce() {
+    initCode()
+  }
+
+}
+
+
+abstract class TextToBinaryMapper extends HMapper[LongWritable, Text, BytesWritable, BytesWritable] with BinaryWritable {
 }
 
 abstract class BinaryMapper extends HMapper[BytesWritable, BytesWritable, BytesWritable, BytesWritable] with BinaryWritable
@@ -650,8 +704,6 @@ abstract class BinaryToTextReducer extends HReducer[BytesWritable, BytesWritable
     }
     write(NullWritable.get(), new Text(sb.toString))
   }
-
-
 
 
 }
@@ -761,14 +813,14 @@ object HMapReduceTask {
   * An HTask that wraps a standard mapper and reducer function.
   */
 case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, ROV: Manifest](
-                                                                                                                        id: HTaskID,
-                                                                                                                        configs: HTaskConfigs = HTaskConfigs(),
-                                                                                                                        io: HIO[MK, MV, ROK, ROV] = HIO(),
-                                                                                                                        mapper: HMapper[MK, MV, MOK, MOV],
-                                                                                                                        reducer: HReducer[MOK, MOV, ROK, ROV],
-                                                                                                                        combiner: HReducer[MOK,MOV,MOK,MOV] = null,
-                                                                                                                        partitioner: HPartitioner[MOK, MOV] = null,
-                                                                                                                        groupingComparator: HBinaryComparator = null)
+                                                                                                     id: HTaskID,
+                                                                                                     configs: HTaskConfigs = HTaskConfigs(),
+                                                                                                     io: HIO[MK, MV, ROK, ROV] = HIO(),
+                                                                                                     mapper: HMapper[MK, MV, MOK, MOV],
+                                                                                                     reducer: HReducer[MOK, MOV, ROK, ROV],
+                                                                                                     combiner: HReducer[MOK, MOV, MOK, MOV] = null,
+                                                                                                     partitioner: HPartitioner[MOK, MOV] = null,
+                                                                                                     groupingComparator: HBinaryComparator = null)
         extends HTask[MK, MV, ROK, ROV](id, configs, io) {
 
 
@@ -785,7 +837,7 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, R
     if (groupingComparator != null) {
       job.setGroupingComparatorClass(groupingComparator.getClass)
     }
-    if(combiner != null) {
+    if (combiner != null) {
       job.setCombinerClass(combiner.getClass)
     }
     //    job.setGroupingComparatorClass()
@@ -794,21 +846,21 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, R
   }
 }
 
-abstract class HBinaryComparator extends WritableComparator(classOf[BytesWritable],true) {
+abstract class HBinaryComparator extends WritableComparator(classOf[BytesWritable], true) {
 
-//  /**Override this for the cheapest comparison */
-//  override def compare(theseBytes: Array[Byte], thisOffset: Int, thisLength: Int, thoseBytes: Array[Byte], thatOffset: Int, thatLength: Int) : Int = {
-//    val thisInput = new ByteArrayInputStream(theseBytes, thisOffset, thisLength)
-//    val thatInput = new ByteArrayInputStream(thoseBytes, thatOffset, thatLength)
-//    compareBytes(new PrimitiveInputStream(thisInput), new PrimitiveInputStream(thatInput))
-//  }
+  //  /**Override this for the cheapest comparison */
+  //  override def compare(theseBytes: Array[Byte], thisOffset: Int, thisLength: Int, thoseBytes: Array[Byte], thatOffset: Int, thatLength: Int) : Int = {
+  //    val thisInput = new ByteArrayInputStream(theseBytes, thisOffset, thisLength)
+  //    val thatInput = new ByteArrayInputStream(thoseBytes, thatOffset, thatLength)
+  //    compareBytes(new PrimitiveInputStream(thisInput), new PrimitiveInputStream(thatInput))
+  //  }
 
-  def compare(thisItem:BytesWritable, thatItem:BytesWritable) : Int = {
+  def compare(thisItem: BytesWritable, thatItem: BytesWritable): Int = {
     compareBytes(new PrimitiveInputStream(new ByteArrayInputStream(thisItem.getBytes)), new PrimitiveInputStream(new ByteArrayInputStream(thatItem.getBytes)))
   }
 
-  /**Override for a less cheap comparison */
-  def compareBytes(thisReader:PrimitiveInputStream, thatReader: PrimitiveInputStream) = {
+  /** Override for a less cheap comparison */
+  def compareBytes(thisReader: PrimitiveInputStream, thatReader: PrimitiveInputStream) = {
     0
   }
 }
@@ -823,7 +875,7 @@ abstract class HBinaryComparator extends WritableComparator(classOf[BytesWritabl
 //  def compareBytes(a: BytesWritable, b: BytesWritable): Int = 0
 //}
 
-case class HTaskID(name: String, previousTaskName: String = null)
+case class HTaskID(name: String, previousTaskName: String = null, requiredTask: HTask[_, _, _, _] = null)
 
 /**
   * A Task for a mapper-only job
