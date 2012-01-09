@@ -629,6 +629,21 @@ abstract class FromTableBinaryMapperFx[T <: HbaseTable[T, R, RR], R, RR <: HRow[
   }
 }
 
+abstract class GroupingRowMapper[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R]](table:HbaseTable[T,R,RR]) extends FromTableBinaryMapper[T,R,RR](table){
+
+  def groupBy(row:RR, extractor:PrimitiveOutputStream)
+
+  final def map() {
+    val rr = row
+
+    val bos = new ByteArrayOutputStream()
+    val dataOutput = new PrimitiveOutputStream(bos)
+    groupBy(rr,dataOutput)
+    write(new BytesWritable(bos.toByteArray),makeWritable{vw=>vw.writeRow(table,rr)})
+
+  }
+}
+
 
 //
 //object MRFx {

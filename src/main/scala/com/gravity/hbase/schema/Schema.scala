@@ -424,6 +424,15 @@ trait KeyValueConvertible[F, K, V] {
   val keyConverter: ByteConverter[K]
   val valueConverter: ByteConverter[V]
 
+  def keyToBytes(key:K) = keyConverter.toBytes(key)
+  def valueToBytes(value:V) = valueConverter.toBytes(value)
+
+  def keyToBytesUnsafe(key:AnyRef) = keyConverter.toBytes(key.asInstanceOf[K])
+  def valueToBytesUnsafe(value:AnyRef) = valueConverter.toBytes(value.asInstanceOf[V])
+
+  def keyFromBytesUnsafe(bytes:Array[Byte]) = keyConverter.fromBytes(bytes).asInstanceOf[AnyRef]
+  def valueFromBytesUnsafe(bytes:Array[Byte]) = valueConverter.fromBytes(bytes).asInstanceOf[AnyRef]
+
   def family: ColumnFamily[_, _, _, _, _]
 }
 
@@ -443,7 +452,7 @@ class ColumnFamily[T <: HbaseTable[T, R, _], R, F, K, V](val table: HbaseTable[T
 /**
   * Represents the specification of a Column.
   */
-class Column[T <: HbaseTable[T, R, _], R, F, K, V](table: HbaseTable[T, R, _], columnFamily: ColumnFamily[T, R, F, K, _], val columnName: K)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
+class Column[T <: HbaseTable[T, R, _], R, F, K, V](table: HbaseTable[T, R, _], columnFamily: ColumnFamily[T, R, F, K, _], val columnName: K,val columnIndex:Int)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
   val columnBytes = kc.toBytes(columnName)
   val familyBytes = columnFamily.familyBytes
   val columnNameRef = columnName.asInstanceOf[AnyRef]
@@ -873,6 +882,13 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     arr
   }
 
+  def columnByIndex(idx:Int) = columnArray(idx)
+  lazy val columnArray = {
+    val arr = new Array[Column[_,_,_,_,_]](columns.length)
+    columns.foreach{col=>arr(col.columnIndex)=col}
+    arr
+  }
+
 
   //alter 'articles', NAME => 'html', VERSIONS =>1, COMPRESSION=>'lzo'
 
@@ -918,12 +934,14 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
   private val columns = ArrayBuffer[Column[T, R, _, _, _]]()
   val families = ArrayBuffer[ColumnFamily[T, R, _, _, _]]()
 
+  val columnsByName = mutable.Map[AnyRef,Column[T,R,_,_,_]]()
 
   private val columnsByBytes = mutable.Map[ByteBuffer, KeyValueConvertible[_, _, _]]()
   private val familiesByBytes = mutable.Map[ByteBuffer, KeyValueConvertible[_, _, _]]()
 
+  var columnIdx = 0
   def column[F, K, V](columnFamily: ColumnFamily[T, R, F, K, _], columnName: K, valueClass: Class[V])(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) = {
-    val c = new Column[T, R, F, K, V](this, columnFamily, columnName)
+    val c = new Column[T, R, F, K, V](this, columnFamily, columnName,columnIdx)
     columns += c
 
     val famBytes = columnFamily.familyBytes
@@ -931,7 +949,9 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     val fullKey = ArrayUtils.addAll(famBytes, colBytes)
     val bufferKey = ByteBuffer.wrap(fullKey)
 
+    columnsByName.put(columnName.asInstanceOf[AnyRef], c)
     columnsByBytes.put(bufferKey, c)
+    columnIdx = columnIdx + 1
     c
   }
 
