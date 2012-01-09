@@ -168,7 +168,8 @@ class ClusterTest extends TestCase {
    * Test the creation of a multi column alter script
    */
   @Test def testAlterScript() {
-    val expected = """disable 'schema_example'
+    val expected = """flush 'schema_example'
+disable 'schema_example'
 alter 'schema_example', {NAME => 'kittens', VERSIONS => 1},{NAME => 'views', VERSIONS => 1}
 enable 'schema_example'"""
 
