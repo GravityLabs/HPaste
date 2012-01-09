@@ -31,13 +31,13 @@ import org.apache.hadoop.hbase.client.{Scan, Result}
 import org.apache.hadoop.hbase.filter.{FilterList, Filter}
 import org.apache.hadoop.hbase.util.Base64
 import com.gravity.hbase.schema._
-import org.apache.hadoop.mapreduce.{Partitioner, Job, Reducer, Mapper}
 import scala.collection.mutable.Buffer
 import org.apache.hadoop.io._
 import java.io.{DataInputStream, ByteArrayInputStream, ByteArrayOutputStream}
 import org.apache.hadoop.hbase.mapreduce.{MultiTableOutputFormat, TableInputFormat}
 import org.joda.time.DateTime
 import scala.collection._
+import org.apache.hadoop.mapreduce.{Job, Partitioner, Reducer, Mapper}
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -143,9 +143,11 @@ case class LongRunningJobConf(timeoutInSeconds: Int) extends HConfigLet {
 
 object HJob {
   def job(name: String) = new HJobBuilder(name)
-
-
 }
+
+
+
+
 
 class HJobBuilder(name: String) {
   private val tasks = Buffer[HTask[_, _, _, _]]()
@@ -159,9 +161,61 @@ class HJobBuilder(name: String) {
 
 }
 
-class HTaskBuilder(name: String, previous: HTask[_, _, _, _]) {
+/*
+object HTask {
+  def task(name:String) = new HTaskBuilder(name)
+}
+class HTaskBuilder(name: String) {
+  var previousTaskName : String = _
+  var previousTask : HTask[_,_,_,_] = _
+
+  var mapper: HMapper[_,_,_,_] = _
+  var reducer : HReducer[_,_,_,_] = _
+
+  var input :HInput = _
+  var output : HOutput = _
+
+  var configlets = Buffer[HConfigLet]()
+
+  def mapFromTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table:HbaseTable[T,R,RR])(families: FamilyExtractor[T, _, _, _, _]*)(tmapper:FromTableBinaryMapper[T,R,RR]) = {
+    input = HTableInput(table.asInstanceOf[T],Families[T](families:_*))
+    mapper = tmapper
+    this
+  }
+
+  def withConfigs(configs:HConfigLet*) = {
+    configs.foreach{config=> configlets += config}
+    this
+  }
+
+  def build = {
+    val taskId = if(previousTaskName != null) HTaskID(name,previousTaskName) else if(previousTask != null) HTaskID(name,requiredTask=previousTask) else HTaskID(name)
+
+    val hio = if(input != null && output != null) HIO(input,output) else if(input != null && output == null) HIO(input) else HIO()
+    val finalConfigs = HTaskConfigs(configlets:_*)
+
+    if(reducer != null && mapper != null) {
+      HMapReduceTask(
+        taskId,
+        finalConfigs,
+        hio,
+        mapper,
+        reducer
+      )
+    }else if(mapper != null && reducer == null) {
+      HMapTask(
+        taskId,
+        finalConfigs,
+        hio,
+        mapper
+      )
+    }else {
+      throw new RuntimeException("Must specify at least a mapper function")
+    }
+  }
 
 }
+*/
 
 /**
   * A job encompasses a series of tasks that cooperate to build output.  Each task is usually an individual map or map/reduce operation.
@@ -629,6 +683,24 @@ abstract class FromTableBinaryMapperFx[T <: HbaseTable[T, R, RR], R, RR <: HRow[
   }
 }
 
+abstract class GroupByRow[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R]](table:HbaseTable[T,R,RR])(grouper:(RR,PrimitiveOutputStream)=>Unit) extends FromTableBinaryMapper[T,R,RR](table){
+
+  def groupBy(row:RR, extractor:PrimitiveOutputStream) {
+    grouper(row,extractor)
+  }
+
+  final def map() {
+    val rr = row
+
+    val bos = new ByteArrayOutputStream()
+    val dataOutput = new PrimitiveOutputStream(bos)
+    groupBy(rr,dataOutput)
+    write(new BytesWritable(bos.toByteArray),makeWritable{vw=>vw.writeRow(table,rr)})
+
+  }
+}
+
+
 abstract class GroupingRowMapper[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R]](table:HbaseTable[T,R,RR]) extends FromTableBinaryMapper[T,R,RR](table){
 
   def groupBy(row:RR, extractor:PrimitiveOutputStream)
@@ -644,6 +716,10 @@ abstract class GroupingRowMapper[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R]](tabl
   }
 }
 
+object MRFx {
+//  def groupBy[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R]](table:HbaseTable[T,R,RR])(grouper:(RR,PrimitiveOutputStream)=>Unit) =
+//    new GroupingRowMapperFx[T,R,RR](table,grouper){}
+}
 
 //
 //object MRFx {
