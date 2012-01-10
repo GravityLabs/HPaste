@@ -224,22 +224,14 @@ Assuming the examples under the DATA MANIPULATION section, the following will re
 
 # MapReduce Operation Support
 
-HPaste is designed to work well in the context of MapReduce operations.  Mappers and Reducers that read and write from HBase using the TableOutputFormat can use Schema tables, such as in the following hypothetical Mapper.  The syntax for writing data to columns and rows is the exact same as the syntax for regular operations, except instead of calling "execute" you call "getOperations", which returns a list of the Writable PUT / DELETE operations that HBase wants.  This makes your code portable between regular HBase client/server work and MapReduce operations.
+## Jobs vs Tasks
 
-```scala
-class ExampleTableMapper extends Mapper[LongWritable,Text,NullWritable,Writable] {
-  override def map(key: LongWritable, value: Text, context: Mapper[LongWritable,Text,NullWritable,Writable]#Context) {
-    val ops = ExampleSchema.ExampleTable
-            .put("Joe").value(_.title,"Joe and the Volcano")
-            .put("Bill").value(_.title,"Bill and the Cheese")
-            .getOperations
+A job is represented by an HJob.  A job is composed of multiple tasks, which are represented as HTasks.  HTasks can have dependencies, which are woven together by the HJob they're a part of.
 
-    ops.foreach(op=>{
-      context.write(NullWritable.get(),op)
-    })
-  }
-}
-```
+## Row Serialization
+
+HRows can be serialized between Mappers and Reducers, using the writeRow and readRow methods of PrimitiveOutputStream and PrimitiveInputStream.
+This is often the least performant way of passing data between mappers and reducers, but also involves the least amount of code.
 
 
 # Developers
