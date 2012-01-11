@@ -411,6 +411,27 @@ case class Families[T <: HbaseTable[T, _, _]](families: FamilyExtractor[T, _, _,
 
 case class Filters[T <: HbaseTable[T, _, _]](filters: Filter*)
 
+case class HTableScan[T <: HbaseTable[T, R, RR],R,RR<:HRow[T,R]](query:Query2[T,R,RR], cacheBlocks:Boolean=false, maxVersions:Int = 1, cacheSize:Int = 100) extends HInput {
+  override def toString = "Input: From table query: \"" + query.table.tableName + "\""
+
+  override def init(job:Job) {
+    val scanner = query.makeScanner(maxVersions,cacheBlocks,cacheSize)
+    job.getConfiguration.set("mapred.map.tasks.speculative.execution", "false")
+
+    val bas = new ByteArrayOutputStream()
+    val dos = new PrimitiveOutputStream(bas)
+    scanner.write(dos)
+    job.getConfiguration.set(TableInputFormat.SCAN, Base64.encodeBytes(bas.toByteArray))
+
+
+
+    job.getConfiguration.set(TableInputFormat.INPUT_TABLE, query.table.tableName)
+    job.getConfiguration.setInt(TableInputFormat.SCAN_CACHEDROWS, cacheSize)
+    job.setInputFormatClass(classOf[TableInputFormat])
+
+  }
+}
+
 /**
   * Initializes input from an HPaste Table
   */

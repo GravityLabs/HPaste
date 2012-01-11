@@ -27,9 +27,9 @@ import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp
 import scala.collection._
 import java.util.NavigableSet
 import scala.collection.mutable.Buffer
-import org.joda.time.DateTime
 import org.apache.hadoop.hbase.filter.FilterList.Operator
 import org.apache.hadoop.hbase.filter._
+import org.joda.time.{ReadableInstant, DateTime}
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -44,7 +44,7 @@ import org.apache.hadoop.hbase.filter._
   * @tparam RR the row result type
   * @param table the instance of the table to work with
   */
-class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR]) {
+class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTable[T, R, RR]) {
 
   def filter(filterFx:((FilterBuilder)=>Unit)*) = {
     val fb = new FilterBuilder(true)
@@ -332,18 +332,18 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T
 
   var startTime : Long = Long.MinValue
   var endTime : Long = Long.MaxValue
-  def betweenDates(start:DateTime, end:DateTime) = {
+  def betweenDates(start:ReadableInstant, end:ReadableInstant) = {
     startTime = start.getMillis
     endTime = end.getMillis
     this
   }
 
-  def afterDate(start:DateTime) = {
+  def afterDate(start:ReadableInstant) = {
     startTime = start.getMillis
     this
   }
 
-  def untilDate(end:DateTime) = {
+  def untilDate(end:ReadableInstant) = {
     endTime = end.getMillis
     this
   }
