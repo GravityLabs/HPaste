@@ -46,22 +46,36 @@ import org.apache.hadoop.hbase.filter.FilterList.Operator
   */
 class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR]) {
 
-  def filter(filterFx:(FilterBuilder)=>Unit) = {
-    val fb = new FilterBuilder()
-    filterFx(fb)
+  def filter(filterFx:((FilterBuilder)=>Unit)*) = {
+    val fb = new FilterBuilder(true)
+    for(fx <- filterFx) {
+      fx(fb)
+    }
     currentFilter = fb.coreList
     this
   }
 
+  def filterOr(filterFx:((FilterBuilder)=>Unit)*) = {
+    val fb = new FilterBuilder(false)
+    for(fx <- filterFx) {
+      fx(fb)
+    }
+    currentFilter = fb.coreList
+    this
 
-  class FilterBuilder() {
-    var coreList: FilterList = _
+  }
+
+
+  class FilterBuilder(and:Boolean) {
+    var coreList: FilterList = if(and) new FilterList(Operator.MUST_PASS_ALL) else new FilterList(Operator.MUST_PASS_ONE)
     val clauseBuilder = new ClauseBuilder()
 
     private def addFilter(filter: FilterList) {
-      coreList = filter
-      //      coreList.addFilter(filter)
+      //coreList = filter
+      coreList.addFilter(filter)
     }
+
+
 
     def or(clauses: ((ClauseBuilder) => Filter)*) = {
       val orFilter = new FilterList(FilterList.Operator.MUST_PASS_ONE)
@@ -88,6 +102,14 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T
 
   class ClauseBuilder() {
 
+    def or(clauses: ((ClauseBuilder)=>Filter)*) = {
+
+    }
+
+    def maxRowsPerServer(rowsize:Int) = {
+          val pageFilter = new PageFilter(rowsize)
+      pageFilter
+     }
 
     def columnValueMustEqual[F, K, V](column: (T) => Column[T, R, F, K, V], value: V) = {
       val c = column(table.pops)
