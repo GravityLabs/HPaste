@@ -28,8 +28,8 @@ import scala.collection._
 import java.util.NavigableSet
 import scala.collection.mutable.Buffer
 import org.joda.time.DateTime
-import org.apache.hadoop.hbase.filter._
 import org.apache.hadoop.hbase.filter.FilterList.Operator
+import org.apache.hadoop.hbase.filter._
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -102,9 +102,28 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T
 
   class ClauseBuilder() {
 
-    def or(clauses: ((ClauseBuilder)=>Filter)*) = {
-
+    def columnValueMustContain[F, K, V](column: (T) => Column[T,R,F,K,String], substr:String ) = {
+      val c = column(table.pops)
+      val substrFilter = new SubstringComparator(substr)
+      val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.EQUAL, substrFilter)
+      vc
     }
+
+    def columnValueMustPassRegex[F, K, V](column: (T) => Column[T,R,F,K,String], regex:String ) = {
+      val c = column(table.pops)
+      val regexFilter = new RegexStringComparator(regex)
+      val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.EQUAL, regexFilter)
+      vc
+    }
+
+
+    def columnValueMustNotContain[F, K, V](column: (T) => Column[T,R,F,K,String], substr:String ) = {
+      val c = column(table.pops)
+      val substrFilter = new SubstringComparator(substr)
+      val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.NOT_EQUAL, substrFilter)
+      vc
+    }
+
 
     def maxRowsPerServer(rowsize:Int) = {
           val pageFilter = new PageFilter(rowsize)
