@@ -411,7 +411,7 @@ case class Families[T <: HbaseTable[T, _, _]](families: FamilyExtractor[T, _, _,
 
 case class Filters[T <: HbaseTable[T, _, _]](filters: Filter*)
 
-case class HTableScan[T <: HbaseTable[T, R, RR],R,RR<:HRow[T,R]](query:Query2[T,R,RR], cacheBlocks:Boolean=false, maxVersions:Int = 1, cacheSize:Int = 100) extends HInput {
+case class HTableQuery[T <: HbaseTable[T, R, RR],R,RR<:HRow[T,R]](query:Query2[T,R,RR], cacheBlocks:Boolean=false, maxVersions:Int = 1, cacheSize:Int = 100) extends HInput {
   override def toString = "Input: From table query: \"" + query.table.tableName + "\""
 
   override def init(job:Job) {
