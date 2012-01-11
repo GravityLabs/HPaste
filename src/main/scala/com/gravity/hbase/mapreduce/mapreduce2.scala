@@ -286,7 +286,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
 
       task.configure(taskConf, previousTask)
 
-      val job = task.makeJob(previousTask)
+      val job = task.makeJob(previousTask,settings)
       job.setJarByClass(getClass)
       if (settings.jobNameQualifier.length > 0) {
         job.setJobName(name + " : " + task.taskId.name + " (" + (idx + 1) + " of " + tasks.size + ")" + " [" + settings.jobNameQualifier + "]")
@@ -395,14 +395,14 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
   * Base class for initializing the input to an HJob
   */
 abstract class HInput {
-  def init(job: Job)
+  def init(job: Job,settings:SettingsBase)
 }
 
 /**
   * Base class for initializing the output from an HJob
   */
 abstract class HOutput {
-  def init(job: Job)
+  def init(job: Job,settings:SettingsBase)
 }
 
 case class Columns[T <: HbaseTable[T, _, _]](columns: ColumnExtractor[T, _, _, _, _]*)
@@ -411,11 +411,14 @@ case class Families[T <: HbaseTable[T, _, _]](families: FamilyExtractor[T, _, _,
 
 case class Filters[T <: HbaseTable[T, _, _]](filters: Filter*)
 
-case class HTableQuery[T <: HbaseTable[T, R, RR],R,RR<:HRow[T,R]](query:Query2[T,R,RR], cacheBlocks:Boolean=false, maxVersions:Int = 1, cacheSize:Int = 100) extends HInput {
-  override def toString = "Input: From table query: \"" + query.table.tableName + "\""
 
-  override def init(job:Job) {
-    val scanner = query.makeScanner(maxVersions,cacheBlocks,cacheSize)
+case class HTableQuery[T <: HbaseTable[T, R, RR],R,RR<:HRow[T,R], S <:SettingsBase](query:Query2[T,R,RR], cacheBlocks:Boolean=false, maxVersions:Int = 1, cacheSize:Int = 100) extends HInput {
+  override def toString = "Input: From table query"
+
+
+  override def init(job:Job,settings:SettingsBase) {
+    val thisQuery = query
+    val scanner = thisQuery.makeScanner(maxVersions,cacheBlocks,cacheSize)
     job.getConfiguration.set("mapred.map.tasks.speculative.execution", "false")
 
     val bas = new ByteArrayOutputStream()
@@ -425,12 +428,36 @@ case class HTableQuery[T <: HbaseTable[T, R, RR],R,RR<:HRow[T,R]](query:Query2[T
 
 
 
-    job.getConfiguration.set(TableInputFormat.INPUT_TABLE, query.table.tableName)
+    job.getConfiguration.set(TableInputFormat.INPUT_TABLE, thisQuery.table.tableName)
     job.getConfiguration.setInt(TableInputFormat.SCAN_CACHEDROWS, cacheSize)
     job.setInputFormatClass(classOf[TableInputFormat])
 
   }
 }
+
+case class HTableSettingsQuery[T <: HbaseTable[T, R, RR],R,RR<:HRow[T,R], S <:SettingsBase](query:(S)=>Query2[T,R,RR], cacheBlocks:Boolean=false, maxVersions:Int = 1, cacheSize:Int = 100) extends HInput {
+  override def toString = "Input: From table query"
+
+
+  override def init(job:Job,settings:SettingsBase) {
+    val thisQuery = query(settings.asInstanceOf[S])
+    val scanner = thisQuery.makeScanner(maxVersions,cacheBlocks,cacheSize)
+    job.getConfiguration.set("mapred.map.tasks.speculative.execution", "false")
+
+    val bas = new ByteArrayOutputStream()
+    val dos = new PrimitiveOutputStream(bas)
+    scanner.write(dos)
+    job.getConfiguration.set(TableInputFormat.SCAN, Base64.encodeBytes(bas.toByteArray))
+
+
+
+    job.getConfiguration.set(TableInputFormat.INPUT_TABLE, thisQuery.table.tableName)
+    job.getConfiguration.setInt(TableInputFormat.SCAN_CACHEDROWS, cacheSize)
+    job.setInputFormatClass(classOf[TableInputFormat])
+
+  }
+}
+
 
 /**
   * Initializes input from an HPaste Table
@@ -440,7 +467,7 @@ case class HTableInput[T <: HbaseTable[T, _, _]](table: T, families: Families[T]
 
   override def toString = "Input: From table: \"" + table.tableName + "\""
 
-  override def init(job: Job) {
+  override def init(job: Job,settings:SettingsBase) {
     println("Setting input table to: " + table.tableName)
 
     //Disabling speculative execution because it is never useful for a table input.
@@ -488,7 +515,7 @@ case class HPathInput(paths: Seq[String]) extends HInput {
 
   override def toString = "Input: Paths: " + paths.mkString("{", ",", "}")
 
-  override def init(job: Job) {
+  override def init(job: Job,settings:SettingsBase) {
     paths.foreach(path => {
       FileInputFormat.addInputPath(job, new Path(path))
     })
@@ -502,7 +529,7 @@ case class HMultiTableOutput(writeToTransactionLog: Boolean, tables: HbaseTable[
   override def toString = "Output: The following tables: " + tables.map(_.tableName).mkString("{", ",", "}")
 
 
-  override def init(job: Job) {
+  override def init(job: Job,settings:SettingsBase) {
     if (!writeToTransactionLog) {
       job.getConfiguration.setBoolean(MultiTableOutputFormat.WAL_PROPERTY, MultiTableOutputFormat.WAL_OFF)
     }
@@ -517,7 +544,7 @@ case class HTableOutput[T <: HbaseTable[T, _, _]](table: T) extends HOutput {
 
   override def toString = "Output: Table: " + table.tableName
 
-  override def init(job: Job) {
+  override def init(job: Job,settings:SettingsBase) {
     println("Initializing output table to: " + table.tableName)
     job.getConfiguration.set("mapred.reduce.tasks.speculative.execution", "false")
     job.getConfiguration.set(GravityTableOutputFormat.OUTPUT_TABLE, table.tableName)
@@ -533,7 +560,7 @@ case class HPathOutput(path: String) extends HOutput {
 
   override def toString = "Output: File: " + path
 
-  override def init(job: Job) {
+  override def init(job: Job,settings:SettingsBase) {
     FileSystem.get(job.getConfiguration).delete(new Path(path), true)
     FileOutputFormat.setOutputPath(job, new Path(path))
   }
@@ -549,7 +576,7 @@ case class HRandomSequenceInput[K, V]() extends HInput {
 
   override def toString = "Input: Random Sequence File at " + previousPath.toUri.toString
 
-  override def init(job: Job) {
+  override def init(job: Job,settings:SettingsBase) {
     FileInputFormat.addInputPath(job, previousPath)
 
     job.setInputFormatClass(classOf[SequenceFileInputFormat[K, V]])
@@ -565,7 +592,7 @@ case class HRandomSequenceOutput[K, V]() extends HOutput {
 
   var path = new Path(genTmpFile)
 
-  override def init(job: Job) {
+  override def init(job: Job,settings:SettingsBase) {
     job.setOutputFormatClass(classOf[SequenceFileOutputFormat[K, V]])
     FileOutputFormat.setOutputPath(job, path)
   }
@@ -592,13 +619,13 @@ abstract class HTask[IK, IV, OK, OV](val taskId: HTaskID, val configLets: HTaskC
 
   def decorateJob(job: Job)
 
-  def makeJob(previousTask: HTask[_, _, _, _]) = {
+  def makeJob(previousTask: HTask[_, _, _, _],settings:SettingsBase) = {
 
     val job = new Job(configuration)
 
 
-    hio.input.init(job)
-    hio.output.init(job)
+    hio.input.init(job,settings)
+    hio.output.init(job,settings)
 
     decorateJob(job)
 
