@@ -86,10 +86,26 @@ class SettingsBase {
 //
 //}
 
+abstract class HTaskConfigsBase {
+  def configs: Seq[HConfigLet]
+
+   def init(settings:SettingsBase) {
+
+   }
+}
+
+case class HTaskSettingsConfigs[S<:SettingsBase](configMaker:(S)=>Seq[HConfigLet]) extends HTaskConfigsBase {
+  var configs : Seq[HConfigLet] = _
+  override def init(settings:SettingsBase) {
+    configs = configMaker(settings.asInstanceOf[S])
+  }
+}
+
 /*
 Holds a list of configuration objects.  Each object should encapsulate a particular set of configuration options (for example, whether or not to reuse the JVM)
  */
-case class HTaskConfigs(configs: HConfigLet*)
+case class HTaskConfigs(configs: HConfigLet*) extends HTaskConfigsBase {
+}
 
 /*
 The base class for a single configuration object.
@@ -605,7 +621,7 @@ case class HIO[IK, IV, OK, OV](var input: HInput = HRandomSequenceInput[IK, IV](
 /**
   * This is a single task in an HJob.  It is usually a single hadoop job (an HJob being composed of several).
   */
-abstract class HTask[IK, IV, OK, OV](val taskId: HTaskID, val configLets: HTaskConfigs = HTaskConfigs(), val hio: HIO[IK, IV, OK, OV] = HIO()) {
+abstract class HTask[IK, IV, OK, OV](val taskId: HTaskID, val configLets: HTaskConfigsBase = HTaskConfigs(), val hio: HIO[IK, IV, OK, OV] = HIO()) {
   var configuration: Configuration = _
 
 
@@ -628,6 +644,8 @@ abstract class HTask[IK, IV, OK, OV](val taskId: HTaskID, val configLets: HTaskC
     hio.output.init(job,settings)
 
     decorateJob(job)
+
+    configLets.init(settings)
 
     for (config <- configLets.configs) {
       config.configure(job)
