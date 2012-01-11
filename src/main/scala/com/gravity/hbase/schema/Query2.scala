@@ -330,6 +330,24 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T
     this
   }
 
+  var startTime : Long = Long.MinValue
+  var endTime : Long = Long.MaxValue
+  def betweenDates(start:DateTime, end:DateTime) = {
+    startTime = start.getMillis
+    endTime = end.getMillis
+    this
+  }
+
+  def afterDate(start:DateTime) = {
+    startTime = start.getMillis
+    this
+  }
+
+  def untilDate(end:DateTime) = {
+    endTime = end.getMillis
+    this
+  }
+
   def single(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true) = singleOption(tableName, ttl, skipCache, false).get
 
   def singleOption(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, noneOnEmpty: Boolean = true): Option[RR] = {
@@ -337,6 +355,10 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T
     require(keys.size >= 1, "Calling a Get operation with no keys specified")
     val get = new Get(keys.head)
     get.setMaxVersions(1)
+
+    if(startTime != Long.MinValue || endTime != Long.MaxValue) {
+      get.setTimeRange(startTime,endTime)
+    }
 
 
     for (family <- families) {
@@ -478,6 +500,10 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T
 
     for (key <- keys) {
       val get = new Get(key)
+      if(startTime != Long.MinValue || endTime != Long.MaxValue) {
+            get.setTimeRange(startTime,endTime)
+      }
+
       gets += get
       receiveGetAndKey(get, key)
     }
@@ -538,6 +564,10 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T
     scan.setMaxVersions(maxVersions)
     scan.setCaching(cacheSize)
     scan.setCacheBlocks(cacheBlocks)
+
+    if(startTime != Long.MinValue || endTime != Long.MaxValue) {
+      scan.setTimeRange(startTime,endTime)
+    }
 
     if (startRowBytes != null) {
       scan.setStartRow(startRowBytes)
