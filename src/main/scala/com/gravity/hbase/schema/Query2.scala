@@ -150,6 +150,12 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       Some(vc)
     }
 
+    def columnMustExist[F,K,_](column: (T) => Column[T,R,F,K,_]) = {
+      val c = column(table.pops)
+      val valFilter = new SingleColumnValueExcludeFilter(c.familyBytes,c.columnBytes,CompareOp.NOT_EQUAL,new Array[Byte](0))
+      valFilter.setFilterIfMissing(true)
+      Some(valFilter)
+    }
 
     def maxRowsPerServer(rowsize: Int) : Option[Filter] = {
         val pageFilter = new PageFilter(rowsize)
