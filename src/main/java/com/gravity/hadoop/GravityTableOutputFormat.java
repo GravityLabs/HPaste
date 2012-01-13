@@ -188,7 +188,7 @@ implements Configurable {
 
   @Override
   public void setConf(Configuration otherConf) {
-    otherConf.set("hbase.client.keyvalue.maxsize","104857600");
+//    otherConf.set("hbase.client.keyvalue.maxsize","104857600");
     this.conf = HBaseConfiguration.create(otherConf);
     String tableName = this.conf.get(OUTPUT_TABLE);
     String address = this.conf.get(QUORUM_ADDRESS);
