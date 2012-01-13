@@ -28,8 +28,8 @@ import scala.collection._
 import java.util.NavigableSet
 import scala.collection.mutable.Buffer
 import org.apache.hadoop.hbase.filter.FilterList.Operator
-import org.apache.hadoop.hbase.filter._
 import org.joda.time.{ReadableInstant, DateTime}
+import org.apache.hadoop.hbase.filter._
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -107,6 +107,20 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       val substrFilter = new SubstringComparator(substr)
       val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.EQUAL, substrFilter)
       vc
+    }
+
+    /**
+      * Untested
+      */
+    def whereFamilyHasKeyGreaterThan[F,K](family:(T) => ColumnFamily[T,R,F,K,_], key:K) = {
+      val f = family(table.pops)
+      val fl = new FilterList(Operator.MUST_PASS_ALL)
+      val ts = new QualifierFilter(CompareOp.GREATER_OR_EQUAL, new BinaryComparator(f.keyConverter.toBytes(key)))
+      val ff = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(f.familyBytes))
+      fl.addFilter(ts)
+      fl.addFilter(ff)
+      val sk = new SkipFilter(fl)
+      sk
     }
 
     def columnValueMustPassRegex[F, K, V](column: (T) => Column[T,R,F,K,String], regex:String ) = {
