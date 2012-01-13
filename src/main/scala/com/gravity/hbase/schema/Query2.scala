@@ -46,18 +46,18 @@ import org.apache.hadoop.hbase.filter._
   */
 class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTable[T, R, RR]) {
 
-  def filter(filterFx: ((FilterBuilder) => Unit)*) = {
+  def filter(filterFx:((FilterBuilder)=>Unit)*) = {
     val fb = new FilterBuilder(true)
-    for (fx <- filterFx) {
+    for(fx <- filterFx) {
       fx(fb)
     }
     currentFilter = fb.coreList
     this
   }
 
-  def filterOr(filterFx: ((FilterBuilder) => Unit)*) = {
+  def filterOr(filterFx:((FilterBuilder)=>Unit)*) = {
     val fb = new FilterBuilder(false)
-    for (fx <- filterFx) {
+    for(fx <- filterFx) {
       fx(fb)
     }
     currentFilter = fb.coreList
@@ -66,8 +66,8 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
   }
 
 
-  class FilterBuilder(and: Boolean) {
-    var coreList: FilterList = if (and) new FilterList(Operator.MUST_PASS_ALL) else new FilterList(Operator.MUST_PASS_ONE)
+  class FilterBuilder(and:Boolean) {
+    var coreList: FilterList = if(and) new FilterList(Operator.MUST_PASS_ALL) else new FilterList(Operator.MUST_PASS_ONE)
     val clauseBuilder = new ClauseBuilder()
 
     private def addFilter(filter: FilterList) {
@@ -76,27 +76,25 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
     }
 
 
-    def or(clauses: ((ClauseBuilder) => Option[Filter])*) = {
+
+    def or(clauses: ((ClauseBuilder) => Filter)*) = {
       val orFilter = new FilterList(FilterList.Operator.MUST_PASS_ONE)
       for (ctx <- clauses) {
         val filter = ctx(clauseBuilder)
-        if(filter.isDefined)
-          orFilter.addFilter(filter.get)
+        orFilter.addFilter(filter)
       }
-      if(orFilter.getFilters().size() > 0)
-        addFilter(orFilter)
+      addFilter(orFilter)
       this
     }
 
-    def and(clauses: ((ClauseBuilder) => Option[Filter])*) = {
+    def and(clauses: ((ClauseBuilder) => Filter)*) = {
       val andFilter = new FilterList(FilterList.Operator.MUST_PASS_ALL)
       for (cfx <- clauses) {
         val filter = cfx(clauseBuilder)
-        if(filter.isDefined)
-          andFilter.addFilter(filter.get)
+        andFilter.addFilter(filter)
       }
-      if(andFilter.getFilters.size() > 0)
-        addFilter(andFilter)
+
+      addFilter(andFilter)
       this
     }
 
@@ -118,7 +116,21 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       val c = column(table.pops)
       val substrFilter = new SubstringComparator(substr)
       val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.EQUAL, substrFilter)
-      Some(vc)
+      vc
+    }
+
+    /**
+      * Untested
+      */
+    def whereFamilyHasKeyGreaterThan[F,K](family:(T) => ColumnFamily[T,R,F,K,_], key:K) = {
+      val f = family(table.pops)
+      val fl = new FilterList(Operator.MUST_PASS_ALL)
+      val ts = new QualifierFilter(CompareOp.GREATER_OR_EQUAL, new BinaryComparator(f.keyConverter.toBytes(key)))
+      val ff = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(f.familyBytes))
+      fl.addFilter(ts)
+      fl.addFilter(ff)
+      val sk = new SkipFilter(fl)
+      sk
     }
 
     /**
@@ -139,35 +151,29 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       val c = column(table.pops)
       val regexFilter = new RegexStringComparator(regex)
       val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.EQUAL, regexFilter)
-      Some(vc)
+      vc
     }
 
 
-    def columnValueMustNotContain[F, K, V](column: (T) => Column[T, R, F, K, String], substr: String) = {
+    def columnValueMustNotContain[F, K, V](column: (T) => Column[T,R,F,K,String], substr:String ) = {
       val c = column(table.pops)
       val substrFilter = new SubstringComparator(substr)
       val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.NOT_EQUAL, substrFilter)
-      Some(vc)
+      vc
     }
 
-    def columnMustExist[F,K,_](column: (T) => Column[T,R,F,K,_]) = {
-      val c = column(table.pops)
-      val valFilter = new SingleColumnValueExcludeFilter(c.familyBytes,c.columnBytes,CompareOp.NOT_EQUAL,new Array[Byte](0))
-      valFilter.setFilterIfMissing(true)
-      Some(valFilter)
-    }
 
-    def maxRowsPerServer(rowsize: Int) : Option[Filter] = {
-        val pageFilter = new PageFilter(rowsize)
-        Some(pageFilter)
-    }
+    def maxRowsPerServer(rowsize:Int) = {
+          val pageFilter = new PageFilter(rowsize)
+      pageFilter
+     }
 
     def columnValueMustEqual[F, K, V](column: (T) => Column[T, R, F, K, V], value: V) = {
       val c = column(table.pops)
       val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.EQUAL, c.valueConverter.toBytes(value))
       vc.setFilterIfMissing(true)
       vc.setLatestVersionOnly(true)
-      Some(vc)
+      vc
     }
 
     def columnValueMustBePresent[F, K, V](column: (T) => Column[T, R, F, K, V]) = {
@@ -185,7 +191,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       val andFilter = new FilterList(Operator.MUST_PASS_ALL)
       andFilter.addFilter(familyFilter)
       andFilter.addFilter(valueFilter)
-      Some(andFilter)
+      andFilter
     }
 
     def greaterThanColumnKey[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], value: K) = {
@@ -195,7 +201,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       val valueFilter = new QualifierFilter(CompareOp.GREATER_OR_EQUAL, new BinaryComparator(fam.keyConverter.toBytes(value)))
       andFilter.addFilter(familyFilter)
       andFilter.addFilter(valueFilter)
-      Some(andFilter)
+      andFilter
     }
 
     //  def columnFamily[F,K,V](family: (T) => ColumnFamily[T,R,F,K,V])(implicit c: ByteConverter[F]): Query[T,R] = {
@@ -216,13 +222,13 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       filterList.addFilter(familyFilter)
       filterList.addFilter(begin)
       filterList.addFilter(end)
-      Some(filterList)
+      filterList
     }
 
     def inFamily[F](family: (T) => ColumnFamily[T, R, F, _, _]) = {
       val fam = family(table.pops)
       val ff = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(fam.familyBytes))
-      Some(ff)
+      ff
     }
 
     def allInFamilies[F](familyList: ((T) => ColumnFamily[T, R, F, _, _])*) = {
@@ -231,7 +237,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
         val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(family(table.pops).familyBytes))
         filterList.addFilter(familyFilter)
       }
-      Some(filterList)
+      filterList
     }
   }
 
@@ -370,21 +376,20 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
     this
   }
 
-  var startTime: Long = Long.MinValue
-  var endTime: Long = Long.MaxValue
-
-  def betweenDates(start: ReadableInstant, end: ReadableInstant) = {
+  var startTime : Long = Long.MinValue
+  var endTime : Long = Long.MaxValue
+  def betweenDates(start:ReadableInstant, end:ReadableInstant) = {
     startTime = start.getMillis
     endTime = end.getMillis
     this
   }
 
-  def afterDate(start: ReadableInstant) = {
+  def afterDate(start:ReadableInstant) = {
     startTime = start.getMillis
     this
   }
 
-  def untilDate(end: ReadableInstant) = {
+  def untilDate(end:ReadableInstant) = {
     endTime = end.getMillis
     this
   }
@@ -397,8 +402,8 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
     val get = new Get(keys.head)
     get.setMaxVersions(1)
 
-    if (startTime != Long.MinValue || endTime != Long.MaxValue) {
-      get.setTimeRange(startTime, endTime)
+    if(startTime != Long.MinValue || endTime != Long.MaxValue) {
+      get.setTimeRange(startTime,endTime)
     }
 
 
@@ -541,8 +546,8 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
 
     for (key <- keys) {
       val get = new Get(key)
-      if (startTime != Long.MinValue || endTime != Long.MaxValue) {
-        get.setTimeRange(startTime, endTime)
+      if(startTime != Long.MinValue || endTime != Long.MaxValue) {
+            get.setTimeRange(startTime,endTime)
       }
 
       gets += get
@@ -606,8 +611,8 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
     scan.setCaching(cacheSize)
     scan.setCacheBlocks(cacheBlocks)
 
-    if (startTime != Long.MinValue || endTime != Long.MaxValue) {
-      scan.setTimeRange(startTime, endTime)
+    if(startTime != Long.MinValue || endTime != Long.MaxValue) {
+      scan.setTimeRange(startTime,endTime)
     }
 
     if (startRowBytes != null) {
@@ -653,30 +658,29 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
   }
 
   trait Stopable extends Throwable
-
   object YouCanStopNow extends Stopable
 
   /** Similar to the scan method but if your handler returns false, it will stop scanning.
     *
     */
   def scanUntil(handler: (RR) => Boolean, maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100) {
-    table.withTable() {
-      htable =>
-        val scan = makeScanner(maxVersions, cacheBlocks, cacheSize)
+      table.withTable() {
+        htable =>
+          val scan = makeScanner(maxVersions, cacheBlocks, cacheSize)
 
-        val scanner = htable.getScanner(scan)
+          val scanner = htable.getScanner(scan)
 
-        try {
-          for (result <- scanner) {
-            if (!handler(table.buildRow(result))) throw YouCanStopNow
+          try {
+            for (result <- scanner) {
+              if (!handler(table.buildRow(result))) throw YouCanStopNow
+            }
+          } catch {
+            case _: Stopable => // nothing to see here... move along. move along.
+          } finally {
+            scanner.close()
           }
-        } catch {
-          case _: Stopable => // nothing to see here... move along. move along.
-        } finally {
-          scanner.close()
-        }
+      }
     }
-  }
 
   def scanToIterable[I](handler: (RR) => I, maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100) = {
     val results2 = table.withTable() {
