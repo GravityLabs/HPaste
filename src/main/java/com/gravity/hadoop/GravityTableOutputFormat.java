@@ -188,11 +188,13 @@ implements Configurable {
 
   @Override
   public void setConf(Configuration otherConf) {
+    otherConf.set("hbase.client.keyvalue.maxsize","104857600");
     this.conf = HBaseConfiguration.create(otherConf);
     String tableName = this.conf.get(OUTPUT_TABLE);
     String address = this.conf.get(QUORUM_ADDRESS);
     String serverClass = this.conf.get(REGION_SERVER_CLASS);
     String serverImpl = this.conf.get(REGION_SERVER_IMPL);
+
     try {
       if (address != null) {
         ZKUtil.applyClusterKeyToConf(this.conf, address);
