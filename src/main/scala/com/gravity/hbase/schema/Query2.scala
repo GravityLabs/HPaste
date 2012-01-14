@@ -199,6 +199,14 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
     //  }
 
 
+    def whereColumnMustExist[F,K,_](column: (T) => Column[T,R,F,K,_]) = {
+          val c = column(table.pops)
+          val valFilter = new SingleColumnValueExcludeFilter(c.familyBytes,c.columnBytes,CompareOp.NOT_EQUAL,new Array[Byte](0))
+          valFilter.setFilterIfMissing(true)
+          Some(valFilter)
+        }
+
+
     def betweenColumnKeys[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], lower: K, upper: K) = {
       val fam = family(table.pops)
       val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(fam.familyBytes))
