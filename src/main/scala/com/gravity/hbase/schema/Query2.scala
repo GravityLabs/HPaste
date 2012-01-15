@@ -102,6 +102,13 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
 
   class ClauseBuilder() {
 
+    def columnValueMustStartWith[F, K, V](column: (T) => Column[T, R, F, K, String], prefix: String) = {
+      val c = column(table.pops)
+      val prefixFilter = new BinaryPrefixComparator(Bytes.toBytes(prefix))
+      val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.EQUAL, prefixFilter)
+      vc
+    }
+
     def columnValueMustContain[F, K, V](column: (T) => Column[T,R,F,K,String], substr:String ) = {
       val c = column(table.pops)
       val substrFilter = new SubstringComparator(substr)
@@ -150,6 +157,14 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       vc.setFilterIfMissing(true)
       vc.setLatestVersionOnly(true)
       vc
+    }
+
+    def columnValueMustBePresent[F, K, V](column: (T) => Column[T, R, F, K, V]) = {
+      val c = column(table.pops)
+      val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.NOT_EQUAL, Bytes.toBytes(0))
+      vc.setFilterIfMissing(true)
+      vc.setLatestVersionOnly(true)
+      new SkipFilter(vc)
     }
 
     def lessThanColumnKey[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], value: K) = {
