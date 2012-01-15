@@ -108,7 +108,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       val c = column(table.pops)
       val prefixFilter = new BinaryPrefixComparator(Bytes.toBytes(prefix))
       val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.EQUAL, prefixFilter)
-      vc
+      Some(vc)
     }
 
 
@@ -132,7 +132,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       fl.addFilter(ts)
       fl.addFilter(ff)
       val sk = new SkipFilter(fl)
-      sk
+      Some(sk)
     }
 
     def columnValueMustPassRegex[F, K, V](column: (T) => Column[T, R, F, K, String], regex: String) = {
@@ -169,7 +169,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.NOT_EQUAL, Bytes.toBytes(0))
       vc.setFilterIfMissing(true)
       vc.setLatestVersionOnly(true)
-      new SkipFilter(vc)
+      Some(new SkipFilter(vc))
     }
 
     def lessThanColumnKey[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], value: K) = {
