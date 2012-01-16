@@ -971,7 +971,7 @@ object HMapReduceTask {
   */
 case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, ROV: Manifest](
                                                                                                      id: HTaskID,
-                                                                                                     configs: HTaskConfigs = HTaskConfigs(),
+                                                                                                     configs: HTaskConfigsBase = HTaskConfigs(),
                                                                                                      io: HIO[MK, MV, ROK, ROV] = HIO(),
                                                                                                      mapper: HMapper[MK, MV, MOK, MOV],
                                                                                                      reducer: HReducer[MOK, MOV, ROK, ROV],
