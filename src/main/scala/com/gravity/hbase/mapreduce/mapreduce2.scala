@@ -304,7 +304,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
 
     def makeJob(task: HTask[_, _, _, _]) = {
       val taskConf = new Configuration(conf)
-      taskConf.set("mapred.job.priority",priority.name)
+      conf.set("mapred.job.priority",priority.name)
       taskConf.setInt("hpaste.jobchain.mapper.idx", idx)
       taskConf.setInt("hpaste.jobchain.reducer.idx", idx)
 
