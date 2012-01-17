@@ -38,6 +38,7 @@ import org.apache.hadoop.hbase.mapreduce.{MultiTableOutputFormat, TableInputForm
 import org.joda.time.DateTime
 import scala.collection._
 import org.apache.hadoop.mapreduce.{Job, Partitioner, Reducer, Mapper}
+import org.apache.hadoop.mapred.JobConf
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -233,6 +234,16 @@ class HTaskBuilder(name: String) {
 }
 */
 
+case class JobPriority(name:String)
+
+object JobPriorities {
+  val VERY_LOW = JobPriority("VERY_LOW")
+  val LOW = JobPriority("LOW")
+  val NORMAL = JobPriority("NORMAL")
+  val HIGH = JobPriority("HIGH")
+  val VERY_HIGH = JobPriority("VERY_HIGH")
+}
+
 /**
   * A job encompasses a series of tasks that cooperate to build output.  Each task is usually an individual map or map/reduce operation.
   *
@@ -241,7 +252,7 @@ class HTaskBuilder(name: String) {
 class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
   type RunResult = (Boolean, Seq[(HTask[_, _, _, _], Job)], mutable.Map[String, DateTime], mutable.Map[String, DateTime])
 
-  def run(settings: S, conf: Configuration, dryRun: Boolean = false, skipToTask: String = null): RunResult = {
+  def run(settings: S, conf: Configuration, dryRun: Boolean = false, skipToTask: String = null, priority:JobPriority = JobPriorities.NORMAL): RunResult = {
     require(tasks.size > 0, "HJob requires at least one task to be defined")
     conf.setStrings("hpaste.jobchain.jobclass", getClass.getName)
 
@@ -293,6 +304,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
 
     def makeJob(task: HTask[_, _, _, _]) = {
       val taskConf = new Configuration(conf)
+      conf.set("mapred.job.priority",priority.name)
       taskConf.setInt("hpaste.jobchain.mapper.idx", idx)
       taskConf.setInt("hpaste.jobchain.reducer.idx", idx)
 
