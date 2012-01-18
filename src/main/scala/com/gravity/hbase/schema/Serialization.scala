@@ -205,6 +205,17 @@ abstract class ComplexByteConverter[T] extends ByteConverter[T] {
   }
 
   def read(input: PrimitiveInputStream): T
+
+  def safeReadField[A](input: PrimitiveInputStream)(readField: (PrimitiveInputStream)=>A, valueOnFail: A): A = {
+    if (input.available() < 1) return valueOnFail
+
+    try {
+      readField(input)
+    }
+    catch {
+      case _: IOException => valueOnFail
+    }
+  }
 }
 
 

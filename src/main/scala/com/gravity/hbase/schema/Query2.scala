@@ -633,25 +633,92 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
     scan
   }
 
-  def scan(handler: (RR) => Unit, maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100) {
-    table.withTable() {
-      htable =>
-        val scan = makeScanner(maxVersions, cacheBlocks, cacheSize)
+  def scan(handler: (RR) => Unit, maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100, useLocalCache: Boolean = false, localTTL: Int = 30) {
+    val scan = makeScanner(maxVersions, cacheBlocks, cacheSize)
 
-        val scanner = htable.getScanner(scan)
+    val results = if (useLocalCache) Buffer[RR]() else Buffer.empty[RR]
 
-        try {
-          var done = false
-          while (!done) {
-            val result = scanner.next()
-            if (result != null) {
-              handler(table.buildRow(result))
-            } else {done = true}
-          }
-        } finally {
-          scanner.close()
-        }
+    def cacheHandler(rr: RR) {
+      if (useLocalCache) results += rr
     }
+
+    def cacheComplete() {
+      if (useLocalCache && !results.isEmpty) table.cache.putScanResult(scan, results.toSeq, localTTL)
+    }
+
+    val whatWeGetFromCache = if (useLocalCache) table.cache.getScanResult(scan) else None
+
+    whatWeGetFromCache match {
+      case Some(result) => {
+        println("cache hit against key " + scan.toString)
+        result.foreach(handler)
+      }
+      case None => {
+
+        table.withTable() {
+          htable =>
+
+            val scanner = htable.getScanner(scan)
+
+            try {
+              var done = false
+              while (!done) {
+                val result = scanner.next()
+                if (result != null) {
+                  val rr = table.buildRow(result)
+                  cacheHandler(rr)
+                  handler(rr)
+                } else {
+                  done = true
+                }
+              }
+            } finally {
+              cacheComplete()
+              scanner.close()
+            }
+        }
+      }
+    }
+
+  }
+
+  def scanToIterable[I](handler: (RR) => I, maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100, useLocalCache: Boolean = false, localTTL: Int = 30) = {
+    val scan = makeScanner(maxVersions, cacheBlocks, cacheSize)
+
+    val results = if (useLocalCache) Buffer[RR]() else Buffer.empty[RR]
+
+    def cacheHandler(rr: RR) {
+      if (useLocalCache) results += rr
+    }
+
+    def cacheComplete() {
+      if (useLocalCache && !results.isEmpty) table.cache.putScanResult(scan, results.toSeq, localTTL)
+    }
+
+    val whatWeGetFromCache = if (useLocalCache) table.cache.getScanResult(scan) else None
+
+    val results2 = whatWeGetFromCache match {
+      case Some(rrs) => rrs.map(rr => handler(rr))
+      case None => {
+        val runResults = table.withTable() {
+          htable =>
+            val scanner = htable.getScanner(scan)
+            try {
+              for (result <- scanner; if (result != null)) yield {
+                val rr = table.buildRow(result)
+                cacheHandler(rr)
+                handler(rr)
+              }
+            } finally {
+              cacheComplete()
+              scanner.close()
+            }
+        }
+
+        runResults
+      }
+    }
+    results2
   }
 
   trait Stopable extends Throwable
@@ -678,22 +745,6 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
           scanner.close()
         }
     }
-  }
-
-  def scanToIterable[I](handler: (RR) => I, maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100) = {
-    val results2 = table.withTable() {
-      htable =>
-        val scan = makeScanner(maxVersions, cacheBlocks, cacheSize)
-        val scanner = htable.getScanner(scan)
-        try {
-          for (result <- scanner; if (result != null)) yield {
-            handler(table.buildRow(result))
-          }
-        } finally {
-          scanner.close()
-        }
-    }
-    results2
   }
 
 
