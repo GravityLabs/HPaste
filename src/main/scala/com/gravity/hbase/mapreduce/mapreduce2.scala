@@ -561,6 +561,7 @@ case class HMultiTableOutput(writeToTransactionLog: Boolean, tables: HbaseTable[
     if (!writeToTransactionLog) {
       job.getConfiguration.setBoolean(MultiTableOutputFormat.WAL_PROPERTY, MultiTableOutputFormat.WAL_OFF)
     }
+    job.getConfiguration.set("mapred.reduce.tasks.speculative.execution", "false")
     job.setOutputFormatClass(classOf[MultiTableOutputFormat])
   }
 }
