@@ -863,6 +863,19 @@ abstract class BinaryMapper extends HMapper[BytesWritable, BytesWritable, BytesW
 
 abstract class BinaryReducer extends HReducer[BytesWritable, BytesWritable, BytesWritable, BytesWritable] with BinaryWritable with BinaryReadable
 
+abstract class BinaryReducerFx extends BinaryReducer with DelayedInit {
+  private var initCode: () => Unit = _
+
+  override def delayedInit(body: => Unit) {
+    initCode = (() => body)
+  }
+
+  def reduce() {
+    initCode()
+  }
+
+}
+
 abstract class BinaryToTextReducer extends HReducer[BytesWritable, BytesWritable, NullWritable, Text] with BinaryReadable {
   def writeln(line: String) {write(NullWritable.get(), new Text(line))}
 
