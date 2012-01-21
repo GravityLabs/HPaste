@@ -1003,7 +1003,8 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, R
                                                                                                      reducer: HReducer[MOK, MOV, ROK, ROV],
                                                                                                      combiner: HReducer[MOK, MOV, MOK, MOV] = null,
                                                                                                      partitioner: HPartitioner[MOK, MOV] = null,
-                                                                                                     groupingComparator: HBinaryComparator = null)
+                                                                                                     groupingComparator: HBinaryComparator = null,
+                                                                                                     sortComparator: HBinaryComparator=null)
         extends HTask[MK, MV, ROK, ROV](id, configs, io) {
 
 
@@ -1023,8 +1024,9 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, R
     if (combiner != null) {
       job.setCombinerClass(combiner.getClass)
     }
-    //    job.setGroupingComparatorClass()
-    //    job.setSortComparatorClass()
+    if(sortComparator != null) {
+      job.setSortComparatorClass(sortComparator.getClass)
+    }
 
   }
 }
