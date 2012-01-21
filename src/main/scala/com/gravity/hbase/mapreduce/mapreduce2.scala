@@ -90,14 +90,15 @@ class SettingsBase {
 abstract class HTaskConfigsBase {
   def configs: Seq[HConfigLet]
 
-   def init(settings:SettingsBase) {
+  def init(settings: SettingsBase) {
 
-   }
+  }
 }
 
-case class HTaskSettingsConfigs[S<:SettingsBase](configMaker:(S)=>Seq[HConfigLet]) extends HTaskConfigsBase {
-  var configs : Seq[HConfigLet] = _
-  override def init(settings:SettingsBase) {
+case class HTaskSettingsConfigs[S <: SettingsBase](configMaker: (S) => Seq[HConfigLet]) extends HTaskConfigsBase {
+  var configs: Seq[HConfigLet] = _
+
+  override def init(settings: SettingsBase) {
     configs = configMaker(settings.asInstanceOf[S])
   }
 }
@@ -161,9 +162,6 @@ case class LongRunningJobConf(timeoutInSeconds: Int) extends HConfigLet {
 object HJob {
   def job(name: String) = new HJobBuilder(name)
 }
-
-
-
 
 
 class HJobBuilder(name: String) {
@@ -234,7 +232,7 @@ class HTaskBuilder(name: String) {
 }
 */
 
-case class JobPriority(name:String)
+case class JobPriority(name: String)
 
 object JobPriorities {
   val VERY_LOW = JobPriority("VERY_LOW")
@@ -252,7 +250,7 @@ object JobPriorities {
 class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
   type RunResult = (Boolean, Seq[(HTask[_, _, _, _], Job)], mutable.Map[String, DateTime], mutable.Map[String, DateTime])
 
-  def run(settings: S, conf: Configuration, dryRun: Boolean = false, skipToTask: String = null, priority:JobPriority = JobPriorities.NORMAL): RunResult = {
+  def run(settings: S, conf: Configuration, dryRun: Boolean = false, skipToTask: String = null, priority: JobPriority = JobPriorities.NORMAL): RunResult = {
     require(tasks.size > 0, "HJob requires at least one task to be defined")
     conf.setStrings("hpaste.jobchain.jobclass", getClass.getName)
 
@@ -268,15 +266,15 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
           case ex: Exception => {
             println("WARNING: Task " + task.taskId.name + " specifies previous task " + task.taskId.previousTaskName + " which was not submitted to the job.  Make sure you did this intentionally")
             null
-//            throw new RuntimeException("Task " + task.taskId.name + " requires task " + task.taskId.previousTaskName + " which was not submitted to the job")
+            //            throw new RuntimeException("Task " + task.taskId.name + " requires task " + task.taskId.previousTaskName + " which was not submitted to the job")
           }
         }
       } else {
         if (!tasks.exists(_.taskId.name == task.taskId.requiredTask.taskId.name)) {
           println("WARNING: Task " + task.taskId.name + " specifies previous task " + task.taskId.requiredTask.taskId.name + " which was not submitted to the job.  Make sure you did this intentionally")
           null
-//          throw new RuntimeException("Task " + task.taskId.name + " requires task " + task.taskId.requiredTask.taskId.name + " which has not been submitted to the job")
-        }else {
+          //          throw new RuntimeException("Task " + task.taskId.name + " requires task " + task.taskId.requiredTask.taskId.name + " which has not been submitted to the job")
+        } else {
           task.taskId.requiredTask
         }
       }
@@ -304,7 +302,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
 
     def makeJob(task: HTask[_, _, _, _]) = {
       val taskConf = new Configuration(conf)
-      taskConf.set("mapred.job.priority",priority.name)
+      taskConf.set("mapred.job.priority", priority.name)
       taskConf.setInt("hpaste.jobchain.mapper.idx", idx)
       taskConf.setInt("hpaste.jobchain.reducer.idx", idx)
 
@@ -314,7 +312,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
 
       task.configure(taskConf, previousTask)
 
-      val job = task.makeJob(previousTask,settings)
+      val job = task.makeJob(previousTask, settings)
       job.setJarByClass(getClass)
       if (settings.jobNameQualifier.length > 0) {
         job.setJobName(name + " : " + task.taskId.name + " (" + (idx + 1) + " of " + tasks.size + ")" + " [" + settings.jobNameQualifier + "]")
@@ -423,14 +421,14 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
   * Base class for initializing the input to an HJob
   */
 abstract class HInput {
-  def init(job: Job,settings:SettingsBase)
+  def init(job: Job, settings: SettingsBase)
 }
 
 /**
   * Base class for initializing the output from an HJob
   */
 abstract class HOutput {
-  def init(job: Job,settings:SettingsBase)
+  def init(job: Job, settings: SettingsBase)
 }
 
 case class Columns[T <: HbaseTable[T, _, _]](columns: ColumnExtractor[T, _, _, _, _]*)
@@ -440,13 +438,13 @@ case class Families[T <: HbaseTable[T, _, _]](families: FamilyExtractor[T, _, _,
 case class Filters[T <: HbaseTable[T, _, _]](filters: Filter*)
 
 
-case class HTableQuery[T <: HbaseTable[T, R, RR],R,RR<:HRow[T,R], S <:SettingsBase](query:Query2[T,R,RR], cacheBlocks:Boolean=false, maxVersions:Int = 1, cacheSize:Int = 100) extends HInput {
+case class HTableQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], S <: SettingsBase](query: Query2[T, R, RR], cacheBlocks: Boolean = false, maxVersions: Int = 1, cacheSize: Int = 100) extends HInput {
   override def toString = "Input: From table query"
 
 
-  override def init(job:Job,settings:SettingsBase) {
+  override def init(job: Job, settings: SettingsBase) {
     val thisQuery = query
-    val scanner = thisQuery.makeScanner(maxVersions,cacheBlocks,cacheSize)
+    val scanner = thisQuery.makeScanner(maxVersions, cacheBlocks, cacheSize)
     job.getConfiguration.set("mapred.map.tasks.speculative.execution", "false")
 
     val bas = new ByteArrayOutputStream()
@@ -463,13 +461,13 @@ case class HTableQuery[T <: HbaseTable[T, R, RR],R,RR<:HRow[T,R], S <:SettingsBa
   }
 }
 
-case class HTableSettingsQuery[T <: HbaseTable[T, R, RR],R,RR<:HRow[T,R], S <:SettingsBase](query:(S)=>Query2[T,R,RR], cacheBlocks:Boolean=false, maxVersions:Int = 1, cacheSize:Int = 100) extends HInput {
+case class HTableSettingsQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], S <: SettingsBase](query: (S) => Query2[T, R, RR], cacheBlocks: Boolean = false, maxVersions: Int = 1, cacheSize: Int = 100) extends HInput {
   override def toString = "Input: From table query"
 
 
-  override def init(job:Job,settings:SettingsBase) {
+  override def init(job: Job, settings: SettingsBase) {
     val thisQuery = query(settings.asInstanceOf[S])
-    val scanner = thisQuery.makeScanner(maxVersions,cacheBlocks,cacheSize)
+    val scanner = thisQuery.makeScanner(maxVersions, cacheBlocks, cacheSize)
     job.getConfiguration.set("mapred.map.tasks.speculative.execution", "false")
 
     val bas = new ByteArrayOutputStream()
@@ -495,7 +493,7 @@ case class HTableInput[T <: HbaseTable[T, _, _]](table: T, families: Families[T]
 
   override def toString = "Input: From table: \"" + table.tableName + "\""
 
-  override def init(job: Job,settings:SettingsBase) {
+  override def init(job: Job, settings: SettingsBase) {
     println("Setting input table to: " + table.tableName)
 
     //Disabling speculative execution because it is never useful for a table input.
@@ -543,7 +541,7 @@ case class HPathInput(paths: Seq[String]) extends HInput {
 
   override def toString = "Input: Paths: " + paths.mkString("{", ",", "}")
 
-  override def init(job: Job,settings:SettingsBase) {
+  override def init(job: Job, settings: SettingsBase) {
     paths.foreach(path => {
       FileInputFormat.addInputPath(job, new Path(path))
     })
@@ -557,7 +555,7 @@ case class HMultiTableOutput(writeToTransactionLog: Boolean, tables: HbaseTable[
   override def toString = "Output: The following tables: " + tables.map(_.tableName).mkString("{", ",", "}")
 
 
-  override def init(job: Job,settings:SettingsBase) {
+  override def init(job: Job, settings: SettingsBase) {
     if (!writeToTransactionLog) {
       job.getConfiguration.setBoolean(MultiTableOutputFormat.WAL_PROPERTY, MultiTableOutputFormat.WAL_OFF)
     }
@@ -573,7 +571,7 @@ case class HTableOutput[T <: HbaseTable[T, _, _]](table: T) extends HOutput {
 
   override def toString = "Output: Table: " + table.tableName
 
-  override def init(job: Job,settings:SettingsBase) {
+  override def init(job: Job, settings: SettingsBase) {
     println("Initializing output table to: " + table.tableName)
     job.getConfiguration.set("mapred.reduce.tasks.speculative.execution", "false")
     job.getConfiguration.set(GravityTableOutputFormat.OUTPUT_TABLE, table.tableName)
@@ -589,7 +587,7 @@ case class HPathOutput(path: String) extends HOutput {
 
   override def toString = "Output: File: " + path
 
-  override def init(job: Job,settings:SettingsBase) {
+  override def init(job: Job, settings: SettingsBase) {
     FileSystem.get(job.getConfiguration).delete(new Path(path), true)
     FileOutputFormat.setOutputPath(job, new Path(path))
   }
@@ -605,7 +603,7 @@ case class HRandomSequenceInput[K, V]() extends HInput {
 
   override def toString = "Input: Random Sequence File at " + previousPath.toUri.toString
 
-  override def init(job: Job,settings:SettingsBase) {
+  override def init(job: Job, settings: SettingsBase) {
     FileInputFormat.addInputPath(job, previousPath)
 
     job.setInputFormatClass(classOf[SequenceFileInputFormat[K, V]])
@@ -621,7 +619,7 @@ case class HRandomSequenceOutput[K, V]() extends HOutput {
 
   var path = new Path(genTmpFile)
 
-  override def init(job: Job,settings:SettingsBase) {
+  override def init(job: Job, settings: SettingsBase) {
     job.setOutputFormatClass(classOf[SequenceFileOutputFormat[K, V]])
     FileOutputFormat.setOutputPath(job, path)
   }
@@ -648,13 +646,13 @@ abstract class HTask[IK, IV, OK, OV](val taskId: HTaskID, val configLets: HTaskC
 
   def decorateJob(job: Job)
 
-  def makeJob(previousTask: HTask[_, _, _, _],settings:SettingsBase) = {
+  def makeJob(previousTask: HTask[_, _, _, _], settings: SettingsBase) = {
 
     val job = new Job(configuration)
 
 
-    hio.input.init(job,settings)
-    hio.output.init(job,settings)
+    hio.input.init(job, settings)
+    hio.output.init(job, settings)
 
     decorateJob(job)
 
@@ -762,10 +760,10 @@ abstract class FromTableBinaryMapperFx[T <: HbaseTable[T, R, RR], R, RR <: HRow[
   }
 }
 
-abstract class GroupByRow[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R]](table:HbaseTable[T,R,RR])(grouper:(RR,PrimitiveOutputStream)=>Unit) extends FromTableBinaryMapper[T,R,RR](table){
+abstract class GroupByRow[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])(grouper: (RR, PrimitiveOutputStream) => Unit) extends FromTableBinaryMapper[T, R, RR](table) {
 
-  def groupBy(row:RR, extractor:PrimitiveOutputStream) {
-    grouper(row,extractor)
+  def groupBy(row: RR, extractor: PrimitiveOutputStream) {
+    grouper(row, extractor)
   }
 
   final def map() {
@@ -773,31 +771,31 @@ abstract class GroupByRow[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R]](table:Hbase
 
     val bos = new ByteArrayOutputStream()
     val dataOutput = new PrimitiveOutputStream(bos)
-    groupBy(rr,dataOutput)
-    write(new BytesWritable(bos.toByteArray),makeWritable{vw=>vw.writeRow(table,rr)})
+    groupBy(rr, dataOutput)
+    write(new BytesWritable(bos.toByteArray), makeWritable {vw => vw.writeRow(table, rr)})
 
   }
 }
 
 
-abstract class GroupingRowMapper[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R]](table:HbaseTable[T,R,RR]) extends FromTableBinaryMapper[T,R,RR](table){
+abstract class GroupingRowMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR]) extends FromTableBinaryMapper[T, R, RR](table) {
 
-  def groupBy(row:RR, extractor:PrimitiveOutputStream)
+  def groupBy(row: RR, extractor: PrimitiveOutputStream)
 
   final def map() {
     val rr = row
 
     val bos = new ByteArrayOutputStream()
     val dataOutput = new PrimitiveOutputStream(bos)
-    groupBy(rr,dataOutput)
-    write(new BytesWritable(bos.toByteArray),makeWritable{vw=>vw.writeRow(table,rr)})
+    groupBy(rr, dataOutput)
+    write(new BytesWritable(bos.toByteArray), makeWritable {vw => vw.writeRow(table, rr)})
 
   }
 }
 
 object MRFx {
-//  def groupBy[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R]](table:HbaseTable[T,R,RR])(grouper:(RR,PrimitiveOutputStream)=>Unit) =
-//    new GroupingRowMapperFx[T,R,RR](table,grouper){}
+  //  def groupBy[T <: HbaseTable[T,R,RR],R,RR <: HRow[T,R]](table:HbaseTable[T,R,RR])(grouper:(RR,PrimitiveOutputStream)=>Unit) =
+  //    new GroupingRowMapperFx[T,R,RR](table,grouper){}
 }
 
 //
@@ -992,6 +990,30 @@ object HMapReduceTask {
 
 }
 
+
+case class HGroupingTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, ROV: Manifest](
+                                                                                                    id: HTaskID,
+                                                                                                    configs: HTaskConfigsBase = HTaskConfigs(),
+                                                                                                    io: HIO[MK, MV, ROK, ROV] = HIO(),
+                                                                                                    mapper: HMapper[MK, MV, MOK, MOV],
+                                                                                                    reducer: HReducer[MOK, MOV, ROK, ROV],
+                                                                                                    partitioner: HPartitioner[MOK, MOV],
+                                                                                                    groupingComparator: HBinaryComparator,
+                                                                                                    sortComparator: HBinaryComparator
+                                                                                                    ) extends HTask[MK,MV,ROK,ROV](id,configs,io) {
+  def decorateJob(job: Job) {
+      job.setMapperClass(mapper.getClass)
+      job.setMapOutputKeyClass(classManifest[MOK].erasure)
+      job.setMapOutputValueClass(classManifest[MOV].erasure)
+      job.setOutputKeyClass(classManifest[ROK].erasure)
+      job.setOutputValueClass(classManifest[ROV].erasure)
+      job.setReducerClass(reducer.getClass)
+      job.setPartitionerClass(partitioner.getClass)
+      job.setGroupingComparatorClass(groupingComparator.getClass)
+      job.setSortComparatorClass(sortComparator.getClass)
+    }
+}
+
 /**
   * An HTask that wraps a standard mapper and reducer function.
   */
@@ -1001,10 +1023,7 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, R
                                                                                                      io: HIO[MK, MV, ROK, ROV] = HIO(),
                                                                                                      mapper: HMapper[MK, MV, MOK, MOV],
                                                                                                      reducer: HReducer[MOK, MOV, ROK, ROV],
-                                                                                                     combiner: HReducer[MOK, MOV, MOK, MOV] = null,
-                                                                                                     partitioner: HPartitioner[MOK, MOV] = null,
-                                                                                                     groupingComparator: HBinaryComparator = null,
-                                                                                                     sortComparator: HBinaryComparator=null)
+                                                                                                     combiner: HReducer[MOK, MOV, MOK, MOV] = null)
         extends HTask[MK, MV, ROK, ROV](id, configs, io) {
 
 
@@ -1015,37 +1034,33 @@ case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, R
     job.setOutputKeyClass(classManifest[ROK].erasure)
     job.setOutputValueClass(classManifest[ROV].erasure)
     job.setReducerClass(reducer.getClass)
-    if (partitioner != null) {
-      job.setPartitionerClass(partitioner.getClass)
-    }
-    if (groupingComparator != null) {
-      job.setGroupingComparatorClass(groupingComparator.getClass)
-    }
     if (combiner != null) {
       job.setCombinerClass(combiner.getClass)
-    }
-    if(sortComparator != null) {
-      job.setSortComparatorClass(sortComparator.getClass)
     }
 
   }
 }
 
-abstract class HBinaryComparator extends WritableComparator(classOf[BytesWritable], true) {
+
+abstract class HBinaryComparator extends RawComparator[BytesWritable] {
 
   //  /**Override this for the cheapest comparison */
-  //  override def compare(theseBytes: Array[Byte], thisOffset: Int, thisLength: Int, thoseBytes: Array[Byte], thatOffset: Int, thatLength: Int) : Int = {
-  //    val thisInput = new ByteArrayInputStream(theseBytes, thisOffset, thisLength)
-  //    val thatInput = new ByteArrayInputStream(thoseBytes, thatOffset, thatLength)
-  //    compareBytes(new PrimitiveInputStream(thisInput), new PrimitiveInputStream(thatInput))
-  //  }
+    override def compare(theseBytes: Array[Byte], thisOffset: Int, thisLength: Int, thoseBytes: Array[Byte], thatOffset: Int, thatLength: Int) : Int = {
+      val thisInput = new ByteArrayInputStream(theseBytes, thisOffset, thisLength)
+      thisInput.skip(4)
+      val thatInput = new ByteArrayInputStream(thoseBytes, thatOffset, thatLength)
+      thatInput.skip(4)
+      compareBytes(new PrimitiveInputStream(thisInput), new PrimitiveInputStream(thatInput))
+    }
 
-  def compare(thisItem: BytesWritable, thatItem: BytesWritable): Int = {
-    compareBytes(new PrimitiveInputStream(new ByteArrayInputStream(thisItem.getBytes)), new PrimitiveInputStream(new ByteArrayInputStream(thatItem.getBytes)))
+  override def compare(bw:BytesWritable,bw2:BytesWritable) = {
+    println("Compare called")
+    0
   }
 
   /** Override for a less cheap comparison */
   def compareBytes(thisReader: PrimitiveInputStream, thatReader: PrimitiveInputStream) = {
+    println("Compare bytes called")
     0
   }
 }
