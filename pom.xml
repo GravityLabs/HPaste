@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.gravity</groupId>
   <artifactId>gravity-hpaste</artifactId>
-  <version>1.0-SNAPSHOT</version>
+  <version>0.1.1</version>
   <name>hpaste</name>
   <description>Scala mapper for hbase</description>
   <inceptionYear>2011</inceptionYear>
@@ -102,6 +102,17 @@
 
   <build>
     <plugins>
+		<plugin>
+		            <groupId>org.apache.maven.plugins</groupId>
+		            <artifactId>maven-source-plugin</artifactId>
+		            <executions>
+		                <execution>
+		                    <goals>
+		                        <goal>jar</goal>
+		                    </goals>
+		                </execution>
+		            </executions>
+		        </plugin>
       <plugin>
         <groupId>org.scala-tools</groupId>
         <artifactId>maven-scala-plugin</artifactId>
@@ -137,21 +148,21 @@
           </excludes>
         </configuration>
       </plugin>
-      <plugin>
-        <groupId>org.zeroturnaround</groupId>
-        <artifactId>jrebel-maven-plugin</artifactId>
-        <version>1.0.7</version>
-        <executions>
-          <execution>
-            <id>generate-rebel-xml</id>
-            <phase>process-resources</phase>
-            <goals>
-              <goal>generate</goal>
-            </goals>
-          </execution>
-        </executions>
-      </plugin>
 
     </plugins>
   </build>
+
+  <distributionManagement>
+    <repository>
+      <id>releases</id>
+      <name>Nexus release repo</name>
+      <url>http://www.playpen.gravity.com:8081/nexus/content/repositories/releases</url>
+      <!-- <url>scp://localhost/home/skuo/repository/</url> -->
+    </repository>
+    <snapshotRepository>
+      <id>snapshots</id>
+      <name>Nexus snapshot repo</name>
+      <url>http://www.playpen.gravity.com:8081/nexus/content/repositories/snapshots</url>
+    </snapshotRepository>
+  </distributionManagement>
 </project>
