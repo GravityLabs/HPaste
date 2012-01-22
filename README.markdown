@@ -236,4 +236,4 @@ This is often the least performant way of passing data between mappers and reduc
 
 # Developers
 
-This library was developed by Chris Bissell, with many contributions, both philosophical and code, by Robbie Coleman.
+This library was developed by [Chris Bissell](https://github.com/Lemmsjid "Lemmsjid"), with many contributions, both philosophical and code, by [Robbie Coleman](https://github.com/erraggy "erraggy").
