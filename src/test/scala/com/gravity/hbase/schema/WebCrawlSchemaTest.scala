@@ -8,6 +8,7 @@ import com.gravity.hbase.mapreduce.{HMapReduceTask, HJob}
 import java.net.URL
 import com.gravity.hbase.schema._
 import scala.collection._
+import com.gravity.hbase.schema.WebCrawlingSchema.WebPageRow
 
 /*             )\._.,--....,'``.
  .b--.        /;   _.. \   _\  (`._ ,.
@@ -34,7 +35,9 @@ object WebCrawlingSchema extends Schema {
 
   }
 
-  class WebPageRow(table: WebTable, result: DeserializedResult) extends HRow[WebTable, String](result, table)
+  class WebPageRow(table: WebTable, result: DeserializedResult) extends HRow[WebTable, String](result, table) {
+    def domain = new URL(rowid).getAuthority
+  }
 
   val WebTable = table(new WebTable)
 
@@ -100,6 +103,35 @@ class WebSearchAggregationJob extends HJob[NoSettings]("Aggregate web searches b
   )
 )
 
+class WebTablePagesBySiteJob extends HJob[NoSettings]("Get articles by site",
+  HMapReduceTask(
+    HTaskID("Articles by Site"),
+    HTaskConfigs(),
+    HIO(
+      HTableInput(WebCrawlingSchema.WebTable),
+      HPathOutput("/reports/wordcount")
+    ),
+    new FromTableBinaryMapperFx(WebCrawlingSchema.WebTable) {
+      val webPage : WebPageRow = row //For illustrative purposes we're specifying the type here, no need to
+      val domain = row.domain //We've added a convenience method to WebPageRow to extract the domain for us
+
+      write(
+      {keyOutput=>keyOutput.writeUTF(domain)}, //This writes out the domain as the key
+      {valueOutput=>valueOutput.writeRow(WebCrawlingSchema.WebTable,webPage)} //This writes the entire value of the row out
+      )
+    },
+    new BinaryToTextReducerFx {
+      val domain = readKey(_.readUTF()) //This allows you to read out the key
+
+      perValue{valueInput=>
+        val webPage : WebPageRow = valueInput.readRow(WebCrawlingSchema.WebTable) //Now you can read out the entire WebPageRow object from the value stream
+        ctr("Pages for domain " + domain)
+        writeln(domain + "\t" + webPage.column(_.title).getOrElse("No Title")) //This is a convenience function that writes a line to the text output
+      }
+    }
+  )
+)
+
 class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
 
   @Test def testWebTablePutsAndGets() {
@@ -132,6 +164,7 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
       }
     }
   }
+
 
   @Test def testAggregationMRJob() {
     WebCrawlingSchema.WebTable
@@ -167,4 +200,27 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
       }
     }
   }
+
+  @Test def testPagesBySiteJob() {
+    WebCrawlingSchema.WebTable
+                .put("http://mycrawledsite2.com/crawledpage2.html")
+                .value(_.title, "My Crawled Page Title2")
+                .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+                .put("http://mycrawledsite2.com/crawledpage3.html")
+                .value(_.title, "My Crawled Page Title3")
+                .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+                .put("http://mycrawledsite3.com/crawledpage4.html")
+                .value(_.title, "My Crawled Page Title4")
+                .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+                .put("http://mycrawledsite3.com/crawledpage4.html")
+                .value(_.title, "My Crawled Page Title5")
+                .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+                .put("http://mycrawledsite3.com/crawledpage4.html")
+                .value(_.title, "My Crawled Page Title6")
+                .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+                .execute()
+
+    new WebTablePagesBySiteJob().run(Settings.None, LocalCluster.getTestConfiguration)
+  }
+
 }

@@ -1,14 +1,24 @@
 # Welcome to HPaste!
 
+### What is HPaste?
+
 HPaste unlocks the rich functionality of HBase for a Scala audience. In so doing, it attempts to achieve the following goals:
 
 * Provide a strong, clear syntax for querying and filtration
-* Perform as fast as possible -- the abstractions should not show up in a profiler, just in your code!
+* Perform as fast as possible while maintaining idiomatic Scala client code -- the abstractions should not show up in a profiler!
 * Re-articulate HBase's data structures rather than force it into an ORM-style atmosphere.
 * A rich set of base classes for writing MapReduce jobs in hadoop against HBase tables.
 * Provide a maximum amount of code re-use between general Hbase client usage, and operation from within a MapReduce job.
 * Use Scala's type system to its advantage--the compiler should verify the integrity of the schema.
 * Be a verbose DSL--minimize boilerplate code, but be human readable!
+
+### What isn't HPaste?
+
+You'll notice that HPaste has a lot of convenience classes for MapReduce jobs.  This is to make it painless to use your domain objects and tables in the context of MR jobs. HPaste has no aspirations to replace tuple-based frameworks like Pig or Cascading (both of which we use for complex log parsing).  HPaste is intended to hug the Hadoop MapReduce API very closely, building convenience functions where necessary, without abstracting too far away from the base concept.  
+
+The goal of HPaste's MapReduce support is to allow you to build rich functionality into your Table and Row objects, and make it be painless to have those tables and rows participate in MapReduce jobs.  Oftentimes in HBase you have a combination of OLTP style operations (client gets data, client serves data), and OLAP style operations (pivot one table around a particular piece of data, and output to another table).  That is where HPaste comes in handy, because there is often an impedance in Pig and/or Cascading between HBase-friendly binary data serialized objects and the tuple framework that makes those libraries so awesome to use for ad-hoc log-style data.
+
+(It is a mini-goal of HPaste to integrate into Cascading's tuple framework.)
 
 ## Project Status
 This project is currently actively developed and maintained.  It is used in a large production codebase in high-throughput, memory-intensive scenarios, and has many months of bug fixes under its belt.  Because it already has a great deal of code utilizing it, there will not be many breaking changes to the API.  Instead what we usually do is provide an upgraded API that sits next to the old API, then deprecate the old one.  
@@ -28,13 +38,7 @@ The classic case for HBase and BigTable is crawling and storing web pages.  You 
 * SearchMetrics is a column family that contains searches your users have made that have sent them to that page, organized by day.
 
 ```scala
-object WebCrawlingSchema extends Schema {
-  import com.gravity.hbase.schema._
-  import scala.collection._
-
-  implicit val conf = LocalCluster.getTestConfiguration
-
-  class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName = "pages", rowKeyClass = classOf[String]) {
+class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName = "pages", rowKeyClass = classOf[String]) {
     def rowBuilder(result: DeserializedResult) = new WebPageRow(this, result)
 
     val meta = family[String, String, Any]("meta")
@@ -49,6 +53,10 @@ object WebCrawlingSchema extends Schema {
 
 
   }
+
+  class WebPageRow(table: WebTable, result: DeserializedResult) extends HRow[WebTable, String](result, table)
+
+  val WebTable = table(new WebTable)
 }
 ```
 
@@ -368,8 +376,8 @@ WARNING: There are a lot of production issues with using raw serialization this 
 
 Once you have a serializer for a type, you can (fairly) easily define a serializer that lets you define a Set, Map, or Seq of that object.  The below assumes you already have a ByteConverter for a Kitten object, and will now support column values that are sequences.
 
-```
-  implicit object KittenSeqConverter extends SeqConverter[Kitten,Seq[Kitten]]
+```scala
+implicit object KittenSeqConverter extends SeqConverter[Kitten]
 ```
 
 NOTE: The above way of defining a sequence is clumsy, agreed.  Need to refactor.
@@ -403,12 +411,56 @@ Assuming the examples under the DATA MANIPULATION section, the following will re
     val dayViewsMap = dayViewsRes.family(_.viewCountsByDay)
 ```
 
+# More on MapReduce support
 
-## Row Serialization
+## Row Serialization between Mappers and Reducers
 
 HRows can be serialized between Mappers and Reducers, using the writeRow and readRow methods of PrimitiveOutputStream and PrimitiveInputStream.
-This is often the least performant way of passing data between mappers and reducers, but also involves the least amount of code.
 
+This is often the least performant way of passing data between mappers and reducers (depending on how big your rows are), but also involves the least amount of code.
+
+Below is a job that assumes the same WebCrawling schema in the Quickstart.  Its goal is to write output files that show page by the site they're contained in.  We've added a convenience function to the WebPageRow to extract the domain:
+
+```scala
+  class WebPageRow(table: WebTable, result: DeserializedResult) extends HRow[WebTable, String](result, table) {
+    def domain = new URL(rowid).getAuthority
+  }
+```
+
+Here is the job.  
+
+```scala
+class WebTablePagesBySiteJob extends HJob[NoSettings]("Get articles by site",
+  HMapReduceTask(
+    HTaskID("Articles by Site"),
+    HTaskConfigs(),
+    HIO(
+      HTableInput(WebCrawlingSchema.WebTable),
+      HPathOutput("/reports/wordcount")
+    ),
+    new FromTableBinaryMapperFx(WebCrawlingSchema.WebTable) {
+      val webPage : WebPageRow = row //For illustrative purposes we're specifying the type here, no need to
+      val domain = row.domain //We've added a convenience method to WebPageRow to extract the domain for us
+
+      write(
+      {keyOutput=>keyOutput.writeUTF(domain)}, //This writes out the domain as the key
+      {valueOutput=>valueOutput.writeRow(WebCrawlingSchema.WebTable,webPage)} //This writes the entire value of the row out
+      )
+    },
+    new BinaryToTextReducerFx {
+      val domain = readKey(_.readUTF()) //This allows you to read out the key
+
+      perValue{valueInput=>
+        val webPage : WebPageRow = valueInput.readRow(WebCrawlingSchema.WebTable) //Now you can read out the entire WebPageRow object from the value stream
+        ctr("Pages for domain " + domain)
+        writeln(domain + "\t" + webPage.column(_.title).getOrElse("No Title")) //This is a convenience function that writes a line to the text output
+      }
+    }
+  )
+)
+
+```
+This job is part of HPaste's unit tests, so you can see it in context at [WebCrawlSchemaTest.scala](https://github.com/GravityLabs/HPaste/blob/master/src/test/scala/com/gravity/hbase/schema/WebCrawlSchemaTest.scala).
 
 # Developers
 
