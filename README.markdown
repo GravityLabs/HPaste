@@ -10,7 +10,12 @@ HPaste unlocks the rich functionality of HBase for a Scala audience. In so doing
 * Use Scala's type system to its advantage--the compiler should verify the integrity of the schema.
 * Be a verbose DSL--minimize boilerplate code, but be human readable!
 
-Here's some quick code examples to give you a sense of what you're getting into:
+## Project Status
+This project is currently actively developed and maintained.  It is used in a large production codebase in high-throughput, memory-intensive scenarios, and has many months of bug fixes under its belt.  Because it already has a great deal of code utilizing it, there will not be many breaking changes to the API.  Instead what we usually do is provide an upgraded API that sits next to the old API, then deprecate the old one.  
+
+## Quickstart
+
+Here's some quick code examples to give you a sense of what you're getting into.  All of the examples in the sections below come from the HPaste unit tests.  Specifically the file [WebCrawlSchemaTest.scala](https://github.com/GravityLabs/HPaste/blob/master/src/test/scala/com/gravity/hbase/schema/WebCrawlSchemaTest.scala).  If you go to that file and follow along with the explanations below, things will make more sense.
 
 #### Creating a WebTable
 The classic case for HBase and BigTable is crawling and storing web pages.  You need to define a WebTable for your crawling.  The below defines a table called WebTable, with a String key.
@@ -161,7 +166,7 @@ class WebSearchAggregationJob extends HJob[NoSettings]("Aggregate web searches b
 )
 
 ```
-We can execute the above job via (where the Configuration object is the one relevant to your clsuter):
+The above is a self-contained MapReduce job that is ready to go.  We can execute the above job via (where the Configuration object is the one relevant to your clsuter):
 
 ```scala
 new WebSearchAggregationJob().run(Settings.None, LocalCluster.getTestConfiguration)
@@ -169,72 +174,85 @@ new WebSearchAggregationJob().run(Settings.None, LocalCluster.getTestConfigurati
 
 All of the above examples are part of the HPaste unit tests, so it should be easy to use them to set up your own system.  
 
+## Features not covered in the Quickstart
+There are many features not included in the Quickstart that exist in the codebase.  
 
-# Building HPaste
+* Complex type serialization
+* Chaining map reduce jobs
+* Scanners and the filtration DSL
+* Settings classes that can be injected into MapReduce jobs
+
+# Building and Testing HPaste
 This project is put together with Maven.  In theory you should be able to build and run the project's tests via:
 
-```
+``
 mvn test
-```
+``
 
-Perhaps the best way to get started is to look at the unit tests in the SchemaTest.scala file.  These unit tests show how to create a schema, extend serialization with your own objects, and utilize the schema.  They will, when run, fire up a mini instance of HBase.  It's best to at least look at those tests before you go through the below examples, because the tests show everything in context.
+The tests will create a temporary hbase cluster, create temporary tables, and run map reduce jobs against those tables.  The unit tests are the best way to encounter HPaste, because they are constantly added to and perform live operations against a real cluster, so there's no smoke-and-mirrors.
+
+# More In Depth
 
 ## Defining a Schema
 
-Following the HBase structure, first you define a Schema, then Tables, then Column Families, then (optionally) Columns.  Below is an example schema that contains a single Table definition.  The table will be called "schema_example" in HBase.  It will expect its row keys to be Strings (the second type parameter to HbaseTable).
+Following the HBase structure, first you define a Schema, then Tables, then Column Families, then (optionally) Columns.  Below is an example schema that contains a single Table definition.  The table will be called "schema_example" in HBase.  It will expect its row keys to be Strings.
 
 ```scala
-  object ExampleSchema extends Schema {
+object ExampleSchema extends Schema {
 
-    //There should only be one HBaseConfiguration object per process.  You'll probably want to manage that
-    //instance yourself, so this library expects a reference to that instance.  It's implicitly injected into
-    //the code, so the most convenient place to put it is right after you declare your Schema.
-    implicit val conf = htest.getConfiguration
 
-    //A table definition, where the row keys are Strings
-    class ExampleTable extends HbaseTable[ExampleTable,String](tableName = "schema_example")
-    {
-      //Column family definition
-      val meta = family[String, String, Any]("meta")
-      //Inside meta, assume a column called title whose value is a string
-      val title = column(meta, "title", classOf[String])
-      //Inside meta, assume a column called url whose value is a string
-      val url = column(meta, "url", classOf[String])
-      //Inside meta, assume a column called views whose value is a string
-      val views = column(meta, "views", classOf[Long])
-      //A column called date whose value is a Joda DateTime
-      val creationDate = column(meta, "date", classOf[DateTime])
+  //There should only be one HBaseConfiguration object per process.  You'll probably want to manage that
+  //instance yourself, so this library expects a reference to that instance.  It's implicitly injected into
+  //the code, so the most convenient place to put it is right after you declare your Schema.
+  implicit val conf = LocalCluster.getTestConfiguration
 
-      //A column called viewsArr whose value is a sequence of strings
-      val viewsArr = column(meta,"viewsArr", classOf[Seq[String]])
-      //A column called viewsMap whose value is a map of String to Long
-      val viewsMap = column(meta,"viewsMap", classOf[mutable.Map[String,Long]])
+  //A table definition, where the row keys are Strings
+  class ExampleTable extends HbaseTable[ExampleTable,String, ExampleTableRow](tableName = "schema_example",rowKeyClass=classOf[String])
+  {
+    def rowBuilder(result:DeserializedResult) = new ExampleTableRow(this,result)
 
-      //A column family called views whose column names are Strings and values are Longs.  Can be treated as a Map
-      val viewCounts = family[String, String, Long]("views")
+    val meta = family[String, String, Any]("meta")
+    //Column family definition
+    //Inside meta, assume a column called title whose value is a string
+    val title = column(meta, "title", classOf[String])
+    //Inside meta, assume a column called url whose value is a string
+    val url = column(meta, "url", classOf[String])
+    //Inside meta, assume a column called views whose value is a string
+    val views = column(meta, "views", classOf[Long])
+    //A column called date whose value is a Joda DateTime
+    val creationDate = column(meta, "date", classOf[DateTime])
 
-      //A column family called views whose column names are YearDay instances and whose values are Longs
-      val viewCountsByDay = family[String, YearDay, Long]("viewsByDay")
+    //A column called viewsArr whose value is a sequence of strings
+    val viewsArr = column(meta,"viewsArr", classOf[Seq[String]])
+    //A column called viewsMap whose value is a map of String to Long
+    val viewsMap = column(meta,"viewsMap", classOf[Map[String,Long]])
 
-      //A column family called kittens whose column values are the custom Kitten type
-      val kittens = family[String,String,Kitten]("kittens")
-    }
+    //A column family called views whose column names are Strings and values are Longs.  Can be treated as a Map
+    val viewCounts = family[String, String, Long]("views")
 
-    //Register the table (DON'T FORGET TO DO THIS :) )
-    val ExampleTable = table(new ExampleTable)
+    //A column family called views whose column names are YearDay instances and whose values are Longs
+    val viewCountsByDay = family[String, YearDay, Long]("viewsByDay")
 
+    //A column family called kittens whose column values are the custom Kitten type
+    val kittens = family[String,String,Kitten]("kittens")
   }
-```
 
-The above import statement is very important: it brings in all of HPaste's default serializers, which transparently convert types to byte arrays.
+  class ExampleTableRow(table:ExampleTable,result:DeserializedResult) extends HRow[ExampleTable,String](result,table)
+
+  //Register the table (DON'T FORGET TO DO THIS :) )
+  val ExampleTable = table(new ExampleTable)
+
+}
+
+```
 
 The above table has a column family called meta, and several strongly-typed columns in the "meta" family.  It then creates several column families that do not have column definitions under them ("views" and "viewsByDay").  The reason for this is that in HBase you tend to create two different types of column families: in one scenario, you create a column family that contains a set of columns that resemble columns in an RDBMS: each column is "typed" and has a unique identity.  In the second scenario, you create a column family that resembles a Map: you dynamically add key-value pairs to this family.  In this second scenario, you don't know what the columns are ahead of time--you'll be adding and removing columns on the fly.  HPaste supports both models.
 
 ## Lifecycle Management
 
-Because HBase prefers to have a single instance of the Configuration object for connection management purposes, gravity-hbase-schema does not manage any Configuration lifecycle.  When you specify your schema, you need to have an implicit instance of Configuration in scope.
+Because HBase prefers to have a single instance of the Configuration object for connection management purposes, HPaste does not manage any Configuration lifecycle.  When you specify your schema, you need to have an implicit instance of Configuration in scope.
 
-## Table Creation
+## Table Creation Scripts
 If you have an existing table in HBase with the same name and families, you can get started.  If you don't, you can now call:
 ```scala
     val create = ExampleSchema.ExampleTable.createScript()
@@ -243,7 +261,7 @@ If you have an existing table in HBase with the same name and families, you can 
 Paste the results into your hbase shell to create the table.
 
 ## Data Manipulation
-Now let's add some data to the table.  HPaste supports GETS, PUTS, and INCREMENTS.  You can batch multiple operations together, or do them serially.
+HPaste supports GETS, PUTS, and INCREMENTS.  You can batch multiple operations together, or do them serially.  
 
 ### Column Valued Operations
 Column valued operations are ops that work against a particular column.  Rather like a RDBMS.
@@ -385,12 +403,6 @@ Assuming the examples under the DATA MANIPULATION section, the following will re
     val dayViewsMap = dayViewsRes.family(_.viewCountsByDay)
 ```
 
-
-# MapReduce Operation Support
-
-## Jobs vs Tasks
-
-A job is represented by an HJob.  A job is composed of multiple tasks, which are represented as HTasks.  HTasks can have dependencies, which are woven together by the HJob they're a part of.
 
 ## Row Serialization
 
