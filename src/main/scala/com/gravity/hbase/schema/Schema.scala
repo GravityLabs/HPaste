@@ -1013,8 +1013,6 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
   def increment(key: R) = new IncrementOp(this, keyConverter.toBytes(key))
 
-  /** All tables automatically receive a family called "meta" */
-  val meta = family[String, String, Any]("meta")
 
 }
 
