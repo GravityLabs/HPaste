@@ -7,6 +7,13 @@ syntax: glob
 #*.off
 *.old
 
+# vim
+tags
+.swp
+
+#jrebel files - usually local dirs
+rebel.xml
+
 # eclipse conf file
 .settings
 .classpath
@@ -17,13 +24,15 @@ syntax: glob
 # idea
 .idea
 *.iml
+*.ipr
+*.iws
+atlassian-ide-plugin.xml
 
 # building
 target
 build
 null
 tmp*
-temp*
 dist
 test-output
 build.log
@@ -39,3 +48,12 @@ build.log
 
 #SHITTY output not in target directory
 build.log
+
+# ext designer output--trying to be specific with the directory
+designer.html
+designer.js
+designer_includeOrder.txt
+ext-all-debug.js
+
+#Apple Stuff
+.DS_Store
