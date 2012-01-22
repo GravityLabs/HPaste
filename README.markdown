@@ -1,12 +1,89 @@
-# Introduction
+# Welcome to HPaste!
 
-HBase provides a very rich low-level interface, but due to a plethora of byte arrays it can be difficult to program against.
+HPaste unlocks the rich functionality of HBase for a Scala audience. In so doing, it attempts to achieve the following goals:
 
-The HPaste library aims to be a nice Scala interface on top of HBase.  While it may resemble an ORM from the outside, it is not--instead it is a schema-based query tool that follows the conventions of HBase querying, rather than trying to abstract into a domain model.
+* Provide a strong, clear syntax for querying and filtration
+* Perform as fast as possible -- the abstractions should not show up in a profiler, just in your code!
+* Re-articulate HBase's data structures rather than force it into an ORM-style atmosphere.
+* A rich set of base classes for writing MapReduce jobs in hadoop against HBase tables.
+* Provide a maximum amount of code re-use between general Hbase client usage, and operation from within a MapReduce job.
+* Use Scala's type system to its advantage--the compiler should verify the integrity of the schema.
+* Be a verbose DSL--minimize boilerplate code, but be human readable!
 
-It uses Scala's type system to its advantage--when using the library, there are few points where the compiler won't catch an error.  Tables, columns, families, queries, puts, deletes, etc. are bound together with key types and value types.
+Here's some quick code examples to give you a sense of what you're getting into:
 
-# Getting Started
+#### Creating a WebTable
+The classic case for HBase and BigTable is crawling and storing web pages.  You need to define a WebTable for your crawling.  The below defines a table called WebTable, with a String key.
+
+* It has a column family called "meta", that holds columns with String keys and Any value-type.
+* It then specifies that the "meta" family holds a "title" column, a "lastCrawled" column, and a "url" column.
+* A second column family holds content and has the compressed flag to true.
+* It has a family "content" for storing content.  The "article" column is for storing the main page content.
+* The Attributes column is a map where you can atomically store values keyed by a string.
+
+```scala
+object ExampleSchema extends Schema {
+	
+  implicit val conf = ClusterTest.htest.getConfiguration //Replace with your own configuration instance
+
+
+  class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName="pages",rowKeyClass=classOf[PageUrl]) {
+    def rowBuilder(result:DeserializedResult) = new WebPageRow(this,result)
+
+    val meta = family[String, String, Any]("meta")
+    val title = column(meta,"title",classOf[String])
+    val lastCrawled = column(meta,"lastCrawled",classOf[DateTime])
+    val url = column(meta,"url",classOf[String])
+
+    val content = family[String,String,Any]("text",compressed=true)
+    val article = column(content,"article",classOf[String])
+    val attributes = column(content,"attrs",classOf[Map[String,String]])
+
+
+  }
+  class WebPageRow(table:WebTable,result:DeserializedResult) extends HRow[WebTable,String](result,table)
+  val WebTable = table(new WebTable)
+}
+
+```
+
+#### Putting values into the WebTable
+
+Now, suppose you're crawling a website.  The below will create a row with the values specified.  When you call value(), the first argument is a function that points to the column you specified in the above WebTable schema.  This dips into DSL-land.
+
+```scala
+ExampleSchema.WebTable
+            .put("http://mycrawledsite.com/crawledpage.html")
+            .value(_.title, "My Crawled Page Title")
+            .value(_.lastCrawled, new DateTime())
+            .value(_.article, "Jonsie went to the store.  She didn't notice the spinning of the Earth, nor did the Earth notice the expansion of the Universe.")
+            .value(_.attributes, Map("foo" -> "bar", "custom" -> "data"))
+            .execute()
+
+```
+
+#### Querying values out of the WebTable
+
+Let's get the above page out of the WebTable.  Let's say we just want the title of the page and when it was last crawled.  The withColumns() call tells HBase to only fetch those columns.  It takes a series of functions that return the column values you specified in the WebTable, so you get compile-time checking on that.  
+
+```scala
+ExampleSchema.WebTable.query2.withKey("http://mycrawledsite.com/crawledpage.html")
+            .withColumns(_.title, _.lastCrawled).singleOption() match {
+      case Some(pageRow) => {
+        val title = pageRow.column(_.title).getOrElse("No Title")
+        val crawledDate = pageRow.column(_.lastCrawled).getOrElse(new DateTime())
+        //Do something with title and crawled date...
+      }
+      case None => {
+        println("Row not found")
+      }
+    }
+```
+
+The result you get back is an instance of the row class you specified against the WebTable: WebPageRow.  When you get a WebPageRow back from a query, a scan, or a map reduce job, you can fetch the columns out via the column() call.  
+
+
+# Building HPaste
 This project is put together with Maven.  In theory you should be able to build and run the project's tests via:
 
 ```

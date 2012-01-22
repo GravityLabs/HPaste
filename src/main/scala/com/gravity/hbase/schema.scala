@@ -187,6 +187,7 @@ package object schema {
 
   implicit object StringLongMap extends MapConverter[String, Long]
 
+  implicit object StringStringMap extends MapConverter[String,String]
   /*
   Helper function to make byte arrays out of arbitrary values.
    */

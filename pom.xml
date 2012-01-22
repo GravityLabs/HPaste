@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.gravity</groupId>
   <artifactId>gravity-hpaste</artifactId>
-  <version>0.1.2</version>
+  <version>0.1.3</version>
   <name>hpaste</name>
   <description>Scala mapper for hbase</description>
   <inceptionYear>2011</inceptionYear>

@@ -44,6 +44,8 @@ import com.gravity.hbase.schema.ExampleSchema.ExampleTable
  */
 case class Kitten(name:String, age:Int, height:Double)
 
+case class PageUrl(url:String)
+
 /**
  * CUSTOM SERIALIZERS
  * These are serializers for custom types.  When you create your own serializers, which is common, it's useful to put them
@@ -52,6 +54,16 @@ case class Kitten(name:String, age:Int, height:Double)
  * import com.gravity.hbase.schema.CustomTypes._
  */
 object CustomTypes {
+
+  implicit object PageUrlConverter extends ComplexByteConverter[PageUrl] {
+    override def write(url:PageUrl, output:PrimitiveOutputStream) {
+      output.writeUTF(url.url)
+    }
+    override def read(input:PrimitiveInputStream) = {
+      PageUrl(input.readUTF())
+    }
+  }
+
   implicit object KittenConverter extends ComplexByteConverter[Kitten] {
     override def write(kitten:Kitten, output:PrimitiveOutputStream)  {
       output.writeUTF(kitten.name)
@@ -67,9 +79,25 @@ object CustomTypes {
   implicit object KittenSeqConverter extends SeqConverter[Kitten]
 }
 
-class ExampleTableRow(table:ExampleTable,result:DeserializedResult) extends HRow[ExampleTable,String](result,table)
 
 object ExampleSchema extends Schema {
+
+  class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName="pages",rowKeyClass=classOf[String]) {
+    def rowBuilder(result:DeserializedResult) = new WebPageRow(this,result)
+
+    val meta = family[String, String, Any]("meta")
+    val title = column(meta,"title",classOf[String])
+    val lastCrawled = column(meta,"lastCrawled",classOf[DateTime])
+
+    val content = family[String,String,Any]("text",compressed=true)
+    val article = column(content,"article",classOf[String])
+    val attributes = column(content,"attrs",classOf[Map[String,String]])
+
+
+
+  }
+  class WebPageRow(table:WebTable,result:DeserializedResult) extends HRow[WebTable,String](result,table)
+  val WebTable = table(new WebTable)
 
   //There should only be one HBaseConfiguration object per process.  You'll probably want to manage that
   //instance yourself, so this library expects a reference to that instance.  It's implicitly injected into
@@ -81,6 +109,7 @@ object ExampleSchema extends Schema {
   {
     def rowBuilder(result:DeserializedResult) = new ExampleTableRow(this,result)
 
+    val meta = family[String, String, Any]("meta")
     //Column family definition
     //Inside meta, assume a column called title whose value is a string
     val title = column(meta, "title", classOf[String])
@@ -106,6 +135,8 @@ object ExampleSchema extends Schema {
     val kittens = family[String,String,Kitten]("kittens")
   }
 
+  class ExampleTableRow(table:ExampleTable,result:DeserializedResult) extends HRow[ExampleTable,String](result,table)
+
   //Register the table (DON'T FORGET TO DO THIS :) )
   val ExampleTable = table(new ExampleTable)
 
@@ -125,11 +156,11 @@ object ClusterTest extends TestCase {
   fams += Bytes.toBytes("kittens")
   fams += Bytes.toBytes("viewsByDay")
 
-  val table = htest.createTable(Bytes.toBytes("schema_example"), fams.toArray)
-
-  @AfterClass def after() {
-    println("Hi there peeps")
+  ExampleSchema.tables.foreach {
+    table =>
+      htest.createTable(Bytes.toBytes(table.tableName), table.familyBytes.toArray)
   }
+
 }
 
 /**
