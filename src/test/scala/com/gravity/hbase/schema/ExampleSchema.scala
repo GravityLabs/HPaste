@@ -17,19 +17,11 @@
 
 package com.gravity.hbase.schema
 
-import org.apache.hadoop.hbase.HBaseTestingUtility
-import org.apache.hadoop.hbase.util.Bytes
-import collection.mutable.ArrayBuffer
 import org.junit.Assert._
-import junit.framework.TestCase
 import scala.collection._
 import org.junit._
 import org.joda.time.DateTime
-import java.io.{DataInputStream, DataOutputStream}
 import CustomTypes._
-import org.apache.hadoop.hbase.client.Result
-import com.gravity.hbase.schema._
-import com.gravity.hbase.schema.ExampleSchema.ExampleTable
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -82,27 +74,11 @@ object CustomTypes {
 
 object ExampleSchema extends Schema {
 
-  class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName="pages",rowKeyClass=classOf[String]) {
-    def rowBuilder(result:DeserializedResult) = new WebPageRow(this,result)
-
-    val meta = family[String, String, Any]("meta")
-    val title = column(meta,"title",classOf[String])
-    val lastCrawled = column(meta,"lastCrawled",classOf[DateTime])
-
-    val content = family[String,String,Any]("text",compressed=true)
-    val article = column(content,"article",classOf[String])
-    val attributes = column(content,"attrs",classOf[Map[String,String]])
-
-
-
-  }
-  class WebPageRow(table:WebTable,result:DeserializedResult) extends HRow[WebTable,String](result,table)
-  val WebTable = table(new WebTable)
 
   //There should only be one HBaseConfiguration object per process.  You'll probably want to manage that
   //instance yourself, so this library expects a reference to that instance.  It's implicitly injected into
   //the code, so the most convenient place to put it is right after you declare your Schema.
-  implicit val conf = ClusterTest.htest.getConfiguration
+  implicit val conf = LocalCluster.getTestConfiguration
 
   //A table definition, where the row keys are Strings
   class ExampleTable extends HbaseTable[ExampleTable,String, ExampleTableRow](tableName = "schema_example",rowKeyClass=classOf[String])
@@ -143,33 +119,12 @@ object ExampleSchema extends Schema {
 }
 
 
-/**
- * This sets up the testing cluster.
- * We don't support auto table creation (and all the dangerous thereof), so we manually use the Hbase API to create our test tables.
- */
-object ClusterTest extends TestCase {
-  val htest = new HBaseTestingUtility()
-  htest.startMiniCluster()
-  val fams = ArrayBuffer[Array[Byte]]()
-  fams += Bytes.toBytes("meta")
-  fams += Bytes.toBytes("views")
-  fams += Bytes.toBytes("kittens")
-  fams += Bytes.toBytes("viewsByDay")
 
-  ExampleSchema.tables.foreach {
-    table =>
-      htest.createTable(Bytes.toBytes(table.tableName), table.familyBytes.toArray)
-  }
-
-}
 
 /**
  * This test is intended to simultaneously test the library and show how you put together your own schema.
  */
-class ClusterTest extends TestCase {
-
-  import ClusterTest._
-
+class ExampleSchemaTest extends HPasteTestCase(ExampleSchema) {
 
   /**
    * Test that a complex custom type can be added and retrieved from a table as a Map
@@ -322,13 +277,7 @@ enable 'schema_example'"""
 
   }
 
-  /**
-   * This test should go last.  I haven't figured out how to do @AfterClass in Scala so I can guarantee shutdown of the test cluster.
-   */
-  @Test def testLastTest() {
-    println("Last test...")
-    htest.shutdownMiniCluster()
-  }
+
 
 }
 
