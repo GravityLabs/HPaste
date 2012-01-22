@@ -7,6 +7,10 @@
   <name>hpaste</name>
   <description>Scala mapper for hbase</description>
   <inceptionYear>2011</inceptionYear>
+  <organization>
+    <name>Gravity</name>
+    <url>http://www.gravity.com/</url>
+  </organization>
 
   <properties>
     <maven.compiler.source>1.5</maven.compiler.source>
