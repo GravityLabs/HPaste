@@ -20,31 +20,31 @@ The classic case for HBase and BigTable is crawling and storing web pages.  You 
 * A second column family holds content and has the compressed flag to true.
 * It has a family "content" for storing content.  The "article" column is for storing the main page content.
 * The Attributes column is a map where you can atomically store values keyed by a string.
+* SearchMetrics is a column family that contains searches your users have made that have sent them to that page, organized by day.
 
 ```scala
-object ExampleSchema extends Schema {
-	
-  implicit val conf = ClusterTest.htest.getConfiguration //Replace with your own configuration instance
+object WebCrawlingSchema extends Schema {
+  import com.gravity.hbase.schema._
+  import scala.collection._
 
+  implicit val conf = LocalCluster.getTestConfiguration
 
-  class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName="pages",rowKeyClass=classOf[PageUrl]) {
-    def rowBuilder(result:DeserializedResult) = new WebPageRow(this,result)
+  class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName = "pages", rowKeyClass = classOf[String]) {
+    def rowBuilder(result: DeserializedResult) = new WebPageRow(this, result)
 
     val meta = family[String, String, Any]("meta")
-    val title = column(meta,"title",classOf[String])
-    val lastCrawled = column(meta,"lastCrawled",classOf[DateTime])
-    val url = column(meta,"url",classOf[String])
+    val title = column(meta, "title", classOf[String])
+    val lastCrawled = column(meta, "lastCrawled", classOf[DateTime])
 
-    val content = family[String,String,Any]("text",compressed=true)
-    val article = column(content,"article",classOf[String])
-    val attributes = column(content,"attrs",classOf[Map[String,String]])
+    val content = family[String, String, Any]("text", compressed = true)
+    val article = column(content, "article", classOf[String])
+    val attributes = column(content, "attrs", classOf[Map[String, String]])
+
+    val searchMetrics = family[String, DateMidnight, Long]("searchesByDay")
 
 
   }
-  class WebPageRow(table:WebTable,result:DeserializedResult) extends HRow[WebTable,String](result,table)
-  val WebTable = table(new WebTable)
 }
-
 ```
 
 #### Putting values into the WebTable
@@ -52,14 +52,14 @@ object ExampleSchema extends Schema {
 Now, suppose you're crawling a website.  The below will create a row with the values specified.  When you call value(), the first argument is a function that points to the column you specified in the above WebTable schema.  This dips into DSL-land.
 
 ```scala
-ExampleSchema.WebTable
+WebCrawlingSchema.WebTable
             .put("http://mycrawledsite.com/crawledpage.html")
             .value(_.title, "My Crawled Page Title")
             .value(_.lastCrawled, new DateTime())
             .value(_.article, "Jonsie went to the store.  She didn't notice the spinning of the Earth, nor did the Earth notice the expansion of the Universe.")
             .value(_.attributes, Map("foo" -> "bar", "custom" -> "data"))
+            .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
             .execute()
-
 ```
 
 #### Querying values out of the WebTable
@@ -67,11 +67,18 @@ ExampleSchema.WebTable
 Let's get the above page out of the WebTable.  Let's say we just want the title of the page and when it was last crawled.  The withColumns() call tells HBase to only fetch those columns.  It takes a series of functions that return the column values you specified in the WebTable, so you get compile-time checking on that.  
 
 ```scala
-ExampleSchema.WebTable.query2.withKey("http://mycrawledsite.com/crawledpage.html")
-            .withColumns(_.title, _.lastCrawled).singleOption() match {
+WebCrawlingSchema.WebTable.query2.withKey("http://mycrawledsite.com/crawledpage.html")
+            .withColumns(_.title, _.lastCrawled)
+            .withFamilies(_.searchMetrics)
+            .singleOption() match {
       case Some(pageRow) => {
-        val title = pageRow.column(_.title).getOrElse("No Title")
-        val crawledDate = pageRow.column(_.lastCrawled).getOrElse(new DateTime())
+        println("Title: " + pageRow.column(_.title).getOrElse("No Title"))
+        println("Crawled on: " + pageRow.column(_.lastCrawled).getOrElse(new DateTime()))
+
+        pageRow.family(_.searchMetrics).foreach {
+          case (date: DateMidnight, views: Long) =>
+            println("Got " + views + " views on date " + date.toString("MM-dd-yyyy"))
+        }
         //Do something with title and crawled date...
       }
       case None => {
@@ -80,7 +87,27 @@ ExampleSchema.WebTable.query2.withKey("http://mycrawledsite.com/crawledpage.html
     }
 ```
 
-The result you get back is an instance of the row class you specified against the WebTable: WebPageRow.  When you get a WebPageRow back from a query, a scan, or a map reduce job, you can fetch the columns out via the column() call.  
+The result you get back is an instance of the row class you specified against the WebTable: WebPageRow.  When you get a WebPageRow back from a query, a scan, or a map reduce job, you can fetch the columns out via the column() call.  If you asked for a column family that can be treated as a Map (a Column Family that does not have columns specified in it), then you can retrieve the map via the family() call.
+
+#### Aggregating values via MapReduce jobs
+
+Let's say we have a lot of pages crawled, and we, as a search engine, have searches people have performed for those pages.  We now want to roll those into per-site totals.  Let's create a table next to our WebTable called the SiteMetricsTable:
+
+```scala
+class SiteMetricsTable extends HbaseTable[SiteMetricsTable, String, SiteMetricsRow](tableName = "site-metrics", rowKeyClass = classOf[String]) {
+    def rowBuilder(result: DeserializedResult) = new SiteMetricsRow(this, result)
+
+    val meta = family[String, String, Any]("meta")
+    val name = column(meta, "name", classOf[String])
+
+    val searchMetrics = family[String, DateMidnight, Long]("searchesByDay")
+}
+
+class SiteMetricsRow(table: SiteMetricsTable, result: DeserializedResult) extends HRow[SiteMetricsTable, String](result, table)
+
+val Sites = table(new SiteMetricsTable)
+
+```
 
 
 # Building HPaste

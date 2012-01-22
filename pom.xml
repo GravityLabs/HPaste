@@ -138,6 +138,7 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <version>2.6</version>
         <configuration>
+          <argLine>-Xmx1024m</argLine>
           <useFile>false</useFile>
           <disableXmlReport>true</disableXmlReport>
           <includes>
