@@ -874,6 +874,18 @@ abstract class BinaryReducerFx extends BinaryReducer with DelayedInit {
 
 }
 
+abstract class BinaryToTextReducerFx extends BinaryToTextReducer with DelayedInit {
+  private var initCode: () => Unit = _
+
+  override def delayedInit(body: => Unit) {
+    initCode = (() => body)
+  }
+
+  def reduce() {
+    initCode()
+  }
+}
+
 abstract class BinaryToTextReducer extends HReducer[BytesWritable, BytesWritable, NullWritable, Text] with BinaryReadable {
   def writeln(line: String) {write(NullWritable.get(), new Text(line))}
 
