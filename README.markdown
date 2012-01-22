@@ -91,6 +91,8 @@ The result you get back is an instance of the row class you specified against th
 
 #### Aggregating values via MapReduce jobs
 
+HPaste contains support for low-level MapReduce operations.  What we mean by low-level is that there are not many layers of abstraction on top of a basic MR job--instead, we focus on making it easy to create and manage table inputs and outputs and serialize binary data between them.
+
 Let's say we have a lot of pages crawled, and we, as a search engine, have searches people have performed for those pages.  We now want to roll those into per-site totals.  Let's create a table next to our WebTable called the SiteMetricsTable:
 
 ```scala
@@ -108,6 +110,64 @@ class SiteMetricsRow(table: SiteMetricsTable, result: DeserializedResult) extend
 val Sites = table(new SiteMetricsTable)
 
 ```
+
+Now we'll make a MapReduce job that scans the WebPages table, aggregates its metrics, and writes them to the SiteMetricsTable:
+
+```scala
+class WebSearchAggregationJob extends HJob[NoSettings]("Aggregate web searches by site",
+  HMapReduceTask(
+    HTaskID("Aggregation task"),
+    HTaskConfigs(),
+    HIO(
+      HTableInput(WebCrawlingSchema.WebTable),
+      HTableOutput(WebCrawlingSchema.Sites)
+    ),
+    new FromTableBinaryMapperFx(WebCrawlingSchema.WebTable) {
+      val webPage = row
+      val domain = new URL(webPage.rowid).getAuthority
+      ctr("Sites for domain" + domain)
+
+      val dates = webPage.family(_.searchMetrics)
+
+      for((dateOfSearches,searchCount) <- dates) {
+        val keyOutput = makeWritable{keyWriter=>
+          keyWriter.writeUTF(domain)
+          keyWriter.writeObj(dateOfSearches)
+        }
+        val valueOutput = makeWritable{valueWriter=>
+          valueWriter.writeLong(searchCount)
+        }
+        ctr("Dated metrics written for domain " + domain)
+        write(keyOutput, valueOutput)
+      }
+    },
+    new ToTableBinaryReducerFx(WebCrawlingSchema.Sites) {
+      val (domain, dateOfSearches) = readKey{keyInput=>
+        (keyInput.readUTF(), keyInput.readObj[DateMidnight])
+      }
+
+      var totalCounts = 0l
+
+      perValue{valueInput=>
+        totalCounts += valueInput.readLong
+      }
+
+
+      write(
+        WebCrawlingSchema.Sites.put(domain).valueMap(_.searchMetrics,Map(dateOfSearches->totalCounts))
+      )
+    }
+  )
+)
+
+```
+We can execute the above job via (where the Configuration object is the one relevant to your clsuter):
+
+```scala
+new WebSearchAggregationJob().run(Settings.None, LocalCluster.getTestConfiguration)
+```
+
+All of the above examples are part of the HPaste unit tests, so it should be easy to use them to set up your own system.  
 
 
 # Building HPaste
