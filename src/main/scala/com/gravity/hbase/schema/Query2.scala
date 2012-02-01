@@ -164,6 +164,23 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       Some(vc)
     }
 
+    def columnValueMustBeGreaterThan[F,K,V](column:(T) => Column[T,R,F,K,V],value:V) = {
+      val c = column(table.pops)
+      val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.GREATER, c.valueConverter.toBytes(value))
+      vc.setFilterIfMissing(true)
+      vc.setLatestVersionOnly(true)
+      Some(vc)
+    }
+
+    def columnValueMustBeLessThan[F,K,V](column:(T) => Column[T,R,F,K,V],value:V) = {
+      val c = column(table.pops)
+      val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.LESS, c.valueConverter.toBytes(value))
+      vc.setFilterIfMissing(true)
+      vc.setLatestVersionOnly(true)
+      Some(vc)
+    }
+
+
     def columnValueMustBePresent[F, K, V](column: (T) => Column[T, R, F, K, V]) = {
       val c = column(table.pops)
       val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.NOT_EQUAL, Bytes.toBytes(0))
