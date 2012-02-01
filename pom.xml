@@ -4,6 +4,7 @@
   <groupId>com.gravity</groupId>
   <artifactId>gravity-hpaste</artifactId>
   <version>0.1.4</version>
+  <packaging>jar</packaging>
   <name>hpaste</name>
   <description>Scala mapper for hbase</description>
   <inceptionYear>2011</inceptionYear>
@@ -11,6 +12,48 @@
     <name>Gravity</name>
     <url>http://www.gravity.com/</url>
   </organization>
+  <developers>
+    <developer>
+      <id>Lemmsjid</id>
+      <name>Chris Bissell</name>
+      <email>chris@gravity.com</email>
+      <url>http://github.com/Lemmsjid</url>
+      <organization>Gravity</organization>
+      <organizationUrl>http://www.gravity.com/</organizationUrl>
+      <roles>
+        <role>developer</role>
+        <role>architect</role>
+      </roles>
+      <timezone>-8</timezone>
+    </developer>
+    <developer>
+      <id>erraggy</id>
+      <name>Robbie Coleman</name>
+      <email>robbie@gravity.com</email>
+      <url>http://robbie.robnrob.com/</url>
+      <organization>Gravity</organization>
+      <organizationUrl>http://www.gravity.com/</organizationUrl>
+      <roles>
+        <role>developer</role>
+      </roles>
+      <timezone>-8</timezone>
+      <properties>
+        <picUrl>http://1.gravatar.com/avatar/dc77b368ec1f077dcc4aca3b9c003d2d</picUrl>
+      </properties>
+    </developer>
+  </developers>
+  <scm>
+    <url>http://github.com/GravityLabs/HPaste</url>
+    <connection>scm:git:git://github.com/GravityLabs/HPaste</connection>
+  </scm>
+  <licenses>
+    <license>
+      <name>Apache 2</name>
+      <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+      <comments>A business-friendly OSS license</comments>
+    </license>
+  </licenses>
 
   <properties>
     <maven.compiler.source>1.5</maven.compiler.source>
@@ -18,27 +61,7 @@
     <encoding>UTF-8</encoding>
     <scala.version>2.9.1</scala.version>
   </properties>
-
-  <repositories>
-    <repository>
-      <id>scala-tools.org</id>
-      <name>Scala-Tools Maven2 Repository</name>
-      <url>http://scala-tools.org/repo-releases</url>
-    </repository>
-    <repository>
-      <id>cloudera-hadoop-repo</id>
-      <name>Cloudera Hadoop Repo</name>
-      <url>https://repository.cloudera.com/content/repositories/releases</url>
-    </repository>
-  </repositories>
-
-  <pluginRepositories>
-    <pluginRepository>
-      <id>scala-tools.org</id>
-      <name>Scala-Tools Maven2 Repository</name>
-      <url>http://scala-tools.org/repo-releases</url>
-    </pluginRepository>
-  </pluginRepositories>
+  
   <dependencies>
     <dependency>
       <groupId>joda-time</groupId>
@@ -48,7 +71,7 @@
     <dependency>
       <groupId>org.apache.hbase</groupId>
       <artifactId>hbase</artifactId>
-      <version>0.90.3-cdh3u1</version>
+      <version>0.90.4</version>
       <exclusions>
         <exclusion>
           <groupId>org.slf4j</groupId>
@@ -62,13 +85,12 @@
           <groupId>org.jruby</groupId>
           <artifactId>jruby-complete</artifactId>
         </exclusion>
-
       </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.hbase</groupId>
       <artifactId>hbase</artifactId>
-      <version>0.90.3-cdh3u1</version>
+      <version>0.90.4</version>
       <type>test-jar</type>
       <scope>test</scope>
       <exclusions>
@@ -76,13 +98,12 @@
           <groupId>org.jruby</groupId>
           <artifactId>jruby-complete</artifactId>
         </exclusion>
-
       </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-test</artifactId>
-      <version>0.20.2-cdh3u1</version>
+      <version>0.20.203</version>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -102,17 +123,17 @@
 
   <build>
     <plugins>
-		<plugin>
-		            <groupId>org.apache.maven.plugins</groupId>
-		            <artifactId>maven-source-plugin</artifactId>
-		            <executions>
-		                <execution>
-		                    <goals>
-		                        <goal>jar</goal>
-		                    </goals>
-		                </execution>
-		            </executions>
-		        </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <groupId>org.scala-tools</groupId>
         <artifactId>maven-scala-plugin</artifactId>
@@ -149,9 +170,7 @@
           </excludes>
         </configuration>
       </plugin>
-
     </plugins>
   </build>
-
 
 </project>
