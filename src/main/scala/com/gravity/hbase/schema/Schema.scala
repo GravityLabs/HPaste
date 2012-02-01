@@ -276,24 +276,27 @@ class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _], key: A
   /**
     * This is an experimental call that utilizes a shared instance of a table to flush writes.
     */
-  def executeBuffered(tableName: String = table.tableName) = {
+  def executeBuffered(tableName: String = table.tableName)  {
 
     val (deletes, puts, increments) = prepareOperations
 
-    table.withBufferedTable(tableName) {
-      bufferTable =>
-        if (puts.size > 0) {
-          bufferTable.put(puts)
-        }
-        if (deletes.size > 0) {
-          bufferTable.delete(deletes)
-        }
-        if (increments.size > 0) {
-          increments.foreach {
-            increment =>
-              bufferTable.increment(increment)
+    if (deletes.size == 0 && puts.size == 0 && increments.size == 0) {
+    } else {
+      table.withBufferedTable(tableName) {
+        bufferTable =>
+          if (puts.size > 0) {
+            bufferTable.put(puts)
           }
-        }
+          if (deletes.size > 0) {
+            bufferTable.delete(deletes)
+          }
+          if (increments.size > 0) {
+            increments.foreach {
+              increment =>
+                bufferTable.increment(increment)
+            }
+          }
+      }
     }
 
   }
@@ -305,10 +308,14 @@ class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _], key: A
 
     previous.foreach {
       case put: PutOp[T, R] => {
-        puts += put.put
+        if (!put.put.isEmpty) {
+          puts += put.put
+        }
       }
       case delete: DeleteOp[T, R] => {
-        deletes += delete.delete
+        if (!delete.delete.isEmpty) {
+          deletes += delete.delete
+        }
       }
       case increment: IncrementOp[T, R] => {
         increments += increment.increment
@@ -320,19 +327,25 @@ class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _], key: A
 
   def execute(tableName: String = table.tableName) = {
     val (deletes, puts, increments) = prepareOperations
-    table.withTable(tableName) {
-      table =>
-        if (puts.size > 0) {
-          table.put(puts)
-          //IN THEORY, the operations will happen in order.  If not, break this into two different batched calls for deletes and puts
-        }
-        if (deletes.size > 0) {
-          table.delete(deletes)
-        }
-        if (increments.size > 0) {
-          increments.foreach(increment => table.increment(increment))
-        }
+
+    if (deletes.size == 0 && puts.size == 0 && increments.size == 0) {
+      //No need to do anything if there are no real operations to execute
+    } else {
+      table.withTable(tableName) {
+        table =>
+          if (puts.size > 0) {
+            table.put(puts)
+            //IN THEORY, the operations will happen in order.  If not, break this into two different batched calls for deletes and puts
+          }
+          if (deletes.size > 0) {
+            table.delete(deletes)
+          }
+          if (increments.size > 0) {
+            increments.foreach(increment => table.increment(increment))
+          }
+      }
     }
+
 
     OpsResult(0, puts.size, increments.size)
   }
@@ -424,14 +437,17 @@ trait KeyValueConvertible[F, K, V] {
   val keyConverter: ByteConverter[K]
   val valueConverter: ByteConverter[V]
 
-  def keyToBytes(key:K) = keyConverter.toBytes(key)
-  def valueToBytes(value:V) = valueConverter.toBytes(value)
+  def keyToBytes(key: K) = keyConverter.toBytes(key)
 
-  def keyToBytesUnsafe(key:AnyRef) = keyConverter.toBytes(key.asInstanceOf[K])
-  def valueToBytesUnsafe(value:AnyRef) = valueConverter.toBytes(value.asInstanceOf[V])
+  def valueToBytes(value: V) = valueConverter.toBytes(value)
 
-  def keyFromBytesUnsafe(bytes:Array[Byte]) = keyConverter.fromBytes(bytes).asInstanceOf[AnyRef]
-  def valueFromBytesUnsafe(bytes:Array[Byte]) = valueConverter.fromBytes(bytes).asInstanceOf[AnyRef]
+  def keyToBytesUnsafe(key: AnyRef) = keyConverter.toBytes(key.asInstanceOf[K])
+
+  def valueToBytesUnsafe(value: AnyRef) = valueConverter.toBytes(value.asInstanceOf[V])
+
+  def keyFromBytesUnsafe(bytes: Array[Byte]) = keyConverter.fromBytes(bytes).asInstanceOf[AnyRef]
+
+  def valueFromBytesUnsafe(bytes: Array[Byte]) = valueConverter.fromBytes(bytes).asInstanceOf[AnyRef]
 
   def family: ColumnFamily[_, _, _, _, _]
 }
@@ -439,7 +455,7 @@ trait KeyValueConvertible[F, K, V] {
 /**
   * Represents the specification of a Column Family
   */
-class ColumnFamily[T <: HbaseTable[T, R, _], R, F, K, V](val table: HbaseTable[T, R, _], val familyName: F, val compressed: Boolean = false, val versions: Int = 1, val index: Int,val ttlInSeconds:Int = HColumnDescriptor.DEFAULT_TTL)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
+class ColumnFamily[T <: HbaseTable[T, R, _], R, F, K, V](val table: HbaseTable[T, R, _], val familyName: F, val compressed: Boolean = false, val versions: Int = 1, val index: Int, val ttlInSeconds: Int = HColumnDescriptor.DEFAULT_TTL)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
   val familyConverter = c
   val keyConverter = d
   val valueConverter = e
@@ -452,7 +468,7 @@ class ColumnFamily[T <: HbaseTable[T, R, _], R, F, K, V](val table: HbaseTable[T
 /**
   * Represents the specification of a Column.
   */
-class Column[T <: HbaseTable[T, R, _], R, F, K, V](table: HbaseTable[T, R, _], columnFamily: ColumnFamily[T, R, F, K, _], val columnName: K,val columnIndex:Int)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
+class Column[T <: HbaseTable[T, R, _], R, F, K, V](table: HbaseTable[T, R, _], columnFamily: ColumnFamily[T, R, F, K, _], val columnName: K, val columnIndex: Int)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
   val columnBytes = kc.toBytes(columnName)
   val familyBytes = columnFamily.familyBytes
   val columnNameRef = columnName.asInstanceOf[AnyRef]
@@ -774,27 +790,27 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
       val key = kv.getQualifier
       try {
         val c = converterByBytes(family, key)
-        if(!c.isInstanceOf[ByteConverter[Any]]) {
+        if (!c.isInstanceOf[ByteConverter[Any]]) {
           val f = c.family
           val k = c.keyConverter.fromBytes(buff, kv.getQualifierOffset, kv.getQualifierLength).asInstanceOf[AnyRef]
           val r = c.valueConverter.fromBytes(buff, kv.getValueOffset, kv.getValueLength).asInstanceOf[AnyRef]
           val ts = kv.getTimestamp
 
           ds.add(f, k, r, ts)
-        }else {
+        } else {
           //TODO: Just like AnyNotSupportException, add a counter here because this means a column was removed, but the data is still in the database.
         }
       } catch {
         case ex: AnyNotSupportedException => {
           //This means a column came back that is no longer part of the specification
           //TODO: Keep counters of columns that were encountered and we were unable to deserialize
-//          println("Attempted to lookup column: " + new String(key) + " in family: " + new String(family) + " and didn't find a serializer")
-//          ds.addErrorBuffer(family, key, value, kv.getTimestamp)
+          //          println("Attempted to lookup column: " + new String(key) + " in family: " + new String(family) + " and didn't find a serializer")
+          //          ds.addErrorBuffer(family, key, value, kv.getTimestamp)
         }
         case ex: Exception => {
           //          println(ex.getMessage)
           //          println(ex.getStackTraceString)
-  //        ds.addErrorBuffer(family, key, value, kv.getTimestamp)
+          //        ds.addErrorBuffer(family, key, value, kv.getTimestamp)
         }
       } finally {
         itr = itr + 1
@@ -882,10 +898,11 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     arr
   }
 
-  def columnByIndex(idx:Int) = columnArray(idx)
+  def columnByIndex(idx: Int) = columnArray(idx)
+
   lazy val columnArray = {
-    val arr = new Array[Column[_,_,_,_,_]](columns.length)
-    columns.foreach{col=>arr(col.columnIndex)=col}
+    val arr = new Array[Column[_, _, _, _, _]](columns.length)
+    columns.foreach {col => arr(col.columnIndex) = col}
     arr
   }
 
@@ -922,8 +939,8 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
   def familyDef(family: ColumnFamily[T, _, _, _, _]) = {
     val compression = if (family.compressed) ", COMPRESSION=>'lzo'" else ""
-    val ttl = if(family.ttlInSeconds < HColumnDescriptor.DEFAULT_TTL) ", TTL=>'"+family.ttlInSeconds+"'" else ""
-    "{NAME => '%s', VERSIONS => %d%s%s}".format(Bytes.toString(family.familyBytes), family.versions, compression,ttl)
+    val ttl = if (family.ttlInSeconds < HColumnDescriptor.DEFAULT_TTL) ", TTL=>'" + family.ttlInSeconds + "'" else ""
+    "{NAME => '%s', VERSIONS => %d%s%s}".format(Bytes.toString(family.familyBytes), family.versions, compression, ttl)
   }
 
 
@@ -934,14 +951,15 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
   private val columns = ArrayBuffer[Column[T, R, _, _, _]]()
   val families = ArrayBuffer[ColumnFamily[T, R, _, _, _]]()
 
-  val columnsByName = mutable.Map[AnyRef,Column[T,R,_,_,_]]()
+  val columnsByName = mutable.Map[AnyRef, Column[T, R, _, _, _]]()
 
   private val columnsByBytes = mutable.Map[ByteBuffer, KeyValueConvertible[_, _, _]]()
   private val familiesByBytes = mutable.Map[ByteBuffer, KeyValueConvertible[_, _, _]]()
 
   var columnIdx = 0
+
   def column[F, K, V](columnFamily: ColumnFamily[T, R, F, K, _], columnName: K, valueClass: Class[V])(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) = {
-    val c = new Column[T, R, F, K, V](this, columnFamily, columnName,columnIdx)
+    val c = new Column[T, R, F, K, V](this, columnFamily, columnName, columnIdx)
     columns += c
 
     val famBytes = columnFamily.familyBytes
@@ -957,8 +975,8 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
   var familyIdx = 0
 
-  def family[F, K, V](familyName: F, compressed: Boolean = false, versions: Int = 1, rowTtlInSeconds:Int=Int.MaxValue)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) = {
-    val family = new ColumnFamily[T, R, F, K, V](this, familyName, compressed, versions, familyIdx,rowTtlInSeconds)
+  def family[F, K, V](familyName: F, compressed: Boolean = false, versions: Int = 1, rowTtlInSeconds: Int = Int.MaxValue)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) = {
+    val family = new ColumnFamily[T, R, F, K, V](this, familyName, compressed, versions, familyIdx, rowTtlInSeconds)
     familyIdx = familyIdx + 1
     families += family
     familiesByBytes.put(ByteBuffer.wrap(family.familyBytes), family)
