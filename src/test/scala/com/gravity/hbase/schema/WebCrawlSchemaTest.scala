@@ -2,13 +2,13 @@ package com.gravity.hbase.schema
 
 import com.gravity.hbase.mapreduce._
 import java.lang.String
-import org.junit.Test
 import org.joda.time.{DateMidnight, DateTime}
 import com.gravity.hbase.mapreduce.{HMapReduceTask, HJob}
 import java.net.URL
 import com.gravity.hbase.schema._
 import scala.collection._
 import com.gravity.hbase.schema.WebCrawlingSchema.WebPageRow
+import org.junit.{Assert, Test}
 
 /*             )\._.,--....,'``.
  .b--.        /;   _.. \   _\  (`._ ,.
@@ -72,32 +72,36 @@ class WebSearchAggregationJob extends HJob[NoSettings]("Aggregate web searches b
 
       val dates = webPage.family(_.searchMetrics)
 
-      for((dateOfSearches,searchCount) <- dates) {
-        val keyOutput = makeWritable{keyWriter=>
-          keyWriter.writeUTF(domain)
-          keyWriter.writeObj(dateOfSearches)
+      for ((dateOfSearches, searchCount) <- dates) {
+        val keyOutput = makeWritable {
+          keyWriter =>
+            keyWriter.writeUTF(domain)
+            keyWriter.writeObj(dateOfSearches)
         }
-        val valueOutput = makeWritable{valueWriter=>
-          valueWriter.writeLong(searchCount)
+        val valueOutput = makeWritable {
+          valueWriter =>
+            valueWriter.writeLong(searchCount)
         }
         ctr("Dated metrics written for domain " + domain)
         write(keyOutput, valueOutput)
       }
     },
     new ToTableBinaryReducerFx(WebCrawlingSchema.Sites) {
-      val (domain, dateOfSearches) = readKey{keyInput=>
-        (keyInput.readUTF(), keyInput.readObj[DateMidnight])
+      val (domain, dateOfSearches) = readKey {
+        keyInput =>
+          (keyInput.readUTF(), keyInput.readObj[DateMidnight])
       }
 
       var totalCounts = 0l
 
-      perValue{valueInput=>
-        totalCounts += valueInput.readLong
+      perValue {
+        valueInput =>
+          totalCounts += valueInput.readLong
       }
 
 
       write(
-        WebCrawlingSchema.Sites.put(domain).valueMap(_.searchMetrics,Map(dateOfSearches->totalCounts))
+        WebCrawlingSchema.Sites.put(domain).valueMap(_.searchMetrics, Map(dateOfSearches -> totalCounts))
       )
     }
   )
@@ -112,21 +116,22 @@ class WebTablePagesBySiteJob extends HJob[NoSettings]("Get articles by site",
       HPathOutput("/reports/wordcount")
     ),
     new FromTableBinaryMapperFx(WebCrawlingSchema.WebTable) {
-      val webPage : WebPageRow = row //For illustrative purposes we're specifying the type here, no need to
+      val webPage: WebPageRow = row //For illustrative purposes we're specifying the type here, no need to
       val domain = row.domain //We've added a convenience method to WebPageRow to extract the domain for us
 
       write(
-      {keyOutput=>keyOutput.writeUTF(domain)}, //This writes out the domain as the key
-      {valueOutput=>valueOutput.writeRow(WebCrawlingSchema.WebTable,webPage)} //This writes the entire value of the row out
+      {keyOutput => keyOutput.writeUTF(domain)}, //This writes out the domain as the key
+      {valueOutput => valueOutput.writeRow(WebCrawlingSchema.WebTable, webPage)} //This writes the entire value of the row out
       )
     },
     new BinaryToTextReducerFx {
       val domain = readKey(_.readUTF()) //This allows you to read out the key
 
-      perValue{valueInput=>
-        val webPage : WebPageRow = valueInput.readRow(WebCrawlingSchema.WebTable) //Now you can read out the entire WebPageRow object from the value stream
-        ctr("Pages for domain " + domain)
-        writeln(domain + "\t" + webPage.column(_.title).getOrElse("No Title")) //This is a convenience function that writes a line to the text output
+      perValue {
+        valueInput =>
+          val webPage: WebPageRow = valueInput.readRow(WebCrawlingSchema.WebTable) //Now you can read out the entire WebPageRow object from the value stream
+          ctr("Pages for domain " + domain)
+          writeln(domain + "\t" + webPage.column(_.title).getOrElse("No Title")) //This is a convenience function that writes a line to the text output
       }
     }
   )
@@ -193,7 +198,7 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
 
     WebCrawlingSchema.Sites.query2.withKey("mycrawledsite.com").singleOption() match {
       case Some(siteRow) => {
-        siteRow.family(_.searchMetrics).foreach{println}
+        siteRow.family(_.searchMetrics).foreach {println}
       }
       case None => {
         println("Didn't find the site, strange!")
@@ -203,24 +208,51 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
 
   @Test def testPagesBySiteJob() {
     WebCrawlingSchema.WebTable
-                .put("http://mycrawledsite2.com/crawledpage2.html")
-                .value(_.title, "My Crawled Page Title2")
-                .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
-                .put("http://mycrawledsite2.com/crawledpage3.html")
-                .value(_.title, "My Crawled Page Title3")
-                .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
-                .put("http://mycrawledsite3.com/crawledpage4.html")
-                .value(_.title, "My Crawled Page Title4")
-                .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
-                .put("http://mycrawledsite3.com/crawledpage4.html")
-                .value(_.title, "My Crawled Page Title5")
-                .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
-                .put("http://mycrawledsite3.com/crawledpage4.html")
-                .value(_.title, "My Crawled Page Title6")
-                .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
-                .execute()
+            .put("http://mycrawledsite2.com/crawledpage2.html")
+            .value(_.title, "My Crawled Page Title2")
+            .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+            .put("http://mycrawledsite2.com/crawledpage3.html")
+            .value(_.title, "My Crawled Page Title3")
+            .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+            .put("http://mycrawledsite3.com/crawledpage4.html")
+            .value(_.title, "My Crawled Page Title4")
+            .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+            .put("http://mycrawledsite3.com/crawledpage4.html")
+            .value(_.title, "My Crawled Page Title5")
+            .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+            .put("http://mycrawledsite3.com/crawledpage4.html")
+            .value(_.title, "My Crawled Page Title6")
+            .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+            .execute()
 
     new WebTablePagesBySiteJob().run(Settings.None, LocalCluster.getTestConfiguration)
+  }
+
+  @Test def testBeginValueFiltration() {
+    val site1 = "http://filtersite1.com/"
+    val site2 = "http://filtersite2.com/"
+
+    val articles = Map("About Cats" -> "aboutcats.html", "About Dogs" -> "aboutdogs.html", "About Orangutans" -> "aboutorangutans.html", "Interview with a Kitten" -> "interview.html")
+
+    for {
+      (title, shortUrl) <- articles
+      longUrl = site1 + shortUrl
+      longUrl2 = site2 + shortUrl
+    } {
+      WebCrawlingSchema.WebTable.put(longUrl).value(_.title, longUrl).execute()
+      WebCrawlingSchema.WebTable.put(longUrl2).value(_.title, longUrl2).execute()
+    }
+
+    val results = WebCrawlingSchema.WebTable.query2.filter(_.or(_.columnValueMustContain(_.title,site1))).scanToIterable(itm=>itm)
+    Assert.assertTrue(results.size == 4)
+
+    val results2 = WebCrawlingSchema.WebTable.query2.filter(_.or(_.columnValueMustContain(_.title,site2))).scanToIterable(itm=>itm)
+    Assert.assertTrue(results2.size == 4)
+
+  }
+
+  @Test def testNoOpExecute() {
+    WebCrawlingSchema.WebTable.put("Hello").execute()
   }
 
 }
