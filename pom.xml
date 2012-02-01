@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.gravity</groupId>
   <artifactId>gravity-hpaste</artifactId>
-  <version>0.1.5</version>
+  <version>0.1.6-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>hpaste</name>
   <url>http://github.com/GravityLabs/HPaste</url>
