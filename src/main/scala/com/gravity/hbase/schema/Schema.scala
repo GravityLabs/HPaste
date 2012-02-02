@@ -313,9 +313,7 @@ class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _], key: A
         }
       }
       case delete: DeleteOp[T, R] => {
-        if (!delete.delete.isEmpty) {
           deletes += delete.delete
-        }
       }
       case increment: IncrementOp[T, R] => {
         increments += increment.increment

@@ -45,11 +45,9 @@ class ScanQuery[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]](table: HbaseTable[
     completeScanner(operator)
     val results = table.cache.getScanResult(scan) match {
       case Some(result) => {
-        println("cache hit against key " + scan.toString)
         result
       }
       case None => {
-        println("cache miss against key " + scan.toString)
         val results = scala.collection.mutable.Buffer[RR]()
         table.withTable() {
           htable =>

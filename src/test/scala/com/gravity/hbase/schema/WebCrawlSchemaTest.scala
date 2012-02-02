@@ -255,4 +255,16 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
     WebCrawlingSchema.WebTable.put("Hello").execute()
   }
 
+  @Test def testDeletion() {
+    WebCrawlingSchema.WebTable.put("http://hithere.com/yo").value(_.title,"Hi, this will be deleted").execute()
+    WebCrawlingSchema.WebTable.delete("http://hithere.com/yo").execute()
+
+    WebCrawlingSchema.WebTable.query2.withKey("http://hithere.com/yo").singleOption() match {
+      case Some(result) => {
+        Assert.fail("Deletion did not go through")
+      }
+      case None => {
+      }
+    }
+  }
 }
