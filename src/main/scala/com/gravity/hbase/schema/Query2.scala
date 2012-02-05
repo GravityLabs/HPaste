@@ -261,6 +261,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
   var currentFilter: FilterList = _ // new FilterList(Operator.MUST_PASS_ALL)
   var startRowBytes: Array[Byte] = null
   var endRowBytes: Array[Byte] = null
+  var batchSize = -1
 
   /** The key to fetch (this makes it into a Get request against hbase) */
   def withKey(key: R) = {
@@ -553,6 +554,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
     resultMap // DONE!
   }
 
+
   private def buildGetsAndCheckCache(skipCache: Boolean)(receiveGetAndKey: (Get, Array[Byte]) => Unit = (get, key) => {})(receiveCachedResult: (Option[RR], Get) => Unit = (qr, get) => {}): Seq[Get] = {
     if (keys.isEmpty) return Seq.empty[Get] // no keys..? nothing to see here... move along... move along.
 
@@ -563,6 +565,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       if (startTime != Long.MinValue || endTime != Long.MaxValue) {
         get.setTimeRange(startTime, endTime)
       }
+
 
       gets += get
       receiveGetAndKey(get, key)
@@ -617,6 +620,10 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
     endRowBytes = table.rowKeyConverter.toBytes(row)
     this
   }
+  def withBatchSize(size:Int) = {
+    batchSize = size
+    this
+  }
 
   def makeScanner(maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100) = {
     require(keys.size == 0, "A scanner should not specify keys, use singleOption or execute or executeMap")
@@ -624,6 +631,10 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
     scan.setMaxVersions(maxVersions)
     scan.setCaching(cacheSize)
     scan.setCacheBlocks(cacheBlocks)
+
+    if(batchSize > -1) {
+      scan.setBatch(batchSize)
+    }
 
     if (startTime != Long.MinValue || endTime != Long.MaxValue) {
       scan.setTimeRange(startTime, endTime)

@@ -632,6 +632,17 @@ abstract class HRow[T <: HbaseTable[T, R, _], R](result: DeserializedResult, tab
 
   def prettyPrintNoValues() {println(prettyFormatNoValues())}
 
+  def size = {
+    var _size = 0
+    for(i <- 0 until result.values.length) {
+      val familyMap = result.values(i)
+      if(familyMap != null) {
+        _size += familyMap.values.size
+      }
+    }
+    _size
+  }
+
   def prettyFormatNoValues() = {
     val sb = new StringBuilder()
     sb.append("Row Key: " + result.rowid + " (" + result.values.size + " families)" + "\n")
