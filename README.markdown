@@ -23,6 +23,18 @@ The goal of HPaste's MapReduce support is to allow you to build rich functionali
 ## Project Status
 This project is currently actively developed and maintained.  It is used in a large production codebase in high-throughput, memory-intensive scenarios, and has many months of bug fixes under its belt.  Because it already has a great deal of code utilizing it, there will not be many breaking changes to the API.  Instead what we usually do is provide an upgraded API that sits next to the old API, then deprecate the old one.  
 
+## Installation
+
+This project uses [Maven](http://maven.apache.org/ "Apache Maven"). To use HPaste in your own maven project, simply add it as a dependency:
+
+```xml
+<dependency>
+  <groupId>com.gravity</groupId>
+  <artifactId>gravity-hpaste</artifactId>
+  <version>0.1.5</version>
+</dependency>
+```
+
 ## Quickstart
 
 Here's some quick code examples to give you a sense of what you're getting into.  All of the examples in the sections below come from the HPaste unit tests.  Specifically the file [WebCrawlSchemaTest.scala](https://github.com/GravityLabs/HPaste/blob/master/src/test/scala/com/gravity/hbase/schema/WebCrawlSchemaTest.scala).  If you go to that file and follow along with the explanations below, things will make more sense.
