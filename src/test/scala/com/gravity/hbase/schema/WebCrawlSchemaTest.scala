@@ -9,6 +9,7 @@ import com.gravity.hbase.schema._
 import scala.collection._
 import com.gravity.hbase.schema.WebCrawlingSchema.WebPageRow
 import org.junit.{Assert, Test}
+import org.apache.hadoop.io.Text
 
 /*             )\._.,--....,'``.
  .b--.        /;   _.. \   _\  (`._ ,.
@@ -56,6 +57,28 @@ object WebCrawlingSchema extends Schema {
   val Sites = table(new SiteMetricsTable)
 
 }
+
+class WebContentSequencingJob extends HJob[NoSettings]("Content to sequence file by url",
+  HMapTask(
+    HTaskID("Sequencing Task"),
+    HTaskConfigs(),
+    HIO(
+      HTableInput(WebCrawlingSchema.WebTable),
+      HSequenceOutput[Text,Text]("/user/hpaste/reports/contentsequence")
+    ),
+    new FromTableMapper(WebCrawlingSchema.WebTable, classOf[Text], classOf[Text]) {
+      def map() {
+        val webpage = row
+        val title = webpage.column(_.title).getOrElse("")
+        val text = webpage.column(_.article).getOrElse("")
+        if (title.length > 0 && text.length > 0) {
+          write(new Text(title), new Text(text))
+        }
+      }
+    }
+  )
+)
+
 
 class WebSearchAggregationJob extends HJob[NoSettings]("Aggregate web searches by site",
   HMapReduceTask(
@@ -283,5 +306,14 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
       Assert.assertTrue(page.size <= 2)
     })
 
+  }
+
+  @Test def testContentSequencing() {
+    val domain = "http://sequencing.com/"
+    WebCrawlingSchema.WebTable.put(domain + "article1").value(_.title,"Batch Title 1").value(_.article,"Content 1").execute()
+    WebCrawlingSchema.WebTable.put(domain + "article2").value(_.title,"Batch Title 2").value(_.article,"Content 2").execute()
+    WebCrawlingSchema.WebTable.put(domain + "article3").value(_.title,"Batch Title 3").value(_.article,"Content 3").execute()
+    WebCrawlingSchema.WebTable.put(domain + "article4").value(_.title,"Batch Title 4").value(_.article,"Content 4").execute()
+    new WebContentSequencingJob().run(Settings.None,LocalCluster.getTestConfiguration)
   }
 }

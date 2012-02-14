@@ -638,12 +638,14 @@ case class HSequenceInput[K,V](paths:Seq[String]) extends HInput {
   * @tparam K
   * @tparam V
   */
-case class HSequenceOutput[K,V](seqPath:String) extends HOutput {
+case class HSequenceOutput[K : Manifest,V : Manifest](seqPath:String) extends HOutput {
   override def toString = "Output: Sequence File at " + path.toUri.toString
 
   var path = new Path(seqPath)
 
   override def init(job: Job, settings: SettingsBase) {
+    FileSystem.get(job.getConfiguration).delete(path, true)
+
     job.setOutputFormatClass(classOf[SequenceFileOutputFormat[K, V]])
     FileOutputFormat.setOutputPath(job, path)
   }
@@ -1134,8 +1136,13 @@ case class HTaskID(name: String, previousTaskName: String = null, requiredTask: 
 case class HMapTask[MK, MV, MOK: Manifest, MOV: Manifest](id: HTaskID, configs: HTaskConfigs = HTaskConfigs(), io: HIO[MK, MV, MOK, MOV] = HIO(), mapper: HMapper[MK, MV, MOK, MOV]) extends HTask[MK, MV, MOK, MOV](id, configs, io) {
   def decorateJob(job: Job) {
     job.setMapperClass(mapper.getClass)
+
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
+
+    job.setOutputKeyClass(classManifest[MOK].erasure)
+    job.setOutputValueClass(classManifest[MOV].erasure)
+
     job.setNumReduceTasks(0)
   }
 
