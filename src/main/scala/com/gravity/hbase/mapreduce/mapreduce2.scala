@@ -548,6 +548,8 @@ case class HPathInput(paths: Seq[String]) extends HInput {
   }
 }
 
+
+
 /** Allows the output to be written to multiple tables. Currently the list of tables passed in is
   * purely for documentation.  There is no check in the output that will keep you from writing to other tables.
   */
@@ -607,6 +609,43 @@ case class HRandomSequenceInput[K, V]() extends HInput {
     FileInputFormat.addInputPath(job, previousPath)
 
     job.setInputFormatClass(classOf[SequenceFileInputFormat[K, V]])
+  }
+}
+
+/**
+  * Specifies the input to be a sequence file or files given the specified paths.
+  * @param paths Paths for files
+  * @tparam K Key class of input
+  * @tparam V Value class of input
+  */
+case class HSequenceInput[K,V](paths:Seq[String]) extends HInput {
+  override def toString = "Input: Sequence Files at: " + paths.mkString("{",",","}")
+
+  override def init(job: Job, settings: SettingsBase) {
+    paths.foreach(path => {
+      FileInputFormat.addInputPath(job, new Path(path))
+    })
+
+    job.setInputFormatClass(classOf[SequenceFileInputFormat[K, V]])
+  }
+
+}
+
+
+/**
+  * Output will be to a sequence file or files at the specified path
+  * @param seqPath
+  * @tparam K
+  * @tparam V
+  */
+case class HSequenceOutput[K,V](seqPath:String) extends HOutput {
+  override def toString = "Output: Sequence File at " + path.toUri.toString
+
+  var path = new Path(seqPath)
+
+  override def init(job: Job, settings: SettingsBase) {
+    job.setOutputFormatClass(classOf[SequenceFileOutputFormat[K, V]])
+    FileOutputFormat.setOutputPath(job, path)
   }
 }
 
