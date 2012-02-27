@@ -631,6 +631,25 @@ case class HSequenceInput[K,V](paths:Seq[String]) extends HInput {
 
 }
 
+/**
+  * Output will be to a sequence file or files at the specified path
+  * @param seqPath
+  * @tparam K
+  * @tparam V
+  * @tparam S
+  */
+case class HSequenceSettingsOutput[K : Manifest,V : Manifest, S <: SettingsBase](seqPath:(S)=>String) extends HOutput {
+  override def toString = "Output: Sequence File"
+
+  override def init(job: Job, settings: SettingsBase) {
+    val path = new Path(seqPath(settings.asInstanceOf[S]))
+    FileSystem.get(job.getConfiguration).delete(path, true)
+
+    job.setOutputFormatClass(classOf[SequenceFileOutputFormat[K, V]])
+    FileOutputFormat.setOutputPath(job, path)
+  }
+}
+
 
 /**
   * Output will be to a sequence file or files at the specified path
