@@ -46,14 +46,12 @@ build.log
 #  syntax: regexp
 #  ^\.pc/
 
-#SHITTY output not in target directory
+#output not in target directory
 build.log
 
-# ext designer output--trying to be specific with the directory
-designer.html
-designer.js
-designer_includeOrder.txt
-ext-all-debug.js
 
 #Apple Stuff
 .DS_Store
+
+release.properties
+pom.xml.releaseBackup
