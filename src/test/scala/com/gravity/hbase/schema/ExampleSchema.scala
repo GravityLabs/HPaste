@@ -81,7 +81,7 @@ object ExampleSchema extends Schema {
   implicit val conf = LocalCluster.getTestConfiguration
 
   //A table definition, where the row keys are Strings
-  class ExampleTable extends HbaseTable[ExampleTable,String, ExampleTableRow](tableName = "schema_example",rowKeyClass=classOf[String])
+  class ExampleTable extends HbaseTable[ExampleTable,String, ExampleTableRow](tableName = "schema_example",rowKeyClass=classOf[String], tableConfig = HbaseTableConfig(maxFileSizeInBytes=1073741824))
   {
     def rowBuilder(result:DeserializedResult) = new ExampleTableRow(this,result)
 
@@ -144,9 +144,11 @@ class ExampleSchemaTest extends HPasteTestCase(ExampleSchema) {
    * Test that the create script looks right
    */
   @Test def testCreateScript() {
-    val createScript = """create 'schema_example', {NAME => 'meta', VERSIONS => 1},{NAME => 'views', VERSIONS => 1},{NAME => 'viewsByDay', VERSIONS => 1},{NAME => 'kittens', VERSIONS => 1}"""
+    val createScript = """create 'schema_example', {NAME => 'meta', VERSIONS => 1},{NAME => 'views', VERSIONS => 1},{NAME => 'viewsByDay', VERSIONS => 1},{NAME => 'kittens', VERSIONS => 1}
+alter 'schema_example', {METHOD => 'table_att', MAX_FILESIZE => '1073741824'}"""
     
     val create = ExampleSchema.ExampleTable.createScript()
+    println(create)
     Assert.assertEquals(createScript,create)
   }
 
@@ -157,6 +159,7 @@ class ExampleSchemaTest extends HPasteTestCase(ExampleSchema) {
     val expected = """flush 'schema_example'
 disable 'schema_example'
 alter 'schema_example', {NAME => 'kittens', VERSIONS => 1},{NAME => 'views', VERSIONS => 1}
+alter 'schema_example', {METHOD => 'table_att', MAX_FILESIZE => '1073741824'}
 enable 'schema_example'"""
 
     val alter = ExampleSchema.ExampleTable.alterScript(families=ExampleSchema.ExampleTable.kittens :: ExampleSchema.ExampleTable.viewCounts :: Nil)

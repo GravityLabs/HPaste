@@ -8,16 +8,28 @@ import org.apache.hadoop.hbase.util.Bytes
 import com.gravity.hbase.AnyConverterSignal
 import org.apache.hadoop.hbase.util.Bytes.ByteArrayComparator
 import java.io.IOException
-import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.conf.Configuration
 import java.util.Arrays
 import org.apache.hadoop.hbase.{HColumnDescriptor, KeyValue}
 import scala.Int
+import org.apache.hadoop.hbase.client._
 
 /*             )\._.,--....,'``.
  .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
+/**
+ * Represents the structural configuration for a table
+ * @param maxFileSizeInBytes
+ */
+case class HbaseTableConfig(
+                                   maxFileSizeInBytes:Long = -1,
+                                   memstoreFlushSizeInBytes:Long = -1
+                                   )
+
+object HbaseTable {
+  def defaultConfig = HbaseTableConfig()
+}
 
 /**
  * Represents a Table.  Expects an instance of HBaseConfiguration to be present.
@@ -35,7 +47,7 @@ import scala.Int
  * @tparam R
  * @tparam RR
  */
-abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val tableName: String, var cache: QueryResultCache[T, R, RR] = new NoOpCache[T, R, RR](), rowKeyClass: Class[R], logSchemaInconsistencies: Boolean = false)(implicit conf: Configuration, keyConverter: ByteConverter[R]) {
+abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val tableName: String, var cache: QueryResultCache[T, R, RR] = new NoOpCache[T, R, RR](), rowKeyClass: Class[R], logSchemaInconsistencies: Boolean = false, tableConfig:HbaseTableConfig = HbaseTable.defaultConfig)(implicit conf: Configuration, keyConverter: ByteConverter[R]) {
 
 
   def rowBuilder(result: DeserializedResult): RR
@@ -163,8 +175,10 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     ds
   }
 
-  /**Converts a result to a DeserializedObject, avoiding the Result object's inner parsing by moving it out and directly into the deserializers.
+  /**
    *
+   * @param result
+   * @return
    */
   def convertResultRaw(result: Result) = {
 
@@ -252,14 +266,35 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
   //alter 'articles', NAME => 'html', VERSIONS =>1, COMPRESSION=>'lzo'
 
-  /*
-  WARNING - Currently assumes the family names are strings (which is probably a best practice, but we support byte families)
+  /**
+   * Generates a creation script for the table, based on the column families and table config.
+   * @param tableNameOverride
+   * @return
    */
   def createScript(tableNameOverride: String = tableName) = {
-    val create = "create '" + tableNameOverride + "', "
-    create + (for (family <- families) yield {
+    var create = "create '" + tableNameOverride + "', "
+    create += (for (family <- families) yield {
       familyDef(family)
     }).mkString(",")
+
+    create += alterTableAttributesScripts(tableNameOverride)
+
+    create
+  }
+
+  def alterTableAttributesScripts(tableName:String) = {
+    var alterScript = ""
+    if(tableConfig.memstoreFlushSizeInBytes > -1) {
+      alterScript += alterTableAttributeScript(tableName, "MEMSTORE_FLUSHSIZE", tableConfig.memstoreFlushSizeInBytes.toString)
+    }
+    if(tableConfig.maxFileSizeInBytes > -1) {
+      alterScript += alterTableAttributeScript(tableName, "MAX_FILESIZE", tableConfig.maxFileSizeInBytes.toString)
+    }
+    alterScript
+  }
+
+  def alterTableAttributeScript(tableName:String, attributeName:String, value:String) = {
+    "\nalter '" + tableName + "', {METHOD => 'table_att', "+attributeName+" => '" + value + "'}"
   }
 
   def deleteScript(tableNameOverride: String = tableName) = {
@@ -268,6 +303,12 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     delete + "delete '" + tableNameOverride + "'"
   }
 
+  /**
+   * Generates a production-friendly alter script (flush, disable, alter, enable)
+   * @param tableNameOverride
+   * @param families
+   * @return
+   */
   def alterScript(tableNameOverride: String = tableName, families: Seq[ColumnFamily[T, _, _, _, _]] = families) = {
 
     var alter = "flush '" + tableNameOverride + "'\n"
@@ -276,6 +317,8 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     alter += (for (family <- families) yield {
       familyDef(family)
     }).mkString(",")
+
+    alter += alterTableAttributesScripts(tableNameOverride)
     alter += "\nenable '" + tableNameOverride + "'"
     alter
   }
