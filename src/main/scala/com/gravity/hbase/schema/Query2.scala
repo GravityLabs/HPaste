@@ -1,19 +1,19 @@
-/** Licensed to Gravity.com under one
-  * or more contributor license agreements. See the NOTICE file
-  * distributed with this work for additional information
-  * regarding copyright ownership. Gravity.com licenses this file
-  * to you under the Apache License, Version 2.0 (the
-  * "License"); you may not use this file except in compliance
-  * with the License. You may obtain a copy of the License at
-  *
-  * http://www.apache.org/licenses/LICENSE-2.0
-  *
-  * Unless required by applicable law or agreed to in writing, software
-  * distributed under the License is distributed on an "AS IS" BASIS,
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  */
+/**Licensed to Gravity.com under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. Gravity.com licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package com.gravity.hbase.schema
 
@@ -36,14 +36,16 @@ import org.apache.hadoop.hbase.filter._
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
 
-/** Expresses a scan, get, or batched get against hbase.  Which one it becomes depends on what calls you make.  If you specify withKey() it will
-  * become a Get, withKeys() will make into a batched get, and no keys at all will make it a Scan.
-  *
-  * @tparam T the table to work with
-  * @tparam R the row key type
-  * @tparam RR the row result type
-  * @param table the instance of the table to work with
-  */
+/**
+ * Expresses a scan, get, or batched get against hbase.  Which one it becomes depends on what
+ * calls you make.  If you specify withKey() it will
+ * become a Get, withKeys() will make into a batched get, and no keys at all will make it a Scan.
+ *
+ * @tparam T the table to work with
+ * @tparam R the row key type
+ * @tparam RR the row result type
+ * @param table the instance of the table to work with
+ */
 class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTable[T, R, RR]) {
 
   def filter(filterFx: ((FilterBuilder) => Unit)*) = {
@@ -80,11 +82,13 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       val orFilter = new FilterList(FilterList.Operator.MUST_PASS_ONE)
       for (ctx <- clauses) {
         val filter = ctx(clauseBuilder)
-        if(filter.isDefined)
+        if (filter.isDefined) {
           orFilter.addFilter(filter.get)
+        }
       }
-      if(orFilter.getFilters().size() > 0)
+      if (orFilter.getFilters().size() > 0) {
         addFilter(orFilter)
+      }
       this
     }
 
@@ -92,11 +96,13 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       val andFilter = new FilterList(FilterList.Operator.MUST_PASS_ALL)
       for (cfx <- clauses) {
         val filter = cfx(clauseBuilder)
-        if(filter.isDefined)
+        if (filter.isDefined) {
           andFilter.addFilter(filter.get)
+        }
       }
-      if(andFilter.getFilters.size() > 0)
+      if (andFilter.getFilters.size() > 0) {
         addFilter(andFilter)
+      }
       this
     }
 
@@ -122,9 +128,9 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
     }
 
     /**
-      * Untested
-      */
-    def whereFamilyHasKeyGreaterThan[F,K](family:(T) => ColumnFamily[T,R,F,K,_], key:K) = {
+     * Untested
+     */
+    def whereFamilyHasKeyGreaterThan[F, K](family: (T) => ColumnFamily[T, R, F, K, _], key: K) = {
       val f = family(table.pops)
       val fl = new FilterList(Operator.MUST_PASS_ALL)
       val ts = new QualifierFilter(CompareOp.GREATER_OR_EQUAL, new BinaryComparator(f.keyConverter.toBytes(key)))
@@ -151,9 +157,9 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
     }
 
 
-    def maxRowsPerServer(rowsize: Int) : Option[Filter] = {
-        val pageFilter = new PageFilter(rowsize)
-        Some(pageFilter)
+    def maxRowsPerServer(rowsize: Int): Option[Filter] = {
+      val pageFilter = new PageFilter(rowsize)
+      Some(pageFilter)
     }
 
     def columnValueMustEqual[F, K, V](column: (T) => Column[T, R, F, K, V], value: V) = {
@@ -164,7 +170,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       Some(vc)
     }
 
-    def columnValueMustBeGreaterThan[F,K,V](column:(T) => Column[T,R,F,K,V],value:V) = {
+    def columnValueMustBeGreaterThan[F, K, V](column: (T) => Column[T, R, F, K, V], value: V) = {
       val c = column(table.pops)
       val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.GREATER, c.valueConverter.toBytes(value))
       vc.setFilterIfMissing(true)
@@ -172,7 +178,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       Some(vc)
     }
 
-    def columnValueMustBeLessThan[F,K,V](column:(T) => Column[T,R,F,K,V],value:V) = {
+    def columnValueMustBeLessThan[F, K, V](column: (T) => Column[T, R, F, K, V], value: V) = {
       val c = column(table.pops)
       val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.LESS, c.valueConverter.toBytes(value))
       vc.setFilterIfMissing(true)
@@ -216,12 +222,12 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
     //  }
 
 
-    def whereColumnMustExist[F,K,_](column: (T) => Column[T,R,F,K,_]) = {
-          val c = column(table.pops)
-          val valFilter = new SingleColumnValueExcludeFilter(c.familyBytes,c.columnBytes,CompareOp.NOT_EQUAL,new Array[Byte](0))
-          valFilter.setFilterIfMissing(true)
-          Some(valFilter)
-        }
+    def whereColumnMustExist[F, K, _](column: (T) => Column[T, R, F, K, _]) = {
+      val c = column(table.pops)
+      val valFilter = new SingleColumnValueExcludeFilter(c.familyBytes, c.columnBytes, CompareOp.NOT_EQUAL, new Array[Byte](0))
+      valFilter.setFilterIfMissing(true)
+      Some(valFilter)
+    }
 
 
     def betweenColumnKeys[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], lower: K, upper: K) = {
@@ -258,18 +264,19 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
   val keys = Buffer[Array[Byte]]()
   val families = Buffer[Array[Byte]]()
   val columns = Buffer[(Array[Byte], Array[Byte])]()
-  var currentFilter: FilterList = _ // new FilterList(Operator.MUST_PASS_ALL)
+  var currentFilter: FilterList = _
+  // new FilterList(Operator.MUST_PASS_ALL)
   var startRowBytes: Array[Byte] = null
   var endRowBytes: Array[Byte] = null
   var batchSize = -1
 
-  /** The key to fetch (this makes it into a Get request against hbase) */
+  /**The key to fetch (this makes it into a Get request against hbase) */
   def withKey(key: R) = {
     keys += table.rowKeyConverter.toBytes(key)
     this
   }
 
-  /** Multiple keys to fetch (this makes it into a multi-Get request against hbase) */
+  /**Multiple keys to fetch (this makes it into a multi-Get request against hbase) */
   def withKeys(keys: Set[R]) = {
     for (key <- keys) {
       withKey(key)
@@ -620,7 +627,8 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
     endRowBytes = table.rowKeyConverter.toBytes(row)
     this
   }
-  def withBatchSize(size:Int) = {
+
+  def withBatchSize(size: Int) = {
     batchSize = size
     this
   }
@@ -632,7 +640,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
     scan.setCaching(cacheSize)
     scan.setCacheBlocks(cacheBlocks)
 
-    if(batchSize > -1) {
+    if (batchSize > -1) {
       scan.setBatch(batchSize)
     }
 
@@ -753,9 +761,9 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
 
   object YouCanStopNow extends Stopable
 
-  /** Similar to the scan method but if your handler returns false, it will stop scanning.
-    *
-    */
+  /**Similar to the scan method but if your handler returns false, it will stop scanning.
+   *
+   */
   def scanUntil(handler: (RR) => Boolean, maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100) {
     table.withTable() {
       htable =>

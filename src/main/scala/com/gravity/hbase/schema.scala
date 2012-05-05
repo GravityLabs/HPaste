@@ -29,6 +29,8 @@ import java.io._
 
 class AnyNotSupportedException() extends Exception("Any not supported")
 
+trait AnyConverterSignal
+
 /**
   * This is the standard set of types that can be auto converted into hbase values (they work as families, columns, and values)
   */
@@ -46,7 +48,7 @@ package object schema {
   type FamilyExtractor[T <: HbaseTable[T, R, _], R, F, K, V] = (T) => ColumnFamily[T, R, F, K, V]
   type ColumnExtractor[T <: HbaseTable[T, R, _], R, F, K, V] = (T) => Column[T, R, F, K, V]
 
-  implicit object AnyConverter extends ByteConverter[Any] {
+  implicit object AnyConverter extends ByteConverter[Any] with AnyConverterSignal {
     override def toBytes(t: Any) = throw new AnyNotSupportedException()
 
     override def fromBytes(bytes: Array[Byte], offset: Int, length: Int) = throw new AnyNotSupportedException()

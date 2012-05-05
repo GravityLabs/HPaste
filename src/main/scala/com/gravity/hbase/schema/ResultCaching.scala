@@ -26,6 +26,13 @@ import org.apache.hadoop.hbase.client.{Get, Scan}
 
 case class ScanCachePolicy(ttlMinutes: Int)
 
+/**
+ * An interface that can be injected into an HbaseTable implementation that supports caching
+ * of queries.
+ * @tparam T
+ * @tparam R
+ * @tparam RR
+ */
 trait QueryResultCache[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,R]] {
 
   def getScanResult(key: Scan): Option[Seq[RR]]
@@ -37,6 +44,12 @@ trait QueryResultCache[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,R]] {
   def putResult(key: Get, value: RR, ttl: Int)
 }
 
+/**
+ * The default implementation of QueryResultCache.  Will do nothing.
+ * @tparam T
+ * @tparam R
+ * @tparam RR
+ */
 class NoOpCache[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]] extends QueryResultCache[T, R, RR] {
 
   override def getScanResult(key: Scan): Option[Seq[RR]] = None
