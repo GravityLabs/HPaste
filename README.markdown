@@ -31,7 +31,7 @@ This project uses [Maven](http://maven.apache.org/ "Apache Maven"). To use HPast
 <dependency>
   <groupId>com.gravity</groupId>
   <artifactId>gravity-hpaste</artifactId>
-  <version>0.1.5</version>
+  <version>0.1.11</version>
 </dependency>
 ```
 
