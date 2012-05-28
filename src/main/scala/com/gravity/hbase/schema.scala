@@ -188,8 +188,13 @@ package object schema {
   implicit object DateMidnightSetConverter extends SetConverter[DateMidnight]
 
   implicit object StringLongMap extends MapConverter[String, Long]
+  implicit object ImmutableStringLongMap extends ImmutableMapConverter[String, Long]
+  implicit object MutableStringLongMap extends MutableMapConverter[String, Long]
 
   implicit object StringStringMap extends MapConverter[String,String]
+  implicit object MutableStringStringMap extends MutableMapConverter[String,String]
+  implicit object ImmutableStringStringMap extends ImmutableMapConverter[String,String]
+
   /*
   Helper function to make byte arrays out of arbitrary values.
    */

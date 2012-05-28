@@ -218,9 +218,11 @@ abstract class ComplexByteConverter[T] extends ByteConverter[T] {
   }
 }
 
+trait MapStream[K,V] {
+  val c : ByteConverter[K]
+  val d : ByteConverter[V]
 
-class MapConverter[K, V](implicit c: ByteConverter[K], d: ByteConverter[V]) extends ComplexByteConverter[Map[K, V]] {
-  override def write(map: Map[K, V], output: PrimitiveOutputStream) {
+  def writeMap(map:Map[K,V], output: PrimitiveOutputStream) {
     val length = map.size
     output.writeInt(length)
 
@@ -232,9 +234,10 @@ class MapConverter[K, V](implicit c: ByteConverter[K], d: ByteConverter[V]) exte
       output.writeInt(valBytes.length)
       output.write(valBytes)
     }
+
   }
 
-  override def read(input: PrimitiveInputStream) = {
+  def readMap(input:PrimitiveInputStream) : Array[(K,V)] = {
     val length = input.readInt()
     val kvarr = Array.ofDim[(K, V)](length)
 
@@ -253,39 +256,68 @@ class MapConverter[K, V](implicit c: ByteConverter[K], d: ByteConverter[V]) exte
       kvarr(i) = (key -> value)
       i = i + 1
     }
+    kvarr
+  }
+}
+
+class ImmutableMapConverter[K, V](implicit val c: ByteConverter[K],val  d: ByteConverter[V]) extends ComplexByteConverter[scala.collection.immutable.Map[K, V]] with MapStream[K,V] {
+  override def write(map: scala.collection.immutable.Map[K, V], output: PrimitiveOutputStream) {
+    writeMap(map,output)
+  }
+
+  override def read(input: PrimitiveInputStream) = {
+    val kvarr = readMap(input)
+    scala.collection.immutable.Map[K, V](kvarr: _*)
+  }
+}
+
+class MutableMapConverter[K, V](implicit val c: ByteConverter[K],val  d: ByteConverter[V]) extends ComplexByteConverter[scala.collection.mutable.Map[K, V]] with MapStream[K,V] {
+  override def write(map: scala.collection.mutable.Map[K, V], output: PrimitiveOutputStream) {
+    writeMap(map,output)
+  }
+
+  override def read(input: PrimitiveInputStream) = {
+    val kvarr = readMap(input)
+    scala.collection.mutable.Map[K, V](kvarr: _*)
+  }
+}
+
+
+class MapConverter[K, V](implicit val c: ByteConverter[K],val  d: ByteConverter[V]) extends ComplexByteConverter[Map[K, V]] with MapStream[K,V] {
+  override def write(map: Map[K, V], output: PrimitiveOutputStream) {
+    writeMap(map,output)
+  }
+
+  override def read(input: PrimitiveInputStream) = {
+    val kvarr = readMap(input)
     Map[K, V](kvarr: _*)
   }
 }
 
-//TODO: T is not available at runtime, and Arrays are not generic.  Figure out classmanifest workaround
-//class ArrayConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Array[T]] {
-//  override def write(set: Array[T], output: PrimitiveOutputStream) {
-//    val length = set.length
-//    output.writeInt(length)
-//    var i = 0
-//    while(i < length) {
-//      val itm = set(i)
-//      val bytes = c.toBytes(itm)
-//      output.writeInt(bytes.length)
-//      output.write(bytes)
-//      i = i+1
-//    }
-//  }
-//
-//  override def read(input: PrimitiveInputStream) : Array[T] = {
-//    val length = input.readInt()
-//    val arr = Array.ofDim[T](length)
-//    var i = 0
-//    while(i < length) {
-//      val byteLength = input.readInt()
-//      val itmArr = new Array[Byte](byteLength)
-//      val itm = c.fromBytes(itmArr)
-//      arr(i) = itm
-//      i = i + 1
-//    }
-//    arr
-//  }
-//}
+
+class MutableSetConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[scala.collection.mutable.Set[T]] with CollStream[T] {
+
+  override def write(set: scala.collection.mutable.Set[T], output: PrimitiveOutputStream) {
+    writeColl(set, set.size, output, c)
+  }
+
+  override def read(input: PrimitiveInputStream): scala.collection.mutable.Set[T] = {
+   scala.collection.mutable.Set(readColl(input, c):_*)
+  }
+}
+
+
+class ImmutableSetConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[scala.collection.immutable.Set[T]] with CollStream[T] {
+
+  override def write(set: scala.collection.immutable.Set[T], output: PrimitiveOutputStream) {
+    writeColl(set, set.size, output, c)
+  }
+
+  override def read(input: PrimitiveInputStream): scala.collection.immutable.Set[T] = {
+    readColl(input, c).toSet
+  }
+}
+
 
 class SetConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Set[T]] with CollStream[T] {
 
