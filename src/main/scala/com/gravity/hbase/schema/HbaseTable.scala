@@ -24,7 +24,8 @@ import org.apache.hadoop.hbase.client._
  */
 case class HbaseTableConfig(
                                    maxFileSizeInBytes:Long = -1,
-                                   memstoreFlushSizeInBytes:Long = -1
+                                   memstoreFlushSizeInBytes:Long = -1,
+                                   tablePoolSize:Int = 5
                                    )
 
 object HbaseTable {
@@ -63,7 +64,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
   }
 
   /**A pool of table objects with AutoFlush set to true */
-  val tablePool = new HTablePool(conf, 50)
+  val tablePool = new HTablePool(conf, tableConfig.tablePoolSize)
 
   /**A pool of table objects with AutoFlush set to false --therefore usable for asynchronous write buffering */
   val bufferTablePool = new HTablePool(conf, 1, new HTableInterfaceFactory {
