@@ -20,6 +20,9 @@ class IncrementOp[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: 
   val increment = new Increment(key)
   increment.setWriteToWAL(false)
 
+  def +(that: OpBase[T, R]) = new IncrementOp(table,key, previous ++ that.previous)
+
+
   def value[F, K, Long](column: (T) => Column[T, R, F, K, Long], value: java.lang.Long) = {
     val col = column(table.pops)
     increment.addColumn(col.familyBytes, col.columnBytes, value)

@@ -21,6 +21,9 @@ import scala.collection.Set
 class DeleteOp[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) extends OpBase[T, R](table, key, previous) {
   val delete = new Delete(key)
 
+  def +(that: OpBase[T, R]) = new DeleteOp(table,key, previous ++ that.previous)
+
+
   def family[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V]) = {
     val fam = family(table.pops)
     delete.deleteFamily(fam.familyBytes)

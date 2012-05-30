@@ -18,9 +18,11 @@ import scala.collection.JavaConversions._
  * @tparam T
  * @tparam R
  */
-class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) {
+abstract class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _], key: Array[Byte], val previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) {
 
   previous += this
+
+  def +(that:OpBase[T,R]) : OpBase[T,R]
 
   def put(key: R, writeToWAL: Boolean = true) = {
     val po = new PutOp(table, table.rowKeyConverter.toBytes(key), previous, writeToWAL)

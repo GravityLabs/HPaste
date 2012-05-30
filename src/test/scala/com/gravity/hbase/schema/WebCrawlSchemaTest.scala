@@ -193,6 +193,25 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
     }
   }
 
+  @Test def testOpBaseAddition() {
+    val url1 = "http://mycrawledsite.com/opbaseaddition.html"
+    val url2 = "http://mycrawledsite.com/opbaseaddition2.html"
+
+   val op1 =  WebCrawlingSchema.WebTable.put(url1).value(_.title,"Addition1")
+    op1.value(_.article,"How stop blop blop?")
+    val op2 = WebCrawlingSchema.WebTable.put(url2).value(_.title,"Addition2")
+    op2.value(_.article,"How now, brown cow")
+
+    val res = (op1 + op2).execute()
+
+    val results = WebCrawlingSchema.WebTable.query2.withKeys(Set(url1,url2)).executeMap()
+
+    Assert.assertEquals("Addition1",results(url1).column(_.title).get)
+    Assert.assertEquals("How stop blop blop?",results(url1).column(_.article).get)
+    Assert.assertEquals("Addition2",results(url2).column(_.title).get)
+    Assert.assertEquals("How now, brown cow",results(url2).column(_.article).get)
+
+  }
 
   @Test def testAggregationMRJob() {
     WebCrawlingSchema.WebTable

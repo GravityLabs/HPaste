@@ -22,6 +22,9 @@ class PutOp[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: Array[
   val put = new Put(key)
   put.setWriteToWAL(writeToWAL)
 
+
+  def +(that: OpBase[T, R]) = new PutOp(table,key, previous ++ that.previous, writeToWAL)
+
   def value[F, K, V](column: (T) => Column[T, R, F, K, V], value: V, timeStamp: DateTime = null) = {
     val col = column(table.asInstanceOf[T])
     if (timeStamp == null) {
