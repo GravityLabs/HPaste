@@ -204,7 +204,7 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
 
     val res = (op1 + op2).execute()
 
-    val results = WebCrawlingSchema.WebTable.query2.withKeys(Set(url1,url2)).executeMap()
+    val results = WebCrawlingSchema.WebTable.query2.withKeys(Set(url1,url2)).withAllColumns.executeMap()
 
     Assert.assertEquals("Addition1",results(url1).column(_.title).get)
     Assert.assertEquals("How stop blop blop?",results(url1).column(_.article).get)
@@ -238,7 +238,7 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
 
     new WebSearchAggregationJob().run(Settings.None, LocalCluster.getTestConfiguration)
 
-    WebCrawlingSchema.Sites.query2.withKey("mycrawledsite.com").singleOption() match {
+    WebCrawlingSchema.Sites.query2.withKey("mycrawledsite.com").withAllColumns.singleOption() match {
       case Some(siteRow) => {
         siteRow.family(_.searchMetrics).foreach {println}
       }
@@ -285,10 +285,10 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
       WebCrawlingSchema.WebTable.put(longUrl2).value(_.title, longUrl2).execute()
     }
 
-    val results = WebCrawlingSchema.WebTable.query2.filter(_.or(_.columnValueMustContain(_.title,site1))).scanToIterable(itm=>itm)
+    val results = WebCrawlingSchema.WebTable.query2.withAllColumns.filter(_.or(_.columnValueMustContain(_.title,site1))).scanToIterable(itm=>itm)
     Assert.assertTrue(results.size == 4)
 
-    val results2 = WebCrawlingSchema.WebTable.query2.filter(_.or(_.columnValueMustContain(_.title,site2))).scanToIterable(itm=>itm)
+    val results2 = WebCrawlingSchema.WebTable.query2.withAllColumns.filter(_.or(_.columnValueMustContain(_.title,site2))).scanToIterable(itm=>itm)
     Assert.assertTrue(results2.size == 4)
 
   }
@@ -301,7 +301,7 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
     WebCrawlingSchema.WebTable.put("http://hithere.com/yo").value(_.title,"Hi, this will be deleted").execute()
     WebCrawlingSchema.WebTable.delete("http://hithere.com/yo").execute()
 
-    WebCrawlingSchema.WebTable.query2.withKey("http://hithere.com/yo").singleOption() match {
+    WebCrawlingSchema.WebTable.query2.withKey("http://hithere.com/yo").withAllColumns.singleOption() match {
       case Some(result) => {
         Assert.fail("Deletion did not go through")
       }
@@ -315,12 +315,12 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
     WebCrawlingSchema.WebTable.put("http://batching.com/article2").value(_.title,"Batch Title 2").value(_.article,"Content 2").execute()
     WebCrawlingSchema.WebTable.put("http://batching.com/article3").value(_.title,"Batch Title 3").value(_.article,"Content 3").execute()
     WebCrawlingSchema.WebTable.put("http://batching.com/article4").value(_.title,"Batch Title 4").value(_.article,"Content 4").execute()
-    WebCrawlingSchema.WebTable.query2.withBatchSize(1).scan({page=>
+    WebCrawlingSchema.WebTable.query2.withAllColumns.withBatchSize(1).scan({page=>
        page.prettyPrintNoValues()
       Assert.assertTrue(page.size <= 1)
     })
 
-    WebCrawlingSchema.WebTable.query2.withBatchSize(2).scan({page=>
+    WebCrawlingSchema.WebTable.query2.withAllColumns.withBatchSize(2).scan({page=>
        page.prettyPrintNoValues()
       Assert.assertTrue(page.size <= 2)
     })
