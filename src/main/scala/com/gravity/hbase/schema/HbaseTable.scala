@@ -412,7 +412,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
   @deprecated("Use query2 instead")
   def query = new Query(this)
 
-  def query2 = new Query2(this)
+  def query2 = new Query2Builder(this)
 
   def put(key: R, writeToWAL: Boolean = true) = new PutOp(this, keyConverter.toBytes(key))
 
