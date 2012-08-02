@@ -409,8 +409,12 @@ trait MinimumFiltersToExecute[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] {
 
   def withFamilies[F](firstFamily: (T) => ColumnFamily[T, R, F, _, _], familyList: ((T) => ColumnFamily[T, R, F, _, _])*): Query2[T, R, RR]
 
+  def withColumnsInFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], firstColumn: K, columnList: K*): Query2[T, R, RR]
+
+  @deprecated("withColumnsInFamily can select one or more columns from a single family")
   def withColumn[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K): Query2[T, R, RR]
 
+  @deprecated("withColumns can select one or more columns")
   def withColumn[F, K, V](column: (T) => Column[T, R, F, K, V]): Query2[T, R, RR]
 
   def withColumns[F, K, V](firstColumn: (T) => Column[T, R, F, _, _], columnList: ((T) => Column[T, R, F, _, _])*): Query2[T, R, RR]
@@ -447,6 +451,14 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     for (family <- firstFamily +: familyList) {
       val fam = family(table.pops)
       families += fam.familyBytes
+    }
+    this
+  }
+
+  override def withColumnsInFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], firstColumn: K, columnList: K*) = {
+    val fam = family(table.pops)
+    for (column <- firstColumn +: columnList) {
+      columns += (fam.familyBytes -> fam.keyConverter.toBytes(column))
     }
     this
   }

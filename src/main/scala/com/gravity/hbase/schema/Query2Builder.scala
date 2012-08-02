@@ -31,6 +31,14 @@ class Query2Builder[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private[sche
     toQuery2
   }
 
+  override def withColumnsInFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], firstColumn: K, columnList: K*) = {
+    val fam = family(table.pops)
+    for (column <- firstColumn +: columnList) {
+      columns += (fam.familyBytes -> fam.keyConverter.toBytes(column))
+    }
+    toQuery2
+  }
+
   override def withColumn[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K) = {
     val fam = family(table.pops)
     columns += (fam.familyBytes -> fam.keyConverter.toBytes(columnName))

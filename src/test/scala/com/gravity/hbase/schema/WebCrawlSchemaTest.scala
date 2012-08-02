@@ -163,23 +163,30 @@ class WebTablePagesBySiteJob extends HJob[NoSettings]("Get articles by site",
 class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
 
   @Test def testWebTablePutsAndGets() {
+    val day1 = new DateMidnight(2011, 6, 4)
+    val day2 = new DateMidnight(2011, 6, 5)
+
     WebCrawlingSchema.WebTable
             .put("http://mycrawledsite.com/crawledpage.html")
             .value(_.title, "My Crawled Page Title")
             .value(_.lastCrawled, new DateTime())
             .value(_.article, "Jonsie went to the store.  She didn't notice the spinning of the Earth, nor did the Earth notice the expansion of the Universe.")
             .value(_.attributes, Map("foo" -> "bar", "custom" -> "data"))
-            .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+            .valueMap(_.searchMetrics, Map(day1 -> 3l, day2 -> 34l))
             .execute()
 
 
     WebCrawlingSchema.WebTable.query2.withKey("http://mycrawledsite.com/crawledpage.html")
             .withColumns(_.title, _.lastCrawled)
-            .withFamilies(_.searchMetrics)
+            .withFamilies(_.content)
+            .withColumnsInFamily(_.searchMetrics, day1, day2)
             .singleOption() match {
       case Some(pageRow) => {
         println("Title: " + pageRow.column(_.title).getOrElse("No Title"))
         println("Crawled on: " + pageRow.column(_.lastCrawled).getOrElse(new DateTime()))
+        println("First bit of content: " + pageRow.column(_.article).getOrElse("").take(50))
+
+        Assert.assertEquals(2, pageRow.family(_.searchMetrics).size)
 
         pageRow.family(_.searchMetrics).foreach {
           case (date: DateMidnight, views: Long) =>
