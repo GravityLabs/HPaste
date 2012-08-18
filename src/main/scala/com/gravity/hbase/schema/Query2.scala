@@ -269,27 +269,27 @@ trait BaseQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] {
       }
       Some(filterList)
     }
-  }
 
-  /**
-   * Limits the amount of columns returned within a single family where `pageSize` is the number of columns desired and `pageOffset` is the starting column index
-   * @param family the family which contains the columns desired to be paged
-   * @param pageSize the maximum number of columns to be returned for this family
-   * @param pageOffset the offset that is to represent the first column of this page to return
-   * @tparam F the family's type
-   * @tparam K the family's key type
-   * @tparam V the family's value type
-   */
-  def withPaginationForFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], pageSize: Int, pageOffset: Int) = {
-    val fam = family(table.pops)
-    val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(fam.familyBytes))
-    val paging = new ColumnPaginationFilter(pageSize, pageOffset)
+    /**
+     * Limits the amount of columns returned within a single family where `pageSize` is the number of columns desired and `pageOffset` is the starting column index
+     * @param family the family which contains the columns desired to be paged
+     * @param pageSize the maximum number of columns to be returned for this family
+     * @param pageOffset the offset that is to represent the first column of this page to return
+     * @tparam F the family's type
+     * @tparam K the family's key type
+     * @tparam V the family's value type
+     */
+    def withPaginationForFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], pageSize: Int, pageOffset: Int) = {
+      val fam = family(table.pops)
+      val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(fam.familyBytes))
+      val paging = new ColumnPaginationFilter(pageSize, pageOffset)
 
-    val filterList = new FilterList(Operator.MUST_PASS_ALL)
-    filterList.addFilter(familyFilter)
-    filterList.addFilter(paging)
+      val filterList = new FilterList(Operator.MUST_PASS_ALL)
+      filterList.addFilter(familyFilter)
+      filterList.addFilter(paging)
 
-    Some(filterList)
+      Some(filterList)
+    }
   }
 
   /**The key to fetch (this makes it into a Get request against hbase) */
