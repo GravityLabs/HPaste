@@ -698,9 +698,16 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
       }
 
       // try the cache with this filled in get
-      if (!skipCache) receiveCachedResult(table.cache.getResult(get), get)
+//      if (!skipCache) receiveCachedResult(table.cache.getResult(get), get)
     }
 
+    if(!skipCache) {
+      val cacheResults = table.cache.getResults(gets)
+
+      cacheResults.foreach {case (get, rowOpt) =>
+        receiveCachedResult(rowOpt,get)
+      }
+    }
     gets
   }
 

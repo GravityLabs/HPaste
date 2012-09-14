@@ -207,7 +207,9 @@ class Query[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]](table: HbaseTable[T, R
     resultMap // DONE!
   }
 
-  private def buildGetsAndCheckCache(skipCache: Boolean)(receiveGetAndKey: (Get, Array[Byte]) => Unit = (get, key) => {})(receiveCachedResult: (Option[RR], Get) => Unit = (qr, get) => {}): Seq[Get] = {
+  private def buildGetsAndCheckCache(skipCache: Boolean)
+                                    (receiveGetAndKey: (Get, Array[Byte]) => Unit = (get, key) => {})
+                                    (receiveCachedResult: (Option[RR], Get) => Unit = (qr, get) => {}): Seq[Get] = {
     if (keys.isEmpty) return Seq.empty[Get] // no keys..? nothing to see here... move along... move along.
 
     val gets = Buffer[Get]() // buffer for the raw `Get's
@@ -244,8 +246,17 @@ class Query[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]](table: HbaseTable[T, R
       }
 
       // try the cache with this filled in get
-      if (!skipCache) receiveCachedResult(table.cache.getResult(get), get)
+//      if (!skipCache) receiveCachedResult(table.cache.getResult(get), get)
     }
+
+    if(!skipCache) {
+      val cacheResults = table.cache.getResults(gets)
+
+      cacheResults.foreach {case (get, rowOpt) =>
+        receiveCachedResult(rowOpt,get)
+      }
+    }
+
 
     gets
   }

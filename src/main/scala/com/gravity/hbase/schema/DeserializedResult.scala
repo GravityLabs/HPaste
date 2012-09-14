@@ -22,9 +22,9 @@ case class DeserializedResult(rowid: AnyRef, famCount: Int) {
   def familyValueMap[K, V](fam: ColumnFamily[_, _, _, _, _]) = {
     val famMap = family(fam)
     if (famMap != null) {
-      famMap.asInstanceOf[java.util.HashMap[K, V]]
+      famMap.asInstanceOf[java.util.Map[K, V]]
     } else {
-      new java.util.HashMap[K, V]()
+      new gnu.trove.map.hash.THashMap[K, V]()
     }
   }
 
@@ -33,7 +33,7 @@ case class DeserializedResult(rowid: AnyRef, famCount: Int) {
     if (famMap != null) {
       famMap.keySet.asInstanceOf[java.util.Set[K]]
     } else {
-      new java.util.HashSet[K]()
+      new gnu.trove.set.hash.THashSet[K]()
     }
   }
 
@@ -101,9 +101,10 @@ case class DeserializedResult(rowid: AnyRef, famCount: Int) {
   }
 
 
-  var values = new Array[java.util.HashMap[AnyRef, AnyRef]](famCount)
+ var values = new Array[java.util.Map[AnyRef, AnyRef]](famCount)
 
-  var timestampLookaside = new Array[java.util.HashMap[AnyRef, Long]](famCount)
+  private val timestampLookaside = new Array[gnu.trove.map.TObjectLongMap[AnyRef]](famCount)
+
 
 
   /**This is a map whose key is the family type, and whose values are maps of column keys to columnvalues paired with their timestamps */
@@ -114,14 +115,14 @@ case class DeserializedResult(rowid: AnyRef, famCount: Int) {
   def add(family: ColumnFamily[_, _, _, _, _], qualifier: AnyRef, value: AnyRef, timeStamp: Long) {
     var map = values(family.index)
     if (map == null) {
-      map = new java.util.HashMap[AnyRef, AnyRef]()
+      map = new gnu.trove.map.hash.THashMap[AnyRef, AnyRef]()
       values(family.index) = map
     }
     map.put(qualifier, value)
 
     var tsMap = timestampLookaside(family.index)
     if (tsMap == null) {
-      tsMap = new java.util.HashMap[AnyRef, Long]()
+      tsMap = new gnu.trove.map.hash.TObjectLongHashMap[AnyRef]()
       timestampLookaside(family.index) = tsMap
     }
     tsMap.put(qualifier, timeStamp)

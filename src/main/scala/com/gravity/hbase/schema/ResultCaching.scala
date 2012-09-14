@@ -41,6 +41,8 @@ trait QueryResultCache[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,R]] {
 
   def getResult(key: Get): Option[RR]
 
+  def getResults(keys:Iterable[Get]) : Map[Get,Option[RR]]
+
   def putResult(key: Get, value: RR, ttl: Int)
 }
 
@@ -56,8 +58,8 @@ class NoOpCache[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]] extends QueryResul
 
   override def putScanResult(key: Scan, value: Seq[RR], ttl: Int) {}
 
-  override def getResult(key: Get): Option[RR] = None
-
-
   override def putResult(key: Get, value: RR, ttl: Int) {}
+
+  override def getResults(keys:Iterable[Get]) = Map[Get,Option[RR]]()
+  override def getResult(key:Get) = None
 }
