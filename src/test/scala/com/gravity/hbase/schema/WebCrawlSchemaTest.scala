@@ -220,6 +220,17 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
 
   }
 
+  @Test def testTestAsyncGet() {
+    val url1 = "http://mycrawledsite.com/asyncget1.html"
+    val url2 = "http://mycrawledsite.com/asyncget2.html"
+    val op1 =  WebCrawlingSchema.WebTable.put(url1).value(_.title,"asyncget1")
+    op1.value(_.article,"How stop blop blop?")
+    val op2 = WebCrawlingSchema.WebTable.put(url2).value(_.title,"asyncget2")
+    op2.value(_.article,"How now, brown cow")
+
+
+  }
+
   @Test def testAggregationMRJob() {
     WebCrawlingSchema.WebTable
             .put("http://mycrawledsite.com/crawledpage2.html")

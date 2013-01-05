@@ -278,6 +278,8 @@ enable 'schema_example'"""
       }
     }
 
+    println("ASYNC TIME")
+    ExampleSchema.ExampleTable.query2.withKey("Robbie").withFamilies(_.meta).singleOptionAsync().get.prettyPrint()
   }
 
 

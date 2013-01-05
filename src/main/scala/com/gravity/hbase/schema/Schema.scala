@@ -34,6 +34,7 @@ import java.util.{Arrays, HashMap}
 import org.apache.hadoop.hbase.util.Bytes.ByteArrayComparator
 import org.apache.hadoop.hbase.{HColumnDescriptor, KeyValue}
 import com.gravity.hbase.{AnyConverterSignal, AnyNotSupportedException}
+import org.hbase.async.HBaseClient
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -302,6 +303,7 @@ class Column[T <: HbaseTable[T, R, _], R, F, K, V](table: HbaseTable[T, R, _], c
 
 trait Schema {
   val tables = scala.collection.mutable.Set[HbaseTable[_, _, _]]()
+
 
   def table[T <: HbaseTable[T, _, _]](table: T) = {
     tables += table
