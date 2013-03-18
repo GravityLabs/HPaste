@@ -331,6 +331,15 @@ class SetConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter
 }
 
 
+class OptionConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Option[T]] with CollStream[T] {
+  override def write(opt: Option[T], output: PrimitiveOutputStream) {
+    writeColl(opt, opt.size, output, c)
+  }
+
+  override def read(input: PrimitiveInputStream) = readColl(input, c).headOption
+}
+
+
 class SeqConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Seq[T]] with CollStream[T] {
   override def write(seq: Seq[T], output: PrimitiveOutputStream) {
     writeColl(seq, seq.length, output, c)

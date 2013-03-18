@@ -60,6 +60,8 @@ package object schema {
     override def fromBytes(bytes: Array[Byte], offset: Int, length: Int) = Bytes.toString(bytes, offset, length)
   }
 
+  implicit object StringOptionConverter extends OptionConverter[String]
+
   implicit object StringSeqConverter extends SeqConverter[String]
 
   implicit object StringSetConverter extends SetConverter[String]
@@ -71,6 +73,8 @@ package object schema {
     override def fromBytes(bytes: Array[Byte], offset: Int, length: Int) = Bytes.toInt(bytes, offset, length)
   }
 
+  implicit object IntOptionConverter extends OptionConverter[Int]
+
   implicit object IntSeqConverter extends SeqConverter[Int]
 
   implicit object IntSetConverter extends SetConverter[Int]
@@ -80,6 +84,8 @@ package object schema {
 
     override def fromBytes(bytes: Array[Byte], offset: Int, length: Int) = Bytes.toShort(bytes, offset, length)
   }
+
+  implicit object ShortOptionConverter extends OptionConverter[Short]
 
   implicit object ShortSeqConverter extends SeqConverter[Short]
 
@@ -93,6 +99,8 @@ package object schema {
     }
   }
 
+  implicit object BooleanOptionConverter extends OptionConverter[Boolean]
+
   implicit object BooleanSeqConverter extends SeqConverter[Boolean]
 
   implicit object BooleanSetConverter extends SetConverter[Boolean]
@@ -102,6 +110,8 @@ package object schema {
 
     override def fromBytes(bytes: Array[Byte], offset: Int, length: Int) = Bytes.toLong(bytes, offset, length)
   }
+
+  implicit object LongOptionConverter extends OptionConverter[Long]
 
   implicit object LongSeqConverter extends SeqConverter[Long]
 
@@ -113,6 +123,8 @@ package object schema {
     override def fromBytes(bytes: Array[Byte], offset: Int, length: Int) = Bytes.toDouble(bytes, offset)
   }
 
+  implicit object DoubleOptionConverter extends OptionConverter[Double]
+
   implicit object DoubleSeqConverter extends SeqConverter[Double]
 
   implicit object DoubleSetConverter extends SetConverter[Double]
@@ -123,6 +135,8 @@ package object schema {
 
     override def fromBytes(bytes: Array[Byte], offset: Int, length: Int) = Bytes.toFloat(bytes, offset)
   }
+
+  implicit object FloatOptionConverter extends OptionConverter[Float]
 
   implicit object FloatSeqConverter extends SeqConverter[Float]
 
@@ -136,6 +150,8 @@ package object schema {
 
     override def fromBytes(bytes: Array[Byte], offset: Int, length: Int) = new CommaSet(SPLITTER.split(Bytes.toString(bytes, offset, length)).toSet)
   }
+
+  implicit object CommaSetOptionConverter extends OptionConverter[CommaSet]
 
   implicit object CommaSetSeqConverter extends SeqConverter[CommaSet]
 
@@ -155,6 +171,8 @@ package object schema {
       YearDay(year, day)
     }
   }
+
+  implicit object YearDayOptionConverter extends OptionConverter[YearDay]
 
   implicit object YearDaySeqConverter extends SeqConverter[YearDay]
 
@@ -179,9 +197,13 @@ package object schema {
     override def read(input: PrimitiveInputStream) = new DateTime(input.readLong())
   }
 
+  implicit object DateTimeOptionConverter extends OptionConverter[DateTime]
+
   implicit object DateTimeSeqConverter extends SeqConverter[DateTime]
 
   implicit object DateTimeSetConverter extends SetConverter[DateTime]
+
+  implicit object DateMidnightOptionConverter extends OptionConverter[DateMidnight]
 
   implicit object DateMidnightSeqConverter extends SeqConverter[DateMidnight]
 
