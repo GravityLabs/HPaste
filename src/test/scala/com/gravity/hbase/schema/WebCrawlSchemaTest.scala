@@ -254,7 +254,7 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
             .execute()
 
 
-    new WebSearchAggregationJob().run(Settings.None, LocalCluster.getTestConfiguration)
+    new WebSearchAggregationJob().run(Settings.None, WebCrawlingSchema.conf)
 
     WebCrawlingSchema.Sites.query2.withKey("mycrawledsite.com").withAllColumns.singleOption() match {
       case Some(siteRow) => {
@@ -285,7 +285,7 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
             .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
             .execute()
 
-    new WebTablePagesBySiteJob().run(Settings.None, LocalCluster.getTestConfiguration)
+    new WebTablePagesBySiteJob().run(Settings.None, WebCrawlingSchema.conf)
   }
 
   @Test def testBeginValueFiltration() {
@@ -351,6 +351,6 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
     WebCrawlingSchema.WebTable.put(domain + "article2").value(_.title,"Batch Title 2").value(_.article,"Content 2").execute()
     WebCrawlingSchema.WebTable.put(domain + "article3").value(_.title,"Batch Title 3").value(_.article,"Content 3").execute()
     WebCrawlingSchema.WebTable.put(domain + "article4").value(_.title,"Batch Title 4").value(_.article,"Content 4").execute()
-    new WebContentSequencingJob().run(Settings.None,LocalCluster.getTestConfiguration)
+    new WebContentSequencingJob().run(Settings.None, WebCrawlingSchema.conf)
   }
 }
