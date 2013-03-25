@@ -24,5 +24,6 @@ package object mapreduce {
 
   type ReducerFunc[MOK,MOV,ROK,ROV, S<:SettingsBase] = (HReduceContext[MOK,MOV,ROK,ROV,S]) => Unit
 
+  // @todo: Handle the cleanup/removal of these temp files
   def genTmpFile = "/tmp/htemp-" + new Random().nextInt(Int.MaxValue)
 }
