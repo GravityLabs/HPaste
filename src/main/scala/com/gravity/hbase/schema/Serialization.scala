@@ -59,6 +59,10 @@ class PrimitiveInputStream(input: InputStream) extends DataInputStream(input) {
 
     val famCount = readInt()
 
+    if (famCount != ds.famCount) {
+      throw new IncompatibleInputStreamException("Unexpected number of families present in input stream for table: '" + table.tableName + "'. Expected " + ds.famCount + " and found " + famCount + "!")
+    }
+
     for (i <- 0 until famCount) {
       val fam = table.familyByIndex(i)
       val kvLength = readInt()
@@ -388,3 +392,4 @@ trait CollStream[T] {
   }
 }
 
+class IncompatibleInputStreamException(message: String) extends IOException(message)
