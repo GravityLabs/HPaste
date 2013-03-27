@@ -109,6 +109,12 @@ object ExampleSchema extends Schema {
 
     //A column family called kittens whose column values are the custom Kitten type
     val kittens = family[String,String,Kitten]("kittens")
+
+    val misc = family[String, String, Any]("misc")
+
+    val misc1 = column(misc, "misc1", classOf[String])
+    val misc2 = column(misc, "misc2", classOf[String])
+    val misc3 = column(misc, "misc3", classOf[String])
   }
 
   class ExampleTableRow(table:ExampleTable,result:DeserializedResult) extends HRow[ExampleTable,String](result,table)
@@ -138,6 +144,20 @@ class ExampleSchemaTest extends HPasteTestCase(ExampleSchema) {
     val kittens2 = result.family(_.kittens)
 
     Assert.assertEquals(kittens,kittens2)
+  }
+
+  /**
+   * Test that a complex custom type can be added and retrieved from a table as a Map
+   */
+  @Test def testDuplicateMappings() {
+
+    ExampleSchema.ExampleTable.put("Chris").value(_.misc1, "value1").value(_.title, "some title").value(_.url, "http://example.com").execute()
+
+    val result = ExampleSchema.ExampleTable.query2.withKey("Chris").withFamilies(_.meta).withColumns(_.title, _.misc1).single()
+
+    Assert.assertEquals(Some("some title"), result.column(_.title))
+    Assert.assertEquals(Some("http://example.com"), result.column(_.url))
+    Assert.assertEquals(Some("value1"), result.column(_.misc1))
   }
 
   /**

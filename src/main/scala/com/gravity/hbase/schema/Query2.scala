@@ -20,11 +20,9 @@ package com.gravity.hbase.schema
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util._
 import scala.collection.JavaConversions._
-import org.apache.hadoop.conf.Configuration
-import java.io._
-import org.apache.hadoop.io.{BytesWritable, Writable}
 import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp
 import scala.collection._
+import immutable.TreeSet
 import java.util.NavigableSet
 import scala.collection.mutable.Buffer
 import org.apache.hadoop.hbase.filter.FilterList.Operator
@@ -262,8 +260,8 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
 
 
   val keys = Buffer[Array[Byte]]()
-  val families = Buffer[Array[Byte]]()
-  val columns = Buffer[(Array[Byte], Array[Byte])]()
+  val families = mutable.Buffer[Array[Byte]]()
+  val columns = mutable.Buffer[(Array[Byte], Array[Byte])]()
   var currentFilter: FilterList = _
   // new FilterList(Operator.MUST_PASS_ALL)
   var startRowBytes: Array[Byte] = null
@@ -428,13 +426,20 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       get.setTimeRange(startTime, endTime)
     }
 
+    // add all families
+    families.foreach{ case family => get.addFamily(family) }
 
-    for (family <- families) {
-      get.addFamily(family)
+    // let's copy the families into a set using a comparator that is Array[Byte] friendly
+    // This isn't just for performance, but more so just to have the comparator for Array[Byte] for the .contains() below
+    val familySet = new TreeSet[Array[Byte]]()(Ordering.comparatorToOrdering(Bytes.BYTES_COMPARATOR)) ++ families
+
+    // add remaining columns not called out in a families above
+    for { (family, column) <- columns } yield {
+      if (!familySet.contains(family)) {
+        get.addColumn(family, column)
+      }
     }
-    for ((columnFamily, column) <- columns) {
-      get.addColumn(columnFamily, column)
-    }
+
     if (currentFilter != null && currentFilter.getFilters.size() > 0) {
       get.setFilter(currentFilter)
     }
@@ -581,14 +586,6 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
     // since the families and columns will be identical for all `Get's, only build them once
     val firstGet = gets(0)
 
-    // add all families to the first `Get'
-    for (family <- families) {
-      firstGet.addFamily(family)
-    }
-    // add all columns to the first `Get'
-    for ((columnFamily, column) <- columns) {
-      firstGet.addColumn(columnFamily, column)
-    }
     if (currentFilter != null && currentFilter.getFilters.size() > 0) {
       firstGet.setFilter(currentFilter)
     }
@@ -655,11 +652,18 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val table: HbaseTab
       scan.setStopRow(endRowBytes)
     }
 
-    for (family <- families) {
-      scan.addFamily(family)
-    }
-    for (column <- columns) {
-      scan.addColumn(column._1, column._2)
+    // add all families
+    families.foreach{ case family => scan.addFamily(family) }
+
+    // let's copy the families into a set using a comparator that is Array[Byte] friendly
+    // This isn't just for performance, but more so just to have the comparator for Array[Byte] for the .contains() below
+    val familySet = new TreeSet[Array[Byte]]()(Ordering.comparatorToOrdering(Bytes.BYTES_COMPARATOR)) ++ families
+
+    // add remaining columns not called out in a families above
+    for { (family, column) <- columns } yield {
+      if (!familySet.contains(family)) {
+        scan.addColumn(family, column)
+      }
     }
 
     if (currentFilter != null && currentFilter.getFilters.size > 0) {
