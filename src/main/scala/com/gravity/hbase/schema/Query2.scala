@@ -526,6 +526,14 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
   }
 
 
+  /**
+   *
+   * @param tableName
+   * @param ttl
+   * @param skipCache
+   * @param noneOnEmpty If true, will return None if the result is empty.  If false, will return an empty row.  If caching is true, will cache the empty row.
+   * @return
+   */
   def singleOption(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, noneOnEmpty: Boolean = true): Option[RR] = {
     require(keys.size == 1, "Calling single() with more than one key")
     require(keys.size >= 1, "Calling a Get operation with no keys specified")
@@ -557,6 +565,10 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
             val result = htable.get(get)
             if (noneOnEmpty && result.isEmpty) {
               None
+            } else if(!noneOnEmpty && result.isEmpty) {
+              val qr = table.emptyRow(keys.head)
+              if(!skipCache) table.cache.putResult(get, qr, ttl)
+              Some(qr)
             } else {
               val qr = table.buildRow(result)
               if (!skipCache && !result.isEmpty) table.cache.putResult(get, qr, ttl)
@@ -619,11 +631,27 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     results.toSeq // DONE!
   }
 
-  def executeMap(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true): Map[R, RR] = {
+
+  /**
+   * @param tableName
+   * @param ttl
+   * @param skipCache
+   * @param returnEmptyRows If this is on, then empty rows will be returned and cached.  Often times empty rows are not considered in caching situations
+   *                        so this is off by default to keep the mental model simple.
+   * @return
+   */
+  def executeMap(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, returnEmptyRows:Boolean=false): Map[R, RR] = {
     if (keys.isEmpty) return Map.empty[R, RR] // don't get all started with nothing to do
 
     // init our result map and give it a hint of the # of keys we have
     val resultMap = mutable.Map[R, RR]()
+
+    if(returnEmptyRows) {
+      for(key <- keys) {
+         resultMap(table.rowKeyConverter.fromBytes(key)) = table.emptyRow(key)
+      }
+    }
+
     resultMap.sizeHint(keys.size) // perf optimization
 
     // if we are utilizing cache, we'll need to be able to recall the `Get' later to use as the cache key
@@ -663,6 +691,16 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
               resultMap(qr.rowid) = qr // place it in our result map
             }
           })
+      }
+    }
+
+    if(returnEmptyRows) {
+      resultMap.foreach{case (key: R, row: RR) =>
+        if(row.result.isEmpty) {
+          if(!skipCache) {
+            table.cache.putResult(getsByKey(new String(table.rowKeyConverter.toBytes(key))), row, ttl)
+          }
+        }
       }
     }
 
