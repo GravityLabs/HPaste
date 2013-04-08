@@ -334,6 +334,23 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
 
   }
 
+  @Test def testEmptiness() {
+    val result = WebCrawlingSchema.WebTable.query2.withKeys(Set("Hello","There")).withAllColumns.executeMap()
+   Assert.assertTrue(result.size == 0)
+
+    val resultWithEmpties = WebCrawlingSchema.WebTable.query2.withKeys(Set("Hello","There")).withAllColumns.executeMap(returnEmptyRows = true)
+
+    Assert.assertTrue(resultWithEmpties.size == 2)
+    resultWithEmpties.foreach{case (str: String, row: WebPageRow) =>
+      println("Rowid: " + str)
+      row.prettyPrint()
+    }
+
+    val resultWithEmptiesAndCaching = WebCrawlingSchema.WebTable.query2.withKeys(Set("Hello","There")).withAllColumns.executeMap(returnEmptyRows = true,skipCache=false)
+    Assert.assertTrue(resultWithEmptiesAndCaching.size == 2)
+
+  }
+
   @Test def testContentSequencing() {
     val domain = "http://sequencing.com/"
     WebCrawlingSchema.WebTable.put(domain + "article1").value(_.title,"Batch Title 1").value(_.article,"Content 1").execute()

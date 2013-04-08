@@ -53,6 +53,9 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
   def rowBuilder(result: DeserializedResult): RR
 
+  def emptyRow(key:Array[Byte]) = rowBuilder(new DeserializedResult(rowKeyConverter.fromBytes(key).asInstanceOf[AnyRef],families.size))
+  def emptyRow(key:R) = rowBuilder(new DeserializedResult(key.asInstanceOf[AnyRef],families.size))
+
   val rowKeyConverter = keyConverter
 
   /**Provides the client with an instance of the superclass this table was defined against. */
