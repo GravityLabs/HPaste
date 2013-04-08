@@ -121,6 +121,14 @@ trait BaseQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] {
 
   class ClauseBuilder() {
 
+    def columnValueMustNotEqual[F, K, V](column: (T) => Column[T, R, F, K, V], value: V) = {
+      val c = column(table.pops)
+      val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.NOT_EQUAL, c.valueConverter.toBytes(value))
+      vc.setFilterIfMissing(true)
+      vc.setLatestVersionOnly(true)
+      Some(vc)
+    }
+
     def columnValueMustStartWith[F, K, V](column: (T) => Column[T, R, F, K, String], prefix: String) = {
       val c = column(table.pops)
       val prefixFilter = new BinaryPrefixComparator(Bytes.toBytes(prefix))
