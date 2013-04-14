@@ -622,6 +622,14 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     results.toSeq // DONE!
   }
 
+  /**
+   * Kept for binary compatibility.  Will be deprecated for multi()
+   * @param tableName
+   * @param ttl
+   * @param skipCache
+   * @return
+   */
+  def executeMap(tableName: String = table.tableName, ttl: Int = 30, skipCache:Boolean=true) : Map[R,RR] = multiMap(tableName, ttl, skipCache, false)
 
   /**
    * @param tableName
@@ -631,7 +639,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
    *                        so this is off by default to keep the mental model simple.
    * @return
    */
-  def executeMap(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, returnEmptyRows:Boolean=false): Map[R, RR] = {
+  def multiMap(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, returnEmptyRows:Boolean=false): Map[R, RR] = {
     if (keys.isEmpty) return Map.empty[R, RR] // don't get all started with nothing to do
 
     // init our result map and give it a hint of the # of keys we have
@@ -687,7 +695,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
 
     if(returnEmptyRows) {
       resultMap.foreach{case (key: R, row: RR) =>
-        if(row.result.isEmpty) {
+        if(row.result.isEmptyRow) {
           if(!skipCache) {
             table.cache.putResult(getsByKey(new String(table.rowKeyConverter.toBytes(key))), row, ttl)
           }

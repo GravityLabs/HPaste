@@ -16,6 +16,8 @@ case class DeserializedResult(rowid: AnyRef, famCount: Int) {
 
   def isEmpty = values.size == 0
 
+  def isEmptyRow = ! values.exists(family=>family != null && family.size() > 0)
+
   def getRow[R]() = rowid.asInstanceOf[R]
 
 

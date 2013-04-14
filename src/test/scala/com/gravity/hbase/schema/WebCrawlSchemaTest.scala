@@ -335,10 +335,10 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
   }
 
   @Test def testEmptiness() {
-    val result = WebCrawlingSchema.WebTable.query2.withKeys(Set("Hello","There")).withAllColumns.executeMap()
+    val result = WebCrawlingSchema.WebTable.query2.withKeys(Set("Hello","There")).withAllColumns.multiMap()
    Assert.assertTrue(result.size == 0)
 
-    val resultWithEmpties = WebCrawlingSchema.WebTable.query2.withKeys(Set("Hello","There")).withAllColumns.executeMap(returnEmptyRows = true)
+    val resultWithEmpties = WebCrawlingSchema.WebTable.query2.withKeys(Set("Hello","There")).withAllColumns.multiMap(returnEmptyRows = true)
 
     Assert.assertTrue(resultWithEmpties.size == 2)
     resultWithEmpties.foreach{case (str: String, row: WebPageRow) =>
@@ -346,7 +346,7 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
       row.prettyPrint()
     }
 
-    val resultWithEmptiesAndCaching = WebCrawlingSchema.WebTable.query2.withKeys(Set("Hello","There")).withAllColumns.executeMap(returnEmptyRows = true,skipCache=false)
+    val resultWithEmptiesAndCaching = WebCrawlingSchema.WebTable.query2.withKeys(Set("Hello","There")).withAllColumns.multiMap(returnEmptyRows = true,skipCache=false)
     Assert.assertTrue(resultWithEmptiesAndCaching.size == 2)
 
   }
