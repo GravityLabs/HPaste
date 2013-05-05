@@ -48,10 +48,15 @@ object HbaseTable {
  * @tparam R
  * @tparam RR
  */
-abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val tableName: String, var cache: QueryResultCache[T, R, RR] = new NoOpCache[T, R, RR](), rowKeyClass: Class[R], logSchemaInconsistencies: Boolean = false, tableConfig:HbaseTableConfig = HbaseTable.defaultConfig)(implicit conf: Configuration, keyConverter: ByteConverter[R]) {
+abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val tableName: String, var cache: QueryResultCache[T, R, RR] = new NoOpCache[T, R, RR](), rowKeyClass: Class[R], logSchemaInconsistencies: Boolean = false, tableConfig:HbaseTableConfig = HbaseTable.defaultConfig)(implicit conf: Configuration, keyConverter: ByteConverter[R])
+  extends TablePoolStrategy
+{
 
 
   def rowBuilder(result: DeserializedResult): RR
+
+  def getTableConfig = tableConfig
+  def getConf = conf
 
   def emptyRow(key:Array[Byte]) = rowBuilder(new DeserializedResult(rowKeyConverter.fromBytes(key).asInstanceOf[AnyRef],families.size))
   def emptyRow(key:R) = rowBuilder(new DeserializedResult(key.asInstanceOf[AnyRef],families.size))
@@ -66,8 +71,6 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     rowBuilder(convertResult(result))
   }
 
-  /**A pool of table objects with AutoFlush set to true */
-  val tablePool = new HTablePool(conf, tableConfig.tablePoolSize)
 
   /**A pool of table objects with AutoFlush set to false --therefore usable for asynchronous write buffering */
   val bufferTablePool = new HTablePool(conf, 1, new HTableInterfaceFactory {
@@ -334,7 +337,6 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
   }
 
 
-  def getTable(name: String) = tablePool.getTable(name)
 
   def getBufferedTable(name: String) = bufferTablePool.getTable(name)
 
@@ -375,7 +377,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
   def getTableOption(name: String) = {
     try {
-      Some(getTable(name))
+      Some(getTable(this))
     } catch {
       case e: Exception => None
     }
@@ -387,7 +389,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     try {
       work(table)
     } finally {
-      table foreach (tbl => tablePool.putTable(tbl))
+      table foreach (tbl => releaseTable(this,tbl))
     }
   }
 
@@ -396,7 +398,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     try {
       work(table)
     } finally {
-      bufferTablePool.putTable(table)
+      releaseTable(this,table)
     }
   }
 
