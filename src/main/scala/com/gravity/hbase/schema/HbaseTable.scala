@@ -111,7 +111,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
    */
   def converterByBytes(famBytes: Array[Byte], colBytes: Array[Byte]): KeyValueConvertible[_, _, _] = {
 
-    if (colFamLookup.length == 0 || famLookup.length == 0) {
+    if (colFamLookup.length == 0 && famLookup.length == 0) {
       throw new RuntimeException("Attempting to lookup 0 length columns and families--HBaseTable is corrupt")
     }
 

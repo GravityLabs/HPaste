@@ -393,8 +393,8 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
 
   def getMapperFunc[MK, MV, MOK, MOV](idx: Int) = {
     val task = tasks(idx)
-    if (task.isInstanceOf[HMapReduceTask[MK, MV, MOK, MOV, _, _]]) {
-      val tk = task.asInstanceOf[HMapReduceTask[MK, MV, MOK, MOV, _, _]]
+    if (task.isInstanceOf[HMapReduceTask[MK, MV, MOK, MOV, _, _, _, _]]) {
+      val tk = task.asInstanceOf[HMapReduceTask[MK, MV, MOK, MOV, _, _, _, _]]
       tk.mapper
     }
     else if (task.isInstanceOf[HMapTask[MK, MV, MOK, MOV]]) {
@@ -405,10 +405,10 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
     }
   }
 
-  def getReducerFunc[MOK, MOV, ROK, ROV](idx: Int) = {
+  def getReducerFunc[MOK, MOV, RIK, RIV, ROK, ROV](idx: Int) = {
     val task = tasks(idx)
-    if (task.isInstanceOf[HMapReduceTask[_, _, MOK, MOV, ROK, ROV]]) {
-      val tk = task.asInstanceOf[HMapReduceTask[_, _, MOK, MOV, ROK, ROV]]
+    if (task.isInstanceOf[HMapReduceTask[_, _, MOK, MOV, RIK, RIV, ROK, ROV]]) {
+      val tk = task.asInstanceOf[HMapReduceTask[_, _, MOK, MOV, RIK, RIV, ROK, ROV]]
       tk.reducer
     } else {
       throw new RuntimeException("Unable to find reducer for index " + idx)
@@ -1013,11 +1013,11 @@ abstract class HMapper[MK, MV, MOK, MOV] extends Mapper[MK, MV, MOK, MOV] with M
   }
 }
 
-abstract class HReducer[MOK, MOV, ROK, ROV] extends Reducer[MOK, MOV, ROK, ROV] with MRWritable[ROK, ROV] {
+abstract class HReducer[RIK, RIV, ROK, ROV] extends Reducer[RIK, RIV, ROK, ROV] with MRWritable[ROK, ROV] {
 
   type SettingsClass <: SettingsBase
 
-  var context: Reducer[MOK, MOV, ROK, ROV]#Context = null
+  var context: Reducer[RIK, RIV, ROK, ROV]#Context = null
   var settings: SettingsClass = _
 
   def counter(message: String, count: Long) {
@@ -1035,13 +1035,13 @@ abstract class HReducer[MOK, MOV, ROK, ROV] extends Reducer[MOK, MOV, ROK, ROV] 
 
   def values = context.getValues
 
-  override def setup(context: Reducer[MOK, MOV, ROK, ROV]#Context) {
+  override def setup(context: Reducer[RIK, RIV, ROK, ROV]#Context) {
     this.context = context
     settings = Class.forName(context.getConfiguration.get("hpaste.settingsclass")).newInstance().asInstanceOf[SettingsClass]
     settings.fromSettings(context.getConfiguration)
   }
 
-  override def reduce(key: MOK, values: Iterable[MOV], context: Reducer[MOK, MOV, ROK, ROV]#Context) {
+  override def reduce(key: RIK, values: Iterable[RIV], context: Reducer[RIK, RIV, ROK, ROV]#Context) {
     reduce()
   }
 
@@ -1050,7 +1050,7 @@ abstract class HReducer[MOK, MOV, ROK, ROV] extends Reducer[MOK, MOV, ROK, ROV] 
 }
 
 object HMapReduceTask {
-  def apply[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, ROV: Manifest](name: String, mapper: HMapper[MK, MV, MOK, MOV], reducer: HReducer[MOK, MOV, ROK, ROV]): HMapReduceTask[MK, MV, MOK, MOV, ROK, ROV] = {
+  def apply[MK, MV, MOK: Manifest, MOV: Manifest, RIK: Manifest, RIV: Manifest, ROK: Manifest, ROV: Manifest](name: String, mapper: HMapper[MK, MV, MOK, MOV], reducer: HReducer[MOK, MOV, ROK, ROV]): HMapReduceTask[MK, MV, MOK, MOV, MOK, MOV, ROK, ROV] = {
     HMapReduceTask(
       HTaskID(name),
       HTaskConfigs(),
@@ -1089,13 +1089,13 @@ case class HGroupingTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, RO
 /**
   * An HTask that wraps a standard mapper and reducer function.
   */
-case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK: Manifest, ROV: Manifest](
+case class HMapReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, RIK: Manifest, RIV: Manifest, ROK: Manifest, ROV: Manifest](
                                                                                                      id: HTaskID,
                                                                                                      configs: HTaskConfigsBase = HTaskConfigs(),
                                                                                                      io: HIO[MK, MV, ROK, ROV] = HIO(),
                                                                                                      mapper: HMapper[MK, MV, MOK, MOV],
-                                                                                                     reducer: HReducer[MOK, MOV, ROK, ROV],
-                                                                                                     combiner: HReducer[MOK, MOV, MOK, MOV] = null)
+                                                                                                     reducer: HReducer[RIK, RIV, ROK, ROV],
+                                                                                                     combiner: HReducer[MOV, MOK, RIK, RIV] = null)
         extends HTask[MK, MV, ROK, ROV](id, configs, io) {
 
 
@@ -1170,11 +1170,15 @@ case class HMapTask[MK, MV, MOK: Manifest, MOV: Manifest](id: HTaskID, configs: 
 /**
   * A task for a Mapper / Combiner / Reducer combo
   */
-case class HMapCombineReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, ROK, ROV](id: HTaskID, configs: HTaskConfigs = HTaskConfigs(), io: HIO[MK, MV, ROK, ROV] = HIO(), mapper: HMapper[MK, MV, MOK, MOV], combiner: HReducer[MOK, MOV, ROK, ROV], reducer: HReducer[MOK, MOV, ROK, ROV]) extends HTask[MK, MV, ROK, ROV](id, configs, io) {
+case class HMapCombineReduceTask[MK, MV, MOK: Manifest, MOV: Manifest, RIK: Manifest, RIV: Manifest, ROK: Manifest, ROV: Manifest](id: HTaskID, configs: HTaskConfigs = HTaskConfigs(), io: HIO[MK, MV, ROK, ROV] = HIO(), mapper: HMapper[MK, MV, MOK, MOV], combiner: HReducer[MOK, MOV, RIK, RIV], reducer: HReducer[RIK, RIV, ROK, ROV]) extends HTask[MK, MV, ROK, ROV](id, configs, io) {
   def decorateJob(job: Job) {
     job.setMapperClass(mapper.getClass)
+
     job.setMapOutputKeyClass(classManifest[MOK].erasure)
     job.setMapOutputValueClass(classManifest[MOV].erasure)
+    job.setOutputKeyClass(classManifest[ROK].erasure)
+    job.setOutputValueClass(classManifest[ROV].erasure)
+
     job.setReducerClass(reducer.getClass)
     job.setCombinerClass(combiner.getClass)
   }
@@ -1272,7 +1276,7 @@ class HMapContext[MK, MV, MOK, MOV, S <: SettingsBase](conf: Configuration, coun
 /**
   * This is the context object for a Reduce function.  It gets passed into the reducer defined in an HTask.
   */
-class HReduceContext[MOK, MOV, ROK, ROV, S <: SettingsBase](conf: Configuration, counter: (String, Long) => Unit, val context: Reducer[MOK, MOV, ROK, ROV]#Context) extends HContext[S](conf, counter) {
+class HReduceContext[RIK, RIV, ROK, ROV, S <: SettingsBase](conf: Configuration, counter: (String, Long) => Unit, val context: Reducer[RIK, RIV, ROK, ROV]#Context) extends HContext[S](conf, counter) {
   def key = context.getCurrentKey
 
   def values = context.getValues
@@ -1280,7 +1284,7 @@ class HReduceContext[MOK, MOV, ROK, ROV, S <: SettingsBase](conf: Configuration,
   def write(key: ROK, value: ROV) {context.write(key, value)}
 }
 
-class ToTableReduceContext[MOK, MOV, T <: HbaseTable[T, R, _], R, S <: SettingsBase](conf: Configuration, counter: (String, Long) => Unit, context: Reducer[MOK, MOV, NullWritable, Writable]#Context) extends HReduceContext[MOK, MOV, NullWritable, Writable, S](conf, counter, context) {
+class ToTableReduceContext[RIK, RIV, T <: HbaseTable[T, R, _], R, S <: SettingsBase](conf: Configuration, counter: (String, Long) => Unit, context: Reducer[RIK, RIV, NullWritable, Writable]#Context) extends HReduceContext[RIK, RIV, NullWritable, Writable, S](conf, counter, context) {
   def write(operation: OpBase[T, R]) {
     operation.getOperations.foreach {op => write(NullWritable.get(), op)}
   }
