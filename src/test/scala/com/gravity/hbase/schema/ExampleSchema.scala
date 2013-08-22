@@ -119,7 +119,52 @@ object ExampleSchema extends Schema {
 
   class ExampleTableRow(table:ExampleTable,result:DeserializedResult) extends HRow[ExampleTable,String](result,table)
 
+
+  trait Kitty[T <: HbaseTable[T, R, _], R] {
+    this: HbaseTable[T, R, _] =>
+
+    val kittyCutenessStats = family[String, String, Double]("kcs", rowTtlInSeconds = 604800, compressed = true)
+
+  }
+
+  trait KittyRow[T <: HbaseTable[T, R, RR] with Kitty[T, R], R, RR <: HRow[T, R]] {
+    this: HRow[T, R] =>
+
+    lazy val kittyCutenessStats = family(_.kittyCutenessStats)
+
+  }
+
+  trait AdultCat[T <: HbaseTable[T, R, _], R] {
+    this: HbaseTable[T, R, _] =>
+
+    val catCutenessStats = family[String, String, Double]("ccs", rowTtlInSeconds = 604800, compressed = true)
+
+  }
+
+  trait AdultCatRow[T <: HbaseTable[T, R, RR] with AdultCat[T, R], R, RR <: HRow[T, R]] {
+    this: HRow[T, R] =>
+
+    lazy val catCuteness = family(_.catCutenessStats)
+
+  }
+
+  class CatTable extends HbaseTable[CatTable, String, CatRow](tableName = "cats_by_cuteness", rowKeyClass = classOf[String], logSchemaInconsistencies = false, tableConfig = HbaseTableConfig(maxFileSizeInBytes=1073741824))
+  with Kitty[CatTable, String]
+  with AdultCat[CatTable, String] {
+
+    override def rowBuilder(result: DeserializedResult) = new CatRow(result, this)
+
+  }
+
+  class CatRow(result: DeserializedResult, table: CatTable) extends HRow[CatTable, String](result, table)
+  with KittyRow[CatTable, String, CatRow]
+  with AdultCatRow[CatTable, String, CatRow] {
+
+  }
+
   //Register the table (DON'T FORGET TO DO THIS :) )
+
+  val catTable = table(new CatTable)
   val ExampleTable = table(new ExampleTable)
 
 }
@@ -302,7 +347,29 @@ enable 'schema_example'"""
     ExampleSchema.ExampleTable.query2.withKey("Robbie").withFamilies(_.meta).singleOptionAsync().get.prettyPrint()
   }
 
+  @Test def testScanCats() {
+    System.err.println("Filling up table...")
+    val remusKittyStats = Map("remus" -> 10.0d)
+    val remusCatStats = Map("remus" -> 9.0d)
+    val alaistorKittyStats = Map("remus" -> 9.0d)
+    val alaistorCatStats = Map("remus" -> 8.0d)
 
+
+    ExampleSchema.catTable.put("remus").valueMap(_.kittyCutenessStats, remusKittyStats).valueMap(_.catCutenessStats, remusCatStats).execute()
+    ExampleSchema.catTable.put("alaistor").valueMap(_.kittyCutenessStats, alaistorKittyStats).valueMap(_.catCutenessStats, alaistorCatStats).execute()
+
+    var rows: Int = 0
+    ExampleSchema.catTable.query2.withFamilies(_.catCutenessStats, _.kittyCutenessStats).scan {
+      scanner =>
+        rows = rows + 1
+        val cat = scanner.rowid
+        val catCutenessLevel = scanner.catCuteness.values.head
+        val kittyCutenessLevel = scanner.kittyCutenessStats.values.head
+        System.err.println(cat + " has a kitty-level cuteness of " + kittyCutenessLevel + " and an adult cuteness of " + catCutenessLevel)
+    }
+    Assert.assertEquals("not enough cats", rows.toInt, 2.toInt)
+    System.err.println("done with cat scan")
+  }
 
 }
 
