@@ -117,16 +117,17 @@ abstract class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _
     } else {
       table.withTable(tableName) {
         table =>
-          if (puts.size > 0) {
-            table.put(puts)
-            //IN THEORY, the operations will happen in order.  If not, break this into two different batched calls for deletes and puts
-          }
-          if (deletes.size > 0) {
-            table.delete(deletes)
-          }
-          if (increments.size > 0) {
-            increments.foreach(increment => table.increment(increment))
-          }
+          table.batch(puts ++ deletes ++ increments)
+//          if (puts.size > 0) {
+//            table.put(puts)
+//            //IN THEORY, the operations will happen in order.  If not, break this into two different batched calls for deletes and puts
+//          }
+//          if (deletes.size > 0) {
+//            table.delete(deletes)
+//          }
+//          if (increments.size > 0) {
+//            increments.foreach(increment => table.increment(increment))
+//          }
       }
     }
 

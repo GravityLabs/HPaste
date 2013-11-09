@@ -4,7 +4,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.gravity</groupId>
   <artifactId>gravity-hpaste</artifactId>
-  <version>0.1.40-CDH4_2.9.1</version>
+  <version>0.1.46-LOCAL-CDH4.3_2.10.3</version>
   <packaging>jar</packaging>
   <name>hpaste</name>
   <url>http://github.com/GravityLabs/HPaste</url>
@@ -69,7 +69,7 @@
     <maven.compiler.source>1.5</maven.compiler.source>
     <maven.compiler.target>1.5</maven.compiler.target>
     <encoding>UTF-8</encoding>
-    <scala.version>2.9.1</scala.version>
+    <scala.version>2.10.3</scala.version>
   </properties>
 
   <dependencies>
@@ -77,7 +77,7 @@
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-client</artifactId>
-      <version>2.0.0-mr1-cdh4.0.1</version>
+      <version>2.0.0-mr1-cdh4.3.2</version>
     </dependency>
 
     <dependency>
@@ -89,7 +89,7 @@
     <dependency>
       <groupId>org.apache.hbase</groupId>
       <artifactId>hbase</artifactId>
-      <version>0.92.1-cdh4.0.1</version>
+      <version>0.94.6-cdh4.3.2</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
@@ -100,13 +100,13 @@
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-minicluster</artifactId>
-      <version>2.0.0-mr1-cdh4.0.1</version>
+      <version>2.0.0-mr1-cdh4.3.2</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.hbase</groupId>
       <artifactId>hbase</artifactId>
-      <version>0.92.1-cdh4.0.1</version>
+      <version>0.94.6-cdh4.3.2</version>
       <type>test-jar</type>
       <scope>test</scope>
       <exclusions>
