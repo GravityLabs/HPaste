@@ -73,7 +73,8 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
 
   /**A pool of table objects with AutoFlush set to false --therefore usable for asynchronous write buffering */
-  val bufferTablePool = new HTablePool(conf, 1, new HTableInterfaceFactory {
+  val bufferTablePool = {
+    new HTablePool(conf, 2, new HTableInterfaceFactory {
     def createHTableInterface(config: Configuration, tableName: Array[Byte]): HTableInterface = {
       val table = new HTable(conf, tableName)
       table.setWriteBufferSize(2000000L)
@@ -88,7 +89,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
         case ex: IOException => throw new RuntimeException(ex)
       }
     }
-  })
+  }) }
 
 
   @volatile var famLookup: Array[Array[Byte]] = null
@@ -398,7 +399,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     try {
       work(table)
     } finally {
-      releaseTable(this,table)
+      table.close()
     }
   }
 

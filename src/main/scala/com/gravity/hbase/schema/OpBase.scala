@@ -62,7 +62,7 @@ abstract class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _
   /**
    * This is an experimental call that utilizes a shared instance of a table to flush writes.
    */
-  def executeBuffered(tableName: String = table.tableName) {
+  def withExecuteBuffered(tableName: String = table.tableName) {
 
     val (deletes, puts, increments) = prepareOperations
 
@@ -70,18 +70,7 @@ abstract class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _
     } else {
       table.withBufferedTable(tableName) {
         bufferTable =>
-          if (puts.size > 0) {
-            bufferTable.put(puts)
-          }
-          if (deletes.size > 0) {
-            bufferTable.delete(deletes)
-          }
-          if (increments.size > 0) {
-            increments.foreach {
-              increment =>
-                bufferTable.increment(increment)
-            }
-          }
+          bufferTable.batch(puts ++ deletes ++ increments)
       }
     }
 
