@@ -3,9 +3,9 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.gravity</groupId>
   <artifactId>gravity-hpaste</artifactId>
-  <version>0.1.24-SNAPSHOT</version>
+  <version>0.1.24</version>
   <packaging>jar</packaging>
-  <name>hpaste</name>
+  <name>hpaste_2.10</name>
   <url>http://github.com/GravityLabs/HPaste</url>
   <description>Scala mapper for hbase</description>
   <inceptionYear>2011</inceptionYear>
@@ -68,7 +68,7 @@
     <maven.compiler.source>1.5</maven.compiler.source>
     <maven.compiler.target>1.5</maven.compiler.target>
     <encoding>UTF-8</encoding>
-    <scala.version>2.9.1</scala.version>
+    <scala.version>2.10.3</scala.version>
   </properties>
 
   <dependencies>
