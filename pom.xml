@@ -2,10 +2,10 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.gravity</groupId>
-  <artifactId>gravity-hpaste</artifactId>
+  <artifactId>gravity-hpaste_2.10</artifactId>
   <version>0.1.24</version>
   <packaging>jar</packaging>
-  <name>hpaste_2.10</name>
+  <name>hpaste</name>
   <url>http://github.com/GravityLabs/HPaste</url>
   <description>Scala mapper for hbase</description>
   <inceptionYear>2011</inceptionYear>
