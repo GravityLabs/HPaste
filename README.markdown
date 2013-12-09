@@ -50,7 +50,9 @@ The classic case for HBase and BigTable is crawling and storing web pages.  You 
 * SearchMetrics is a column family that contains searches your users have made that have sent them to that page, organized by day.
 
 ```scala
-class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName = "pages", rowKeyClass = classOf[String]) {
+object WebCrawlingSchema extends Schema {
+
+  class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName = "pages", rowKeyClass = classOf[String]) {
     def rowBuilder(result: DeserializedResult) = new WebPageRow(this, result)
 
     val meta = family[String, String, Any]("meta")
@@ -62,8 +64,6 @@ class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName = "pag
     val attributes = column(content, "attrs", classOf[Map[String, String]])
 
     val searchMetrics = family[String, DateMidnight, Long]("searchesByDay")
-
-
   }
 
   class WebPageRow(table: WebTable, result: DeserializedResult) extends HRow[WebTable, String](result, table)
