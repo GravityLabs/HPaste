@@ -39,7 +39,9 @@ object HPasteBuild extends Build {
         Libraries.asyncHbase,
         Libraries.trove4j,
         Libraries.junit,
-        Libraries.hbaseTests
+        Libraries.junitInt,
+        Libraries.hadoopTest,
+        Libraries.hbaseTest
       ).map(_.exclude("org.apache.thrift", "thrift")) // TODO: use full list
     )
 }
