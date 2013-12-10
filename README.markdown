@@ -25,7 +25,11 @@ This project is currently actively developed and maintained.  It is used in a la
 
 ## Installation
 
-This project uses [Maven](http://maven.apache.org/ "Apache Maven"). To use HPaste in your own maven project, simply add it as a dependency:
+This project uses [Maven](http://maven.apache.org/ "Apache Maven") but is usable from [SBT](http://www.scala-sbt.org/) too.
+
+### Maven
+
+To use HPaste in your own Maven project, simply add it as a dependency:
 
 ```xml
 <dependency>
@@ -33,6 +37,15 @@ This project uses [Maven](http://maven.apache.org/ "Apache Maven"). To use HPast
   <artifactId>gravity-hpaste</artifactId>
   <version>0.1.11</version>
 </dependency>
+```
+
+### SBT
+
+To use HPaste in your own SBT project:
+
+```scala
+// Dependency
+val hpaste = "com.gravity" %% "gravity-hpaste" % "0.1.24"
 ```
 
 ## Quickstart
@@ -50,7 +63,9 @@ The classic case for HBase and BigTable is crawling and storing web pages.  You 
 * SearchMetrics is a column family that contains searches your users have made that have sent them to that page, organized by day.
 
 ```scala
-class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName = "pages", rowKeyClass = classOf[String]) {
+object WebCrawlingSchema extends Schema {
+
+  class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName = "pages", rowKeyClass = classOf[String]) {
     def rowBuilder(result: DeserializedResult) = new WebPageRow(this, result)
 
     val meta = family[String, String, Any]("meta")
@@ -62,8 +77,6 @@ class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName = "pag
     val attributes = column(content, "attrs", classOf[Map[String, String]])
 
     val searchMetrics = family[String, DateMidnight, Long]("searchesByDay")
-
-
   }
 
   class WebPageRow(table: WebTable, result: DeserializedResult) extends HRow[WebTable, String](result, table)

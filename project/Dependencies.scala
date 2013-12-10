@@ -21,28 +21,30 @@ object Dependencies {
 
   object V {
     // Java
+    val hadoop      = "0.20.2"
     val jodaTime    = "1.6.1"
-    val hadoopCore  = "0.20.2"
     val hbase       = "0.90.4"
     val asyncHbase  = "1.4.0"
     val trove4j     = "3.0.3"
     // Java (test only)
     val junit       = "4.8.1"
-    val hadoopTest  = "0.20.2"
+    val junitInt    = "0.10"
   }
 
   object Libraries {
     // Java
-    val jodaTime    = "joda-time"         % "joda-time"   % V.jodaTime
-    val hadoopCore  = "org.apache.hadoop" % "hadoop-core" % V.hadoopCore
-    val hbase       = "org.apache.hbase"  % "hbase"       % V.hbase
-    val asyncHbase  = "org.hbase"         % "asynchbase"  % V.asyncHbase   
-    val trove4j     = "net.sf.trove4j"    % "trove4j"     % V.trove4j
+    val jodaTime   = "joda-time"         % "joda-time"       % V.jodaTime
+    val hadoopCore = "org.apache.hadoop" % "hadoop-core"     % V.hadoop
+    val hbase      = "org.apache.hbase"  % "hbase"           % V.hbase
+    val asyncHbase = "org.hbase"         % "asynchbase"      % V.asyncHbase   
+    val trove4j    = "net.sf.trove4j"    % "trove4j"         % V.trove4j
     // Java (test only)
-    val junit       = "junit"             % "junit"       % V.junit        % "test"
-    val hadoopTest  = "org.apache.hadoop" % "hadoop-test" % V.hadoopTest   % "test"
-    val hbaseTests  = "org.apache.hbase"  % "hbase"       % V.hbase        classifier "tests"
-    // To exclude. TODO: not yet implemented
+    val junit      = "junit"             % "junit"           % V.junit        % "test"
+    val junitInt   = "com.novocode"      % "junit-interface" % V.junitInt     % "test"
+    val hadoopTest = "org.apache.hadoop" % "hadoop-test"     % V.hadoop       % "test"
+    val hbaseTest  = "org.apache.hbase"  % "hbase"           % V.hbase        classifier "tests"
+
+    // To exclude. TODO: not yet used in HPasteBuild
     val exclusions = List(
                       "org.apache.thrift" , "thrift"           ,
                       "org.jruby"         , "jruby-complete"   ,
