@@ -25,7 +25,11 @@ This project is currently actively developed and maintained.  It is used in a la
 
 ## Installation
 
-This project uses [Maven](http://maven.apache.org/ "Apache Maven"). To use HPaste in your own maven project, simply add it as a dependency:
+This project uses [Maven](http://maven.apache.org/ "Apache Maven") but is usable from [SBT](http://www.scala-sbt.org/) too.
+
+### Maven
+
+To use HPaste in your own Maven project, simply add it as a dependency:
 
 ```xml
 <dependency>
@@ -33,6 +37,15 @@ This project uses [Maven](http://maven.apache.org/ "Apache Maven"). To use HPast
   <artifactId>gravity-hpaste</artifactId>
   <version>0.1.11</version>
 </dependency>
+```
+
+### SBT
+
+To use HPaste in your own SBT project:
+
+```scala
+// Dependency
+val hpaste = "com.gravity" %% "gravity-hpaste" % "0.1.24"
 ```
 
 ## Quickstart
