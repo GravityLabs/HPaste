@@ -58,13 +58,21 @@ trait BaseQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] {
   var batchSize = -1
   var startTime: Long = Long.MinValue
   var endTime: Long = Long.MaxValue
+  protected [schema] val currentFilterMutex: AnyRef = new AnyRef()
 
+  private def checkMultipleAssignment {
+    Option(currentFilter).foreach(_ => throw new IllegalStateException("multiple assignment to currentState (more than one call to filter, filterOr, withOrFilters, withAndFilters?)"))
+  }
+  
   def filter(filterFx: ((FilterBuilder) => Unit)*): this.type = {
     val fb = new FilterBuilder(true)
     for (fx <- filterFx) {
       fx(fb)
     }
-    currentFilter = fb.coreList
+    currentFilterMutex.synchronized {
+      checkMultipleAssignment
+      currentFilter = fb.coreList
+    }
     this
   }
 
@@ -73,17 +81,30 @@ trait BaseQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] {
     for (fx <- filterFx) {
       fx(fb)
     }
-    currentFilter = fb.coreList
+    currentFilterMutex.synchronized {
+      checkMultipleAssignment
+      currentFilter = fb.coreList
+    }
     this
 
   }
 
-  /**
-   * Lets you make your own filter, for experimentation
-   * @param builder
-   */
-  def withFilter(builder : => Filter) {
-    currentFilter = builder
+  def withOrFilters(builders : Filter *) : this.type = {
+    val list = new FilterList(Operator.MUST_PASS_ONE, builders)
+    currentFilterMutex.synchronized {
+      checkMultipleAssignment
+      currentFilter = list
+    }
+    this
+  }
+
+  def withAndFilters(builders : Filter *) : this.type = {
+    val list = new FilterList(Operator.MUST_PASS_ALL, builders)
+    currentFilterMutex.synchronized {
+      checkMultipleAssignment
+      currentFilter = list
+    }
+    this
   }
 
   class FilterBuilder(and: Boolean) {
@@ -405,7 +426,9 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
                               startTime: Long,
                               endTime: Long) = {
     this(table, keys, families, columns)
-    this.currentFilter = currentFilter
+    currentFilterMutex.synchronized {
+      this.currentFilter = currentFilter
+    }
     this.startRowBytes = startRowBytes
     this.endRowBytes = endRowBytes
     this.batchSize = batchSize
@@ -479,10 +502,11 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     for ((columnFamily, column) <- columns) {
       get.addColumn(columnFamily, column)
     }
-    if (currentFilter != null) {
-      get.setFilter(currentFilter)
+    currentFilterMutex.synchronized {
+      if (currentFilter != null) {
+        get.setFilter(currentFilter)
+      }
     }
-
     val fromCache = if (skipCache) None else table.cache.getResult(get)
 
     fromCache match {
@@ -670,8 +694,10 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     for ((columnFamily, column) <- columns) {
       firstGet.addColumn(columnFamily, column)
     }
-    if (currentFilter != null) {
-      firstGet.setFilter(currentFilter)
+    currentFilterMutex.synchronized {
+      if (currentFilter != null) {
+        firstGet.setFilter(currentFilter)
+      }
     }
 
 
@@ -733,11 +759,11 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     for (column <- columns) {
       scan.addColumn(column._1, column._2)
     }
-
-    if (currentFilter != null) {
-      scan.setFilter(currentFilter)
+    currentFilterMutex.synchronized {
+      if (currentFilter != null) {
+        scan.setFilter(currentFilter)
+      }
     }
-
     scan
   }
 
@@ -762,11 +788,10 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
         result.foreach(handler)
       }
       case None => {
-
         table.withTable() {
           htable =>
 
-            val scanner = htable.getScanner(scan)
+            val scanner : ResultScanner = htable.getScanner(scan)
 
             try {
               var done = false
@@ -787,7 +812,6 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
         }
       }
     }
-
   }
 
   def scanToIterable[I](handler: (RR) => I, maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100, useLocalCache: Boolean = false, localTTL: Int = 30) = {
@@ -854,7 +878,6 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
         }
     }
   }
-
 }
 
 object Query2 {
@@ -872,5 +895,4 @@ object Query2 {
       fl.getFilters.foreach(sf => printFilter(depth + 1, sf))
     }
   }
-
 }

@@ -186,7 +186,7 @@ implements Configurable {
     return conf;
   }
 
-  @Override
+  // @Override
   public void setConf(Configuration otherConf) {
 //    otherConf.set("hbase.client.keyvalue.maxsize","104857600");
     this.conf = HBaseConfiguration.create(otherConf);
