@@ -73,7 +73,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
 
   /**A pool of table objects with AutoFlush set to false --therefore usable for asynchronous write buffering */
-  val bufferTablePool = {
+  val bufferTablePool : HTablePool = {
     new HTablePool(conf, 2, new HTableInterfaceFactory {
     def createHTableInterface(config: Configuration, tableName: Array[Byte]): HTableInterface = {
       val table = new HTable(conf, tableName)
@@ -339,7 +339,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
 
 
-  def getBufferedTable(name: String) = bufferTablePool.getTable(name)
+  def getBufferedTable(name: String) : HTableInterface = bufferTablePool.getTable(name)
 
   private val columns = ArrayBuffer[Column[T, R, _, _, _]]()
   val families = ArrayBuffer[ColumnFamily[T, R, _, _, _]]()

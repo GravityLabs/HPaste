@@ -20,12 +20,13 @@ package com.gravity.hbase.mapreduce
 import com.gravity.hbase.schema._
 import org.apache.hadoop.conf.Configuration
 import java.lang.Iterable
+import java.io.File
 import com.gravity.hbase.schema.HbaseTable
 import com.gravity.hadoop.GravityTableOutputFormat
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.mapreduce.lib.input.{SequenceFileInputFormat, FileInputFormat}
-import org.apache.hadoop.mapreduce.lib.output.{SequenceFileOutputFormat, FileOutputFormat}
+import org.apache.hadoop.mapreduce.lib.output.{SequenceFileOutputFormat, FileOutputFormat, TextOutputFormat}
 import scala.collection.JavaConversions._
 import org.apache.hadoop.hbase.client.{Scan, Result}
 import org.apache.hadoop.hbase.filter.{FilterList, Filter}
@@ -37,6 +38,7 @@ import java.io.{DataInputStream, ByteArrayInputStream, ByteArrayOutputStream}
 import org.apache.hadoop.hbase.mapreduce.{MultiTableOutputFormat, TableInputFormat}
 import org.joda.time.DateTime
 import scala.collection._
+import scala.io.Source
 import org.apache.hadoop.mapreduce.{Job, Partitioner, Reducer, Mapper}
 import org.apache.hadoop.mapred.JobConf
 
@@ -596,6 +598,21 @@ case class HPathOutput(path: String) extends HOutput {
 }
 
 /**
+  * Outputs to an HDFS directory
+  */
+case class HTextOutput[K,V](path: String) extends HOutput {
+
+
+  override def toString = "Output: File: " + path
+
+  override def init(job: Job, settings: SettingsBase) {
+    FileSystem.get(job.getConfiguration).delete(new Path(path), true)
+    job.setOutputFormatClass(classOf[TextOutputFormat[K,V]])
+    FileOutputFormat.setOutputPath(job, new Path(path))
+  }
+}
+
+/**
   * This is the input to a task that is in the middle of a job.
   * It reads from the output of the previous task.
   */
@@ -686,7 +703,7 @@ case class HRandomSequenceOutput[K, V]() extends HOutput {
 
 }
 
-case class HIO[IK, IV, OK, OV](var input: HInput = HRandomSequenceInput[IK, IV](), var output: HOutput = HRandomSequenceOutput[OK, OV]())
+case class HIO[IK, IV, OK, OV](private[mapreduce] var input : HInput = HRandomSequenceInput[IK, IV](), var output: HOutput = HRandomSequenceOutput[OK, OV]())
 
 
 /**
@@ -786,6 +803,21 @@ trait MultiTableWritable {
     }
   }
 }
+
+abstract class FromTextFileByLineMapper[MOK, MOV](outputKey: Class[MOK], outputValue: Class[MOV])
+        extends HMapper[Text, Text, MOK, MOV] {
+  // need to wait for HIO to init()
+  lazy val paths = FileInputFormat.getInputPaths(context)
+  // cascading lazy, I need paths and then file
+  lazy val file = new File(paths(0).toUri)
+  lazy val lines : Iterator[String] = Source.fromFile(file).getLines
+  
+  // NOTE: the above has no explicit protection against way too long lines
+
+}
+
+abstract class FromTextFileByLineToTableMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](toTable: HbaseTable[T, R, RR])
+        extends FromTextFileByLineMapper(classOf[NullWritable], classOf[Writable]) with ToTableWritable[T, R, RR] {}
 
 abstract class FromTableMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], MOK, MOV](table: HbaseTable[T, R, RR], outputKey: Class[MOK], outputValue: Class[MOV])
         extends HMapper[ImmutableBytesWritable, Result, MOK, MOV] {
@@ -890,7 +922,7 @@ abstract class BinaryToTableReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, 
 abstract class ToTableReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], MOK, MOV](table: HbaseTable[T, R, RR])
         extends HReducer[MOK, MOV, NullWritable, Writable] with ToTableWritable[T, R, RR]
 
-abstract class BinaryToMultiTableReducer(tables: HbaseTable[_, _, _]*) extends ToMultiTableReducer[BytesWritable, BytesWritable](tables: _*)
+abstract class BinaryToMultiTableReducer(tables: HbaseTable[_, _, _]*) extends ToMultiTableReducer[BytesWritable, BytesWritable](tables: _*) with BinaryReadable
 
 abstract class ToMultiTableReducer[MOK, MOV](tables: HbaseTable[_, _, _]*) extends HReducer[MOK, MOV, ImmutableBytesWritable, Writable] with MultiTableWritable {
   val validTableNames = tables.map(_.tableName).toSet
@@ -912,7 +944,6 @@ abstract class ToTableBinaryReducerFx[T <: HbaseTable[T, R, RR], R, RR <: HRow[T
   }
 
 }
-
 
 abstract class TextToBinaryMapper extends HMapper[LongWritable, Text, BytesWritable, BytesWritable] with BinaryWritable {
 }

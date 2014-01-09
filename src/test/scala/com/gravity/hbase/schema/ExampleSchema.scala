@@ -280,7 +280,5 @@ enable 'schema_example'"""
 
   }
 
-
-
 }
 
