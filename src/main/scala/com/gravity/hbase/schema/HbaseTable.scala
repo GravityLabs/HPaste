@@ -412,12 +412,6 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     }
   }
 
-  @deprecated("Use query2 instead, it is a generic interface for gets or scans")
-  def scan = new ScanQuery(this)
-
-  @deprecated("Use query2 instead")
-  def query = new Query(this)
-
   def query2 = new Query2Builder(this)
 
   def put(key: R, writeToWAL: Boolean = true) = new PutOp(this, keyConverter.toBytes(key))
