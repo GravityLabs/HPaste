@@ -20,7 +20,7 @@ object WebCrawlingSchema extends Schema {
 
   implicit val conf = LocalCluster.getTestConfiguration
 
-  class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName = "pages", rowKeyClass = classOf[String]) {
+  class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName = "pages", rowKeyClass = classOf[String], cache = new TestCache()) {
     def rowBuilder(result: DeserializedResult) = new WebPageRow(this, result)
 
     val meta = family[String, String, Any]("meta")
@@ -180,7 +180,7 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
             .withColumns(_.title, _.lastCrawled)
             .withFamilies(_.content)
             .withColumnsInFamily(_.searchMetrics, day1, day2)
-            .singleOption() match {
+            .singleOption(skipCache = false) match {
       case Some(pageRow) => {
         println("Title: " + pageRow.column(_.title).getOrElse("No Title"))
         println("Crawled on: " + pageRow.column(_.lastCrawled).getOrElse(new DateTime()))
@@ -211,7 +211,7 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
 
     val res = (op1 + op2).execute()
 
-    val results = WebCrawlingSchema.WebTable.query2.withKeys(Set(url1,url2)).withAllColumns.executeMap()
+    val results = WebCrawlingSchema.WebTable.query2.withKeys(Set(url1,url2)).withAllColumns.executeMap(skipCache = false)
 
     Assert.assertEquals("Addition1",results(url1).column(_.title).get)
     Assert.assertEquals("How stop blop blop?",results(url1).column(_.article).get)
@@ -245,7 +245,7 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
 
     new WebSearchAggregationJob().run(Settings.None, LocalCluster.getTestConfiguration)
 
-    WebCrawlingSchema.Sites.query2.withKey("mycrawledsite.com").withAllColumns.singleOption() match {
+    WebCrawlingSchema.Sites.query2.withKey("mycrawledsite.com").withAllColumns.singleOption(skipCache = false) match {
       case Some(siteRow) => {
         siteRow.family(_.searchMetrics).foreach {println}
       }

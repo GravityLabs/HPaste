@@ -81,7 +81,7 @@ object ExampleSchema extends Schema {
   implicit val conf = LocalCluster.getTestConfiguration
 
   //A table definition, where the row keys are Strings
-  class ExampleTable extends HbaseTable[ExampleTable,String, ExampleTableRow](tableName = "schema_example",rowKeyClass=classOf[String], tableConfig = HbaseTableConfig(maxFileSizeInBytes=1073741824))
+  class ExampleTable extends HbaseTable[ExampleTable,String, ExampleTableRow](tableName = "schema_example",rowKeyClass=classOf[String], tableConfig = HbaseTableConfig(maxFileSizeInBytes=1073741824), cache = new TestCache())
   {
     def rowBuilder(result:DeserializedResult) = new ExampleTableRow(this,result)
 
@@ -134,7 +134,7 @@ class ExampleSchemaTest extends HPasteTestCase(ExampleSchema) {
 
     ExampleSchema.ExampleTable.put("Chris").valueMap(_.kittens,kittens).execute()
 
-    val result = ExampleSchema.ExampleTable.query2.withKey("Chris").withFamilies(_.kittens).single()
+    val result = ExampleSchema.ExampleTable.query2.withKey("Chris").withFamilies(_.kittens).single(skipCache = false)
 
     val kittens2 = result.family(_.kittens)
 
@@ -172,7 +172,7 @@ enable 'schema_example'"""
    * Helper method
    */
   def dumpViewMap(key: String) {
-    val dayViewsRes = ExampleSchema.ExampleTable.query2.withKey(key).withFamilies(_.viewCountsByDay).withColumn(_.views).withColumn(_.title).single()
+    val dayViewsRes = ExampleSchema.ExampleTable.query2.withKey(key).withFamilies(_.viewCountsByDay).withColumn(_.views).withColumn(_.title).single(skipCache = false)
 
     val dayViewsMap = dayViewsRes.family(_.viewCountsByDay)
 
@@ -187,7 +187,7 @@ enable 'schema_example'"""
       .put("MapTest").value(_.viewsMap,viewMap)
       .execute()
 
-    val res = ExampleSchema.ExampleTable.query2.withKey("MapTest").withColumn(_.viewsMap).single()
+    val res = ExampleSchema.ExampleTable.query2.withKey("MapTest").withColumn(_.viewsMap).single(skipCache = false)
     val returnedMap = res.column(_.viewsMap).get
 
     Assert.assertEquals(returnedMap,viewMap)
@@ -198,7 +198,7 @@ enable 'schema_example'"""
       .put("SeqTest").value(_.viewsArr, Seq("Chris","Fred","Bill"))
       .execute()
 
-    val res = ExampleSchema.ExampleTable.query2.withKey("SeqTest").withColumn(_.viewsArr).single()
+    val res = ExampleSchema.ExampleTable.query2.withKey("SeqTest").withColumn(_.viewsArr).single(skipCache = false)
 
     val resSeq = res.column(_.viewsArr).get
     Assert.assertEquals(resSeq(0),"Chris")
@@ -219,7 +219,7 @@ enable 'schema_example'"""
             .put("Fred").value(_.viewsMap, mutable.Map("Chris"->50l,"Bissell"->100l))
             .execute()
 
-    val arrRes = ExampleSchema.ExampleTable.query2.withKey("Fred").withColumn(_.viewsArr).withColumn(_.viewsMap).single()
+    val arrRes = ExampleSchema.ExampleTable.query2.withKey("Fred").withColumn(_.viewsArr).withColumn(_.viewsMap).single(skipCache = false)
 
     val arr = arrRes.column(_.viewsArr)
 
@@ -257,7 +257,7 @@ enable 'schema_example'"""
 
     val views = ExampleSchema.ExampleTable.query2.withKey("Chris").withColumn(_.views).single().column(_.views)
 
-    val myviewqueryresult = ExampleSchema.ExampleTable.query2.withKey("Chris").withColumn(_.views).single()
+    val myviewqueryresult = ExampleSchema.ExampleTable.query2.withKey("Chris").withColumn(_.views).single(skipCache = false)
 
 
     println("Views: " + views.get)
@@ -267,7 +267,7 @@ enable 'schema_example'"""
     ExampleSchema.ExampleTable.put("Robbie").value(_.title, "My Bros, My Probs")
             .put("Ronnie").value(_.title, "My Weights, My Muskellz").execute()
 
-    val bros = ExampleSchema.ExampleTable.query2.withKeys(Set("Robbie", "Ronnie")).withFamilies(_.meta).executeMap()
+    val bros = ExampleSchema.ExampleTable.query2.withKeys(Set("Robbie", "Ronnie")).withFamilies(_.meta).executeMap(skipCache = false)
 
     if (bros.isEmpty) fail("Failed to retrieve the data we just put!")
 

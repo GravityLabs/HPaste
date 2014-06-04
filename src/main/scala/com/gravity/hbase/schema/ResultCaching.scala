@@ -51,8 +51,6 @@ trait QueryResultCache[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,R]] {
 
   def putResultLocal(key: String, value: Option[RR], ttl: Int)
 
-  def putResultsLocal(keysToValues: scala.collection.Map[String, Option[RR]], ttl: Int)
-
   def putResultRemote(key: String, value: Option[RR], ttl: Int)
 
   def putResultsRemote(keysToValues: scala.collection.Map[String, Option[RR]], ttl: Int)
@@ -84,11 +82,69 @@ class NoOpCache[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]] extends QueryResul
 
   def putResultLocal(key: String, value: Option[RR], ttl: Int) {}
 
-  def putResultsLocal(keysToValues: scala.collection.Map[String, Option[RR]], ttl: Int) {}
-
   def putResultRemote(key: String, value: Option[RR], ttl: Int) {}
 
   def putResultsRemote(keysToValues: scala.collection.Map[String, Option[RR]], ttl: Int) {}
+
+  def instrumentRequest(requestSize: Int, localHits: Int, localMisses: Int, remoteHits: Int, remoteMisses: Int) {}
+}
+
+class TestCache[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]] extends QueryResultCache[T, R, RR] {
+  private val local = new java.util.concurrent.ConcurrentHashMap[String, Option[RR]]()
+  private val remote = new java.util.concurrent.ConcurrentHashMap[String, Option[RR]]()
+  def getScanResult(key: Scan): Option[Seq[RR]] = None
+
+  def putScanResult(key: Scan, value: Seq[RR], ttl: Int) {}
+
+  def getKeyFromGet(get:Get) : String = new String(get.getRow)
+
+  private def getResultFrom(cache: java.util.concurrent.ConcurrentHashMap[String, Option[RR]], key: String) = {
+    try {
+      cache.get(key) match {
+        case null => NotFound
+        case Some(value) => Found(value)
+        case None => FoundEmpty
+      }
+    }
+    catch {
+      case e:Exception => Error("Error retrieving " + key, Some(e))
+    }
+  }
+
+  private def getResultsFrom(cache: java.util.concurrent.ConcurrentHashMap[String, Option[RR]], keys: Iterable[String]) = {
+    val results = for(key <- keys) yield key -> getResultFrom(cache, key)
+    results.toMap
+  }
+
+  def getLocalResult(key: String): CacheRequestResult[RR] = {
+    getResultFrom(local, key)
+  }
+
+  def getLocalResults(keys:Iterable[String]) : Map[String, CacheRequestResult[RR]] = {
+    getResultsFrom(local, keys)
+  }
+
+  def getRemoteResult(key: String): CacheRequestResult[RR] = {
+    getResultFrom(remote, key)
+  }
+
+  def getRemoteResults(keys: Iterable[String]) : Map[String, CacheRequestResult[RR]] = {
+    getResultsFrom(remote, keys)
+  }
+
+  def putResultLocal(key: String, value: Option[RR], ttl: Int) {
+    local.put(key, value)
+  }
+
+  def putResultRemote(key: String, value: Option[RR], ttl: Int) {
+    remote.put(key, value)
+  }
+
+  def putResultsRemote(keysToValues: scala.collection.Map[String, Option[RR]], ttl: Int) {
+    keysToValues.map { kv =>
+      remote.put(kv._1, kv._2)
+    }
+  }
 
   def instrumentRequest(requestSize: Int, localHits: Int, localMisses: Int, remoteHits: Int, remoteMisses: Int) {}
 }

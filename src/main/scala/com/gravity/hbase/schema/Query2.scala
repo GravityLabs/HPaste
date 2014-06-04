@@ -500,43 +500,56 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
       }
     }
 
+
     if (skipCache || table.cache.isInstanceOf[NoOpCache[T, R, RR]])
       getFromTable
     else {
       val cacheKey = table.cache.getKeyFromGet(get)
       table.cache.getLocalResult(cacheKey) match {
-        case Found(result) => Some(result)
-        case FoundEmpty => None
+        case Found(result) =>
+          table.cache.instrumentRequest(1, 1, 0, 0, 0)
+          Some(result)
+        case FoundEmpty =>
+          table.cache.instrumentRequest(1, 1, 0, 0, 0)
+          None
         case NotFound =>
           table.cache.getRemoteResult(cacheKey) match {
             case Found(result) =>
               table.cache.putResultLocal(cacheKey, Some(result), ttl)
+              table.cache.instrumentRequest(1, 0, 1, 1, 0)
               Some(result)
             case FoundEmpty =>
               table.cache.putResultLocal(cacheKey, None, ttl)
+              table.cache.instrumentRequest(1, 0, 1, 1, 0)
               None
             case NotFound =>
               val fromTable = getFromTable
               table.cache.putResultLocal(cacheKey, fromTable, ttl)
               table.cache.putResultRemote(cacheKey, fromTable, ttl)
+              table.cache.instrumentRequest(1, 0, 1, 0, 1)
               fromTable
             case Error(message, exceptionOption) => //don't save back to remote if there was an error - it's likely overloaded and this just creates a cascading failure
               val fromTable = getFromTable
               table.cache.putResultLocal(cacheKey, fromTable, ttl)
+              table.cache.instrumentRequest(1, 0, 1, 0, 1)
               fromTable
           }
         case Error(message, exceptionOption) =>
           table.cache.getRemoteResult(cacheKey) match {
             //don't save back to the local cache if there was an error retrieving
             case Found(result) =>
+              table.cache.instrumentRequest(1, 0, 1, 1, 0)
               Some(result)
             case FoundEmpty =>
+              table.cache.instrumentRequest(1, 0, 1, 1, 0)
               None
             case NotFound =>
               val fromTable = getFromTable
               table.cache.putResultRemote(cacheKey, fromTable, ttl)
+              table.cache.instrumentRequest(1, 0, 1, 0, 1)
               fromTable
             case Error(remoteMessage, remoteExceptionOption) => //don't save back to remote if there was an error - it's likely overloaded and this just creates a cascading failure
+              table.cache.instrumentRequest(1, 0, 1, 0, 1)
               val fromTable = getFromTable
               fromTable
           }
@@ -594,6 +607,10 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     }
     else {
       val results = mutable.Map[String, Option[RR]]() //the results we get from cache, by their cache keys.
+      var localhits = 0
+      var localmisses = 0
+      var remotehits = 0
+      var remotemisses = 0
 
       val remoteCacheMisses = mutable.Buffer[String]()
       val cacheKeysToGets = localKeysToGetsAndCacheKeys.values.map(tuple => tuple._2 -> tuple._1).toMap //gets.map(get => table.cache.getKeyFromGet(get) -> get).toMap
@@ -605,12 +622,16 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
         localCacheResult match {
           case Found(result) =>
             cacheKeysRemaining.remove(key)
+            localhits += 1
             results.update(key, Some(result))
           case FoundEmpty =>
             cacheKeysRemaining.remove(key)
+            localhits += 1
             results.update(key, None)
           case NotFound =>
+            localmisses += 1
           case Error(message, exceptionOption) =>
+            localmisses += 1
         }
       }
 
@@ -621,13 +642,18 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
           case Found(result) =>
             results.update(key, Some(result))
             cacheKeysRemaining.remove(key)
+            remotehits += 1
             table.cache.putResultLocal(key, Some(result), ttl)
           case FoundEmpty =>
             results.update(key, None)
             cacheKeysRemaining.remove(key)
+            remotehits += 1
             table.cache.putResultLocal(key, None, ttl)
-          case NotFound => remoteCacheMisses += key
+          case NotFound =>
+            remoteCacheMisses += key
+            remotemisses += 1
           case Error(message, exceptionOption) =>
+            remotemisses += 1
         }
       }
 
@@ -660,6 +686,8 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
       val remoteCacheMissesSet = remoteCacheMisses.toSet
       val resultsToSaveRemote = results.filterKeys(key => remoteCacheMissesSet.contains(key))
       table.cache.putResultsRemote(resultsToSaveRemote, ttl)
+
+      table.cache.instrumentRequest(keys.size, localhits, localmisses, remotehits, remotemisses)
 
       results.values.map(valueOpt => {
         valueOpt match {
