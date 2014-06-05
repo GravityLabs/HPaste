@@ -5,7 +5,6 @@ import java.lang.String
 import org.joda.time.{DateMidnight, DateTime}
 import com.gravity.hbase.mapreduce.{HMapReduceTask, HJob}
 import java.net.URL
-import com.gravity.hbase.schema._
 import scala.collection._
 import com.gravity.hbase.schema.WebCrawlingSchema.WebPageRow
 import org.junit.{Assert, Test}

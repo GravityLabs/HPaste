@@ -89,7 +89,7 @@ class NoOpCache[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]] extends QueryResul
   def instrumentRequest(requestSize: Int, localHits: Int, localMisses: Int, remoteHits: Int, remoteMisses: Int) {}
 }
 
-class TestCache[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]] extends QueryResultCache[T, R, RR] {
+private[schema] class TestCache[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]] extends QueryResultCache[T, R, RR] {
   private val local = new java.util.concurrent.ConcurrentHashMap[String, Option[RR]]()
   private val remote = new java.util.concurrent.ConcurrentHashMap[String, Option[RR]]()
   def getScanResult(key: Scan): Option[Seq[RR]] = None
@@ -146,5 +146,7 @@ class TestCache[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]] extends QueryResul
     }
   }
 
-  def instrumentRequest(requestSize: Int, localHits: Int, localMisses: Int, remoteHits: Int, remoteMisses: Int) {}
+  def instrumentRequest(requestSize: Int, localHits: Int, localMisses: Int, remoteHits: Int, remoteMisses: Int) {
+    println("instrumented " + requestSize + " requests, " + localHits + " local hits, " + localMisses + " localMisses, " + remoteHits + " remoteHits, and " + remoteMisses + " remoteMisses")
+  }
 }
