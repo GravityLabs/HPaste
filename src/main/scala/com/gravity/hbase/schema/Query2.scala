@@ -511,7 +511,12 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
           Some(result)
         case FoundEmpty =>
           table.cache.instrumentRequest(1, 1, 0, 0, 0)
-          None
+          if(noneOnEmpty)
+            None
+          else {
+            val qr = table.emptyRow(keys.head)
+            Some(qr)
+          }
         case NotFound =>
           table.cache.getRemoteResult(cacheKey) match {
             case Found(result) =>
@@ -521,7 +526,12 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
             case FoundEmpty =>
               table.cache.putResultLocal(cacheKey, None, ttl)
               table.cache.instrumentRequest(1, 0, 1, 1, 0)
-              None
+              if (noneOnEmpty)
+                None
+              else {
+                val qr = table.emptyRow(keys.head)
+                Some(qr)
+              }
             case NotFound =>
               val fromTable = getFromTable
               table.cache.putResultLocal(cacheKey, fromTable, ttl)
@@ -542,7 +552,12 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
               Some(result)
             case FoundEmpty =>
               table.cache.instrumentRequest(1, 0, 1, 1, 0)
-              None
+              if (noneOnEmpty)
+                None
+              else {
+                val qr = table.emptyRow(keys.head)
+                Some(qr)
+              }
             case NotFound =>
               val fromTable = getFromTable
               table.cache.putResultRemote(cacheKey, fromTable, ttl)
@@ -627,7 +642,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
           case FoundEmpty =>
             cacheKeysRemaining.remove(key)
             localhits += 1
-            results.update(key, None)
+            if(!returnEmptyRows) results.update(key, None)
           case NotFound =>
             localmisses += 1
           case Error(message, exceptionOption) =>
@@ -645,7 +660,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
             remotehits += 1
             table.cache.putResultLocal(key, Some(result), ttl)
           case FoundEmpty =>
-            results.update(key, None)
+            if(!returnEmptyRows) results.update(key, None)
             cacheKeysRemaining.remove(key)
             remotehits += 1
             table.cache.putResultLocal(key, None, ttl)
@@ -671,13 +686,15 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
                 results.update(cacheKey, Some(qr)) // place it in our result buffer
               }
               else {
-                //since we have no information about the row, we just have to diff what we have vs what we asked for and fill in the rest
-                //results.keySet is everything we've gotten back, one way or another
-                //cacheKeysToGets.keySet is everything, total
-                val notFoundKeys = cacheKeysToGets.keySet.diff(results.keySet)
-                notFoundKeys.map(notFoundKey => {
-                  results.update(notFoundKey, None)
-                })
+                if(!returnEmptyRows) {
+                  //since we have no information about the row, we just have to diff what we have vs what we asked for and fill in the rest
+                  //results.keySet is everything we've gotten back, one way or another
+                  //cacheKeysToGets.keySet is everything, total
+                  val notFoundKeys = cacheKeysToGets.keySet.diff(results.keySet)
+                  notFoundKeys.map(notFoundKey => {
+                    results.update(notFoundKey, None)
+                  })
+                }
               }
             })
         }
