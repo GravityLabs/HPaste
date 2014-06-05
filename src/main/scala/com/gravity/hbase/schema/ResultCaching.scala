@@ -16,7 +16,7 @@
   */
 
 package com.gravity.hbase.schema
-
+import scala.collection.Map
 import org.apache.hadoop.hbase.client.{Get, Scan}
 
 /*             )\._.,--....,'``.
@@ -53,7 +53,7 @@ trait QueryResultCache[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,R]] {
 
   def putResultRemote(key: String, value: Option[RR], ttl: Int)
 
-  def putResultsRemote(keysToValues: scala.collection.Map[String, Option[RR]], ttl: Int)
+  def putResultsRemote(keysToValues: Map[String, Option[RR]], ttl: Int)
 
   def instrumentRequest(requestSize: Int, localHits: Int, localMisses: Int, remoteHits: Int, remoteMisses: Int)
 }
@@ -84,7 +84,7 @@ class NoOpCache[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]] extends QueryResul
 
   def putResultRemote(key: String, value: Option[RR], ttl: Int) {}
 
-  def putResultsRemote(keysToValues: scala.collection.Map[String, Option[RR]], ttl: Int) {}
+  def putResultsRemote(keysToValues: Map[String, Option[RR]], ttl: Int) {}
 
   def instrumentRequest(requestSize: Int, localHits: Int, localMisses: Int, remoteHits: Int, remoteMisses: Int) {}
 }
@@ -140,7 +140,7 @@ private[schema] class TestCache[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]] ex
     remote.put(key, value)
   }
 
-  def putResultsRemote(keysToValues: scala.collection.Map[String, Option[RR]], ttl: Int) {
+  def putResultsRemote(keysToValues: Map[String, Option[RR]], ttl: Int) {
     keysToValues.map { kv =>
       remote.put(kv._1, kv._2)
     }
