@@ -470,7 +470,6 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
       get.setTimeRange(startTime, endTime)
     }
 
-
     for (family <- families) {
       get.addFamily(family)
     }
@@ -481,7 +480,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
       get.setFilter(currentFilter)
     }
 
-    def getFromTable = {
+    if (skipCache || table.cache.isInstanceOf[NoOpCache[T, R, RR]])
       table.withTableOption(tableName) {
         case Some(htable) =>
           val result = htable.get(get)
@@ -498,11 +497,6 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
           }
         case None => None
       }
-    }
-
-
-    if (skipCache || table.cache.isInstanceOf[NoOpCache[T, R, RR]])
-      getFromTable
     else {
       val cacheKey = table.cache.getKeyFromGet(get)
       table.cache.getLocalResult(cacheKey) match {
@@ -511,7 +505,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
           Some(result)
         case FoundEmpty =>
           table.cache.instrumentRequest(1, 1, 0, 0, 0)
-          if(noneOnEmpty)
+          if (noneOnEmpty)
             None
           else {
             val qr = table.emptyRow(keys.head)
@@ -524,29 +518,70 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
               table.cache.instrumentRequest(1, 0, 1, 1, 0)
               Some(result)
             case FoundEmpty =>
-              table.cache.putResultLocal(cacheKey, None, ttl)
               table.cache.instrumentRequest(1, 0, 1, 1, 0)
-              if (noneOnEmpty)
+              if (noneOnEmpty) //then also don't cache.
                 None
               else {
+                table.cache.putResultLocal(cacheKey, None, ttl) //just cache None, so the cache will return "FoundEmpty", but RETURN the empty row to keep behavior consistent
                 val qr = table.emptyRow(keys.head)
                 Some(qr)
               }
             case NotFound =>
-              val fromTable = getFromTable
-              table.cache.putResultLocal(cacheKey, fromTable, ttl)
-              table.cache.putResultRemote(cacheKey, fromTable, ttl)
+              val fromTable = table.withTableOption(tableName) {
+                case Some(htable) =>
+                  val result = htable.get(get)
+                  if (noneOnEmpty && result.isEmpty) {
+                    //this means DO NOT CACHE EMPTY. But return None
+                    None
+                  }
+                  else if (!noneOnEmpty && result.isEmpty) {
+                    //this means - return empty row, cache None. believe it or not this is easier than the alternative, because of the logic in multi-get
+                    table.cache.putResultLocal(cacheKey, None, ttl)
+                    table.cache.putResultRemote(cacheKey, None, ttl)
+                    val qr = table.emptyRow(keys.head)
+                    Some(qr)
+                  }
+                  else {
+                    //the result isn't empty so we don't care about the noneOnEmpty settings
+                    val qr = table.buildRow(result)
+                    val ret = Some(qr)
+                    table.cache.putResultLocal(cacheKey, ret, ttl)
+                    table.cache.putResultRemote(cacheKey, ret, ttl)
+                    ret
+                  }
+                case None => None //the table doesn't even exist. let's just go on our merry way, because it's probably something bigger than us gone wrong
+              }
               table.cache.instrumentRequest(1, 0, 1, 0, 1)
               fromTable
             case Error(message, exceptionOption) => //don't save back to remote if there was an error - it's likely overloaded and this just creates a cascading failure
-              val fromTable = getFromTable
-              table.cache.putResultLocal(cacheKey, fromTable, ttl)
+              val fromTable = table.withTableOption(tableName) {
+                case Some(htable) =>
+                  val result = htable.get(get)
+                  if (noneOnEmpty && result.isEmpty) {
+                    //this means DO NOT CACHE EMPTY. But return None
+                    None
+                  }
+                  else if (!noneOnEmpty && result.isEmpty) {
+                    //this means - return empty row, cache None. believe it or not this is easier than the alternative, because of the logic in multi-get
+                    table.cache.putResultLocal(cacheKey, None, ttl)
+                    val qr = table.emptyRow(keys.head)
+                    Some(qr)
+                  }
+                  else {
+                    //the result isn't empty so we don't care about the noneOnEmpty settings
+                    val qr = table.buildRow(result)
+                    val ret = Some(qr)
+                    table.cache.putResultLocal(cacheKey, ret, ttl)
+                    ret
+                  }
+                case None => None //the table doesn't even exist. let's just go on our merry way, because it's probably something bigger than us gone wrong
+              }
+
               table.cache.instrumentRequest(1, 0, 1, 0, 1)
               fromTable
           }
-        case Error(message, exceptionOption) =>
+        case Error(message, exceptionOption) => //don't save back to the local cache if there was an error retrieving
           table.cache.getRemoteResult(cacheKey) match {
-            //don't save back to the local cache if there was an error retrieving
             case Found(result) =>
               table.cache.instrumentRequest(1, 0, 1, 1, 0)
               Some(result)
@@ -559,19 +594,48 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
                 Some(qr)
               }
             case NotFound =>
-              val fromTable = getFromTable
-              table.cache.putResultRemote(cacheKey, fromTable, ttl)
+              val fromTable = table.withTableOption(tableName) {
+                case Some(htable) =>
+                  val result = htable.get(get)
+                  if (noneOnEmpty && result.isEmpty) {
+                    None
+                  }
+                  else if (!noneOnEmpty && result.isEmpty) {
+                    val qr = table.emptyRow(keys.head)
+                    Some(qr)
+                  }
+                  else {
+                    //the result isn't empty so we don't care about the noneOnEmpty settings
+                    val qr = table.buildRow(result)
+                    val ret = Some(qr)
+                    ret
+                  }
+                case None => None //the table doesn't even exist. let's just go on our merry way, because it's probably something bigger than us gone wrong
+              }
               table.cache.instrumentRequest(1, 0, 1, 0, 1)
               fromTable
             case Error(remoteMessage, remoteExceptionOption) => //don't save back to remote if there was an error - it's likely overloaded and this just creates a cascading failure
               table.cache.instrumentRequest(1, 0, 1, 0, 1)
-              val fromTable = getFromTable
-              fromTable
+              table.withTableOption(tableName) {
+                case Some(htable) =>
+                  val result = htable.get(get)
+                  if (noneOnEmpty && result.isEmpty) {
+                    None
+                  }
+                  else if (!noneOnEmpty && result.isEmpty) {
+                    val qr = table.emptyRow(keys.head)
+                    Some(qr)
+                  }
+                  else {
+                    val qr = table.buildRow(result)
+                    val ret = Some(qr)
+                    ret
+                  }
+                case None => None //the table doesn't even exist. let's just go on our merry way, because it's probably something bigger than us gone wrong
+              }
           }
       }
     }
-
-
   }
 
   /**
@@ -621,7 +685,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
       }
     }
     else {
-      val results = mutable.Map[String, Option[RR]]() //the results we get from cache, by their cache keys.
+      val cacheResults = mutable.Map[String, Option[RR]]() //the results we get from cache, by their cache keys.
       var localhits = 0
       var localmisses = 0
       var remotehits = 0
@@ -638,11 +702,11 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
           case Found(result) =>
             cacheKeysRemaining.remove(key)
             localhits += 1
-            results.update(key, Some(result))
+            cacheResults.update(key, Some(result))
           case FoundEmpty =>
             cacheKeysRemaining.remove(key)
             localhits += 1
-            if(!returnEmptyRows) results.update(key, None)
+            if(returnEmptyRows) cacheResults.update(key, None)
           case NotFound =>
             localmisses += 1
           case Error(message, exceptionOption) =>
@@ -655,61 +719,62 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
       remoteCacheResults.foreach { case (key, remoteCacheResult) =>
         remoteCacheResult match {
           case Found(result) =>
-            results.update(key, Some(result))
+            cacheResults.update(key, Some(result))
             cacheKeysRemaining.remove(key)
             remotehits += 1
             table.cache.putResultLocal(key, Some(result), ttl)
           case FoundEmpty =>
-            if(!returnEmptyRows) results.update(key, None)
+            cacheResults.update(key, None)
             cacheKeysRemaining.remove(key)
             remotehits += 1
-            table.cache.putResultLocal(key, None, ttl)
+            if(returnEmptyRows) //return empty rows also means cache empty rows
+              table.cache.putResultLocal(key, None, ttl)
           case NotFound =>
             remoteCacheMisses += key
             remotemisses += 1
           case Error(message, exceptionOption) =>
+            //don't record the miss key here, to prevent a saveback
             remotemisses += 1
         }
       }
 
       val allCacheMissGets = cacheKeysRemaining.map(key => cacheKeysToGets(key)).toList
 
-      //needs a list of Gets. also needs the ability to look up a local key string to relate to a cache key string.
       if (!allCacheMissGets.isEmpty) {
         table.withTable(tableName) {
           htable =>
             htable.get(allCacheMissGets).foreach(res => {
-              if(res != null && !res.isEmpty) {
-                val localKey = new String(res.getRow) //I am unclear if this will work in the event of isempty
+              if (res != null && !res.isEmpty) {
+                val localKey = new String(res.getRow)
                 val cacheKey = localKeysToGetsAndCacheKeys(localKey)._2
-                val qr = table.buildRow(res) // construct query result
-                results.update(cacheKey, Some(qr)) // place it in our result buffer
-              }
-              else {
-                if(!returnEmptyRows) {
-                  //since we have no information about the row, we just have to diff what we have vs what we asked for and fill in the rest
-                  //results.keySet is everything we've gotten back, one way or another
-                  //cacheKeysToGets.keySet is everything, total
-                  val notFoundKeys = cacheKeysToGets.keySet.diff(results.keySet)
-                  notFoundKeys.map(notFoundKey => {
-                    results.update(notFoundKey, None)
-                  })
-                }
+                val qr = table.buildRow(res)
+                cacheResults.update(cacheKey, Some(qr))
               }
             })
+        }
+
+        if (returnEmptyRows) {
+          //then we need also need to cache Nones for everything that came back empty. while processing each result, we didn't have the associated cache keys,
+          //so we have to derive from other data which to associate with None.
+          //results.keySet is everything we've gotten back, one way or another
+          //cacheKeysToGets.keySet is everything, total.
+          //so everything minus things we've already gotten back is things that were missing from the table fetch
+          val notFoundKeys = cacheKeysToGets.keySet.diff(cacheResults.keySet)
+          notFoundKeys.map(notFoundKey => {
+            cacheResults.update(notFoundKey, None) //and each of those should be cached as None
+          })
         }
       }
 
       val remoteCacheMissesSet = remoteCacheMisses.toSet
-      val resultsToSaveRemote = results.filterKeys(key => remoteCacheMissesSet.contains(key))
+      val resultsToSaveRemote = cacheResults.filterKeys(key => remoteCacheMissesSet.contains(key)) //we only want to save Nones if we are returning empty rows, but there will only be Nones in the results if that is true
       table.cache.putResultsRemote(resultsToSaveRemote, ttl)
-
       table.cache.instrumentRequest(keys.size, localhits, localmisses, remotehits, remotemisses)
 
-      results.values.map(valueOpt => {
+      cacheResults.values.map(valueOpt => {
         valueOpt match {
           case Some(value) => resultMap(value.rowid) = value
-          case None =>
+          case None => //if we want to return empty rows, they are already there. if we don't... they aren't, and we don't have to change anything.
         }
       })
     }
