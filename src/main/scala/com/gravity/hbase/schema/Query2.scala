@@ -26,8 +26,6 @@ import org.apache.hadoop.hbase.filter.FilterList.Operator
 import org.joda.time.ReadableInstant
 import org.apache.hadoop.hbase.filter._
 import java.util
-import scala.Some
-
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -685,7 +683,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
       }
     }
     else {
-      val cacheResults = mutable.Map[String, Option[RR]]() //the results we get from cache, by their cache keys.
+      val resultBuffer = mutable.Map[String, Option[RR]]() //the results, built from local cache, remote cache, and finally the
       var localhits = 0
       var localmisses = 0
       var remotehits = 0
@@ -702,11 +700,11 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
           case Found(result) =>
             cacheKeysRemaining.remove(key)
             localhits += 1
-            cacheResults.update(key, Some(result))
+            resultBuffer.update(key, Some(result))
           case FoundEmpty =>
             cacheKeysRemaining.remove(key)
             localhits += 1
-            if(returnEmptyRows) cacheResults.update(key, None)
+            if(returnEmptyRows) resultBuffer.update(key, None)
           case NotFound =>
             localmisses += 1
           case Error(message, exceptionOption) =>
@@ -719,12 +717,12 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
       remoteCacheResults.foreach { case (key, remoteCacheResult) =>
         remoteCacheResult match {
           case Found(result) =>
-            cacheResults.update(key, Some(result))
+            resultBuffer.update(key, Some(result))
             cacheKeysRemaining.remove(key)
             remotehits += 1
             table.cache.putResultLocal(key, Some(result), ttl)
           case FoundEmpty =>
-            cacheResults.update(key, None)
+            resultBuffer.update(key, None)
             cacheKeysRemaining.remove(key)
             remotehits += 1
             if(returnEmptyRows) //return empty rows also means cache empty rows
@@ -747,8 +745,10 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
               if (res != null && !res.isEmpty) {
                 val localKey = new String(res.getRow)
                 val cacheKey = localKeysToGetsAndCacheKeys(localKey)._2
-                val qr = table.buildRow(res)
-                cacheResults.update(cacheKey, Some(qr))
+                val theThingWeWant = Some(table.buildRow(res))
+                //put it in local cache now, and the resultBuffer will be used to send to remote in bulk later
+                table.cache.putResultLocal(cacheKey, theThingWeWant, ttl)
+                resultBuffer.update(cacheKey, theThingWeWant)
               }
             })
         }
@@ -759,19 +759,21 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
           //results.keySet is everything we've gotten back, one way or another
           //cacheKeysToGets.keySet is everything, total.
           //so everything minus things we've already gotten back is things that were missing from the table fetch
-          val notFoundKeys = cacheKeysToGets.keySet.diff(cacheResults.keySet)
-          notFoundKeys.map(notFoundKey => {
-            cacheResults.update(notFoundKey, None) //and each of those should be cached as None
+          val keyForThingsThatDontExist = cacheKeysToGets.keySet.diff(resultBuffer.keySet)
+          keyForThingsThatDontExist.map(keyForThingThatDoesntExist => {
+            //and each of those should be cached as None. put it in local cache now, and the resultBuffer will be used to send to remote in bulk later
+            table.cache.putResultLocal(keyForThingThatDoesntExist, None, ttl)
+            resultBuffer.update(keyForThingThatDoesntExist, None)
           })
         }
       }
 
       val remoteCacheMissesSet = remoteCacheMisses.toSet
-      val resultsToSaveRemote = cacheResults.filterKeys(key => remoteCacheMissesSet.contains(key)) //we only want to save Nones if we are returning empty rows, but there will only be Nones in the results if that is true
+      val resultsToSaveRemote = resultBuffer.filterKeys(key => remoteCacheMissesSet.contains(key)) //we only want to save Nones if we are returning empty rows, but there will only be Nones in the results if that is true
       table.cache.putResultsRemote(resultsToSaveRemote, ttl)
       table.cache.instrumentRequest(keys.size, localhits, localmisses, remotehits, remotemisses)
 
-      cacheResults.values.map(valueOpt => {
+      resultBuffer.values.map(valueOpt => {
         valueOpt match {
           case Some(value) => resultMap(value.rowid) = value
           case None => //if we want to return empty rows, they are already there. if we don't... they aren't, and we don't have to change anything.
@@ -830,69 +832,6 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
 
     gets.toMap
   }
-
-//  private def buildGetsAndCheckCache(skipCache: Boolean)(receiveGetAndKey: (Get, Array[Byte]) => Unit = (get, key) => {})(receiveCachedResult: (Option[RR], Get) => Unit = (qr, get) => {}): Seq[Get] = {
-//    if (keys.isEmpty) return Seq.empty[Get] // no keys..? nothing to see here... move along... move along.
-//
-//    val gets = mutable.Buffer[Get]() // buffer for the raw `Get's
-//
-//    for (key <- keys) {
-//      val get = new Get(key)
-//      if (startTime != Long.MinValue || endTime != Long.MaxValue) {
-//        get.setTimeRange(startTime, endTime)
-//      }
-//
-//
-//      gets += get
-//      receiveGetAndKey(get, key)
-//    }
-//
-//    // since the families and columns will be identical for all `Get's, only build them once
-//    val firstGet = gets(0)
-//
-//    // add all families to the first `Get'
-//    for (family <- families) {
-//      firstGet.addFamily(family)
-//    }
-//    // add all columns to the first `Get'
-//    for ((columnFamily, column) <- columns) {
-//      firstGet.addColumn(columnFamily, column)
-//    }
-//    if (currentFilter != null) {
-//      firstGet.setFilter(currentFilter)
-//    }
-//
-//
-//    var pastFirst = false
-//    for (get <- gets) {
-//      if (pastFirst) {
-//        // we want to skip the first `Get' as it already has families/columns
-//
-//        // for all subsequent `Get's, we will build their familyMap from the first `Get'
-//        firstGet.getFamilyMap.foreach((kv: (Array[Byte], util.NavigableSet[Array[Byte]])) => {
-//          get.getFamilyMap.put(kv._1, kv._2)
-//        })
-//        if (currentFilter != null) {
-//          get.setFilter(currentFilter)
-//        }
-//      }
-//      else {
-//        pastFirst = true
-//      }
-//
-//      // try the cache with this filled in get
-//      //if (!skipCache) receiveCachedResult(table.cache.getResult(get), get)
-//    }
-//
-//    if(!skipCache) {
-//      //val cacheResults = table.cache.getResults(gets)
-//
-////      cacheResults.foreach {case (get, rowOpt) =>
-////        receiveCachedResult(rowOpt,get)
-////      }
-//    }
-//    gets
-//  }
 
   def makeScanner(maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100) = {
     require(keys.size == 0, "A scanner should not specify keys, use singleOption or execute or executeMap")
