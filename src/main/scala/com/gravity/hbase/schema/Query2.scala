@@ -722,11 +722,13 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
             remotehits += 1
             table.cache.putResultLocal(key, Some(result), ttl)
           case FoundEmpty =>
-            resultBuffer.update(key, None)
             cacheKeysRemaining.remove(key)
             remotehits += 1
-            if(returnEmptyRows) //return empty rows also means cache empty rows
+            if(returnEmptyRows) {
+              //return empty rows also means cache empty rows
+              resultBuffer.update(key, None)
               table.cache.putResultLocal(key, None, ttl)
+            }
           case NotFound =>
             remoteCacheMisses += key
             remotemisses += 1
@@ -759,7 +761,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
           //results.keySet is everything we've gotten back, one way or another
           //cacheKeysToGets.keySet is everything, total.
           //so everything minus things we've already gotten back is things that were missing from the table fetch
-          val keyForThingsThatDontExist = cacheKeysToGets.keySet.diff(resultBuffer.keySet)
+          val keyForThingsThatDontExist = cacheKeysToGets.keySet.diff(resultBuffer.keySet) //result buffer will have nones from remote cache and local cache, but the ones from remote will already be in local
           keyForThingsThatDontExist.map(keyForThingThatDoesntExist => {
             //and each of those should be cached as None. put it in local cache now, and the resultBuffer will be used to send to remote in bulk later
             table.cache.putResultLocal(keyForThingThatDoesntExist, None, ttl)
