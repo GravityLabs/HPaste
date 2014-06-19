@@ -788,7 +788,8 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
 
   private def buildKeysToGetsAndCacheKeys(): Map[String, (Get, String)] = {
     if (keys.isEmpty) return Map.empty[String,(Get, String)] // no keys..? nothing to see here... move along... move along.
-    val gets = mutable.Buffer[(String,(Get, String))]() // buffer for the raw `Get's
+
+    val gets = mutable.Buffer[(String,Get)]() // buffer for the raw `Get's
 
     for (key <- keys) {
       val get = new Get(key)
@@ -796,11 +797,11 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
         get.setTimeRange(startTime, endTime)
       }
 
-      gets += Tuple2(new String(key), Tuple2(get, table.cache.getKeyFromGet(get)))
+      gets += Tuple2(new String(key), get)
     }
 
     // since the families and columns will be identical for all `Get's, only build them once
-    val firstGet = gets(0)._2._1
+    val firstGet = gets(0)._2
 
     // add all families to the first `Get'
     for (family <- families) {
@@ -822,17 +823,18 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
 
         // for all subsequent `Get's, we will build their familyMap from the first `Get'
         firstGet.getFamilyMap.foreach((kv: (Array[Byte], util.NavigableSet[Array[Byte]])) => {
-          get._2._1.getFamilyMap.put(kv._1, kv._2)
+          get._2.getFamilyMap.put(kv._1, kv._2)
         })
         if (currentFilter != null) {
-          get._2._1.setFilter(currentFilter)
+          get._2.setFilter(currentFilter)
         }
-      } else {
+      }
+      else {
         pastFirst = true
       }
     }
 
-    gets.toMap
+    gets.map{case (key, get) => key -> Tuple2(get, table.cache.getKeyFromGet(get))}.toMap //I feel like there must be a way to do this with just one toMap but i'm not sure what it is.
   }
 
   def makeScanner(maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100) = {
