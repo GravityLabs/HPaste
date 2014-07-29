@@ -96,7 +96,7 @@ private[schema] class TestCache[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]] ex
 
   def putScanResult(key: Scan, value: Seq[RR], ttl: Int) {}
 
-  def getKeyFromGet(get:Get) : String = new String(get.getRow)
+  def getKeyFromGet(get:Get) : String = java.util.Arrays.hashCode(get.getRow).toString()
 
   private def getResultFrom(cache: java.util.concurrent.ConcurrentHashMap[String, Option[RR]], key: String) = {
     try {
