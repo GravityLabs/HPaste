@@ -660,7 +660,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     val resultMap = mutable.Map[R, RR]()
     resultMap.sizeHint(keys.size) // perf optimization
 
-    val localKeysToGetsAndCacheKeys: Map[String, (Get, String)] = buildKeysToGetsAndCacheKeys()
+    val localKeysToGetsAndCacheKeys: Map[Int, (Get, String)] = buildKeysToGetsAndCacheKeys()
     val gets = localKeysToGetsAndCacheKeys.values.map(_._1).toList
 
     if(returnEmptyRows) {
@@ -670,7 +670,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     }
 
     if(skipCache || table.cache.isInstanceOf[NoOpCache[T, R, RR]]) {
-      if (!gets.isEmpty) {
+      if (gets.nonEmpty) {
         table.withTable(tableName) {
           htable =>
             htable.get(gets).foreach(res => {
@@ -740,12 +740,12 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
 
       val allCacheMissGets = cacheKeysRemaining.map(key => cacheKeysToGets(key)).toList
 
-      if (!allCacheMissGets.isEmpty) {
+      if (allCacheMissGets.nonEmpty) {
         table.withTable(tableName) {
           htable =>
             htable.get(allCacheMissGets).foreach(res => {
               if (res != null && !res.isEmpty) {
-                val localKey = new String(res.getRow)
+                val localKey = getIntFromBytes(res.getRow)
                 val cacheKey = localKeysToGetsAndCacheKeys(localKey)._2
                 val theThingWeWant = Some(table.buildRow(res))
                 //put it in local cache now, and the resultBuffer will be used to send to remote in bulk later
@@ -786,10 +786,14 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     resultMap // DONE!
   }
 
-  private def buildKeysToGetsAndCacheKeys(): Map[String, (Get, String)] = {
-    if (keys.isEmpty) return Map.empty[String,(Get, String)] // no keys..? nothing to see here... move along... move along.
+  private def getIntFromBytes(bytes: Array[Byte]) : Int = {
+    java.util.Arrays.hashCode(bytes)
+  }
 
-    val gets = mutable.Buffer[(String,Get)]() // buffer for the raw `Get's
+  private def buildKeysToGetsAndCacheKeys(): Map[Int, (Get, String)] = {
+    if (keys.isEmpty) return Map.empty[Int,(Get, String)] // no keys..? nothing to see here... move along... move along.
+
+    val gets = mutable.Buffer[(Int,Get)]() // buffer for the raw `Get's
 
     for (key <- keys) {
       val get = new Get(key)
@@ -797,7 +801,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
         get.setTimeRange(startTime, endTime)
       }
 
-      gets += Tuple2(new String(key), get)
+      gets += Tuple2(getIntFromBytes(key), get)
     }
 
     // since the families and columns will be identical for all `Get's, only build them once
@@ -883,7 +887,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     }
 
     def cacheComplete() {
-      if (useLocalCache && !results.isEmpty) table.cache.putScanResult(scan, results.toSeq, localTTL)
+      if (useLocalCache && results.nonEmpty) table.cache.putScanResult(scan, results.toSeq, localTTL)
     }
 
     val whatWeGetFromCache = if (useLocalCache) table.cache.getScanResult(scan) else None
@@ -930,7 +934,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     }
 
     def cacheComplete() {
-      if (useLocalCache && !results.isEmpty) table.cache.putScanResult(scan, results.toSeq, localTTL)
+      if (useLocalCache && results.nonEmpty) table.cache.putScanResult(scan, results.toSeq, localTTL)
     }
 
     val whatWeGetFromCache = if (useLocalCache) table.cache.getScanResult(scan) else None
