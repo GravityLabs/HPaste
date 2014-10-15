@@ -2,7 +2,7 @@ package com.gravity.hbase.schema
 
 import scala.collection.mutable.Buffer
 import org.apache.hadoop.io.Writable
-import org.apache.hadoop.hbase.client.{Increment, Delete, Put}
+import org.apache.hadoop.hbase.client.Row
 import scala.collection.JavaConversions._
 
 /*             )\._.,--....,'``.
@@ -64,49 +64,54 @@ abstract class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _
    */
   def withExecuteBuffered(tableName: String = table.tableName) {
 
-    val (deletes, puts, increments) = prepareOperations
+    val (ops, deletes, puts, increments) = prepareOperations
 
-    if (deletes.size == 0 && puts.size == 0 && increments.size == 0) {
+    if (ops.size == 0) {
     } else {
       table.withBufferedTable(tableName) {
         bufferTable =>
-          bufferTable.batch(puts ++ deletes ++ increments)
+          bufferTable.batch(ops)
       }
     }
 
   }
 
   def prepareOperations = {
-    val puts = Buffer[Put]()
-    val deletes = Buffer[Delete]()
-    val increments = Buffer[Increment]()
+    val ops = Buffer[Row]()
+
+    var puts = 0
+    var increments = 0
+    var deletes = 0
 
     previous.foreach {
       case put: PutOp[T, R] => {
         if (!put.put.isEmpty) {
-          puts += put.put
+          ops += put.put
+          puts += 1
         }
       }
       case delete: DeleteOp[T, R] => {
-        deletes += delete.delete
+        ops += delete.delete
+        deletes += 1
       }
       case increment: IncrementOp[T, R] => {
-        increments += increment.increment
+        ops += increment.increment
+        increments += 1
       }
     }
 
-    (deletes, puts, increments)
+    (ops, puts, deletes, increments)
   }
 
   def execute(tableName: String = table.tableName) = {
-    val (deletes, puts, increments) = prepareOperations
+    val (ops, puts, deletes, increments) = prepareOperations
 
-    if (deletes.size == 0 && puts.size == 0 && increments.size == 0) {
+    if (ops.size == 0) {
       //No need to do anything if there are no real operations to execute
     } else {
       table.withTable(tableName) {
         table =>
-          table.batch(puts ++ deletes ++ increments)
+          table.batch(ops)
 //          if (puts.size > 0) {
 //            table.put(puts)
 //            //IN THEORY, the operations will happen in order.  If not, break this into two different batched calls for deletes and puts
@@ -121,7 +126,7 @@ abstract class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _
     }
 
 
-    OpsResult(0, puts.size, increments.size)
+    OpsResult(deletes, puts, increments)
   }
 }
 
