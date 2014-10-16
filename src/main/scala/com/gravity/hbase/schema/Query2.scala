@@ -738,6 +738,12 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
         }
       }
 
+      //anything in remaining keys that remote cache does not have, add to missing
+      cacheKeysRemaining.filter(key => !remoteCacheResults.contains(key)).map{ missingKey =>
+        remoteCacheMisses += missingKey
+        remotemisses += 1
+      }
+
       val allCacheMissGets = cacheKeysRemaining.map(key => cacheKeysToGets(key)).toList
 
       if (allCacheMissGets.nonEmpty) {
