@@ -793,7 +793,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
   }
 
   private def getIntFromBytes(bytes: Array[Byte]) : Int = {
-    java.util.Arrays.hashCode(bytes)
+    scala.util.hashing.MurmurHash3.arrayHash(bytes)
   }
 
   private def buildKeysToGetsAndCacheKeys(): Map[Int, (Get, String)] = {

@@ -4,7 +4,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.gravity</groupId>
   <artifactId>gravity-hpaste</artifactId>
-  <version>0.2.10-LOCAL-CDH4.3_2.10.3</version>
+  <version>0.2.11-LOCAL-CDH4.3_2.10.4</version>
   <packaging>jar</packaging>
   <name>hpaste</name>
   <url>http://github.com/GravityLabs/HPaste</url>
@@ -66,10 +66,10 @@
   </licenses>
 
   <properties>
-    <maven.compiler.source>1.5</maven.compiler.source>
-    <maven.compiler.target>1.5</maven.compiler.target>
+    <maven.compiler.source>1.6</maven.compiler.source>
+    <maven.compiler.target>1.6</maven.compiler.target>
     <encoding>UTF-8</encoding>
-    <scala.version>2.10.3</scala.version>
+    <scala.version>2.10.4</scala.version>
   </properties>
 
   <dependencies>
@@ -83,7 +83,7 @@
     <dependency>
       <groupId>joda-time</groupId>
       <artifactId>joda-time</artifactId>
-      <version>1.6</version>
+      <version>2.3</version>
     </dependency>
 
     <dependency>
@@ -149,7 +149,7 @@
       <plugin>
         <groupId>org.scala-tools</groupId>
         <artifactId>maven-scala-plugin</artifactId>
-        <version>2.15.0</version>
+        <version>2.15.2</version>
         <executions>
           <execution>
             <goals>
@@ -204,7 +204,7 @@
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-gpg-plugin</artifactId>
-            <version>1.4</version>
+            <version>1.5</version>
             <executions>
               <execution>
                 <id>sign-artifacts</id>
