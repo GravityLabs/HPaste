@@ -27,6 +27,7 @@ import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.HTable;
+import org.apache.hadoop.hbase.client.Mutation;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.mapreduce.TableOutputCommitter;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
@@ -46,7 +47,7 @@ import java.io.IOException;
  *
  * @param <KEY>  The type of the key. Ignored in this class.
  */
-public class GravityTableOutputFormat<KEY> extends OutputFormat<KEY, Writable>
+public class GravityTableOutputFormat<KEY> extends OutputFormat<KEY, Mutation>
 implements Configurable {
 
   private final Log LOG = LogFactory.getLog(GravityTableOutputFormat.class);
@@ -80,7 +81,7 @@ implements Configurable {
    * @param <KEY>  The type of the key.
    */
   protected static class TableRecordWriter<KEY>
-  extends RecordWriter<KEY, Writable> {
+  extends RecordWriter<KEY, Mutation> {
 
     /** The table to write to. */
     private HTable table;
@@ -124,7 +125,7 @@ implements Configurable {
      * @see org.apache.hadoop.mapreduce.RecordWriter#write(java.lang.Object, java.lang.Object)
      */
     @Override
-    public void write(KEY key, Writable value)
+    public void write(KEY key, Mutation value)
     throws IOException {
       if (value instanceof Put) {
         ((Put)value).setWriteToWAL(false);
@@ -146,7 +147,7 @@ implements Configurable {
    * @see org.apache.hadoop.mapreduce.lib.output.FileOutputFormat#getRecordWriter(org.apache.hadoop.mapreduce.TaskAttemptContext)
    */
   @Override
-  public RecordWriter<KEY, Writable> getRecordWriter(
+  public RecordWriter<KEY, Mutation> getRecordWriter(
     TaskAttemptContext context)
   throws IOException, InterruptedException {
     return new TableRecordWriter<KEY>(this.table);
@@ -200,7 +201,7 @@ implements Configurable {
         ZKUtil.applyClusterKeyToConf(this.conf, address);
       }
       if (serverClass != null) {
-        this.conf.set(HConstants.REGION_SERVER_CLASS, serverClass);
+//        this.conf.set(HConstants.REGION_SERVER_CLASS, serverClass);
         this.conf.set(HConstants.REGION_SERVER_IMPL, serverImpl);
       }
       this.table = new HTable(this.conf, tableName);

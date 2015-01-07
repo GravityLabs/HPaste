@@ -19,7 +19,7 @@ object WebCrawlingSchema extends Schema {
 
   implicit val conf = LocalCluster.getTestConfiguration
 
-  class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName = "pages", rowKeyClass = classOf[String], cache = new TestCache()) {
+  class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName = "pages", rowKeyClass = classOf[String], cache = new TestCache(), logSchemaInconsistencies = true) {
     def rowBuilder(result: DeserializedResult) = new WebPageRow(this, result)
 
     val meta = family[String, String, Any]("meta")
@@ -217,6 +217,11 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
     Assert.assertEquals("Addition2",results(url2).column(_.title).get)
     Assert.assertEquals("How now, brown cow",results(url2).column(_.article).get)
 
+    results.foreach{case (test1: String, test2: WebPageRow) =>
+
+        println(s"Key: $test1")
+        test2.prettyPrint()
+    }
   }
 
   @Test def testAggregationMRJob() {

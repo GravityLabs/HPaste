@@ -1,6 +1,7 @@
 package com.gravity.hbase.schema
 
 import java.nio.ByteBuffer
+import java.{lang, util}
 import scala.collection.mutable.ArrayBuffer
 import scala.collection._
 import org.apache.commons.lang.ArrayUtils
@@ -10,7 +11,7 @@ import org.apache.hadoop.hbase.util.Bytes.ByteArrayComparator
 import java.io.IOException
 import org.apache.hadoop.conf.Configuration
 import java.util.Arrays
-import org.apache.hadoop.hbase.{HColumnDescriptor, KeyValue}
+import org.apache.hadoop.hbase.{CellUtil, HColumnDescriptor, KeyValue}
 import scala.Int
 import org.apache.hadoop.hbase.client._
 
@@ -142,112 +143,43 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     if (result.isEmpty) {
       throw new RuntimeException("Attempting to deserialize an empty result.  If you want to handle the eventuality of an empty result, call singleOption() instead of single()")
     }
-    val keyValues = result.raw()
-    val buff = result.getBytes.get()
+    val cells = result.rawCells()
 
-    val rowId = keyConverter.fromBytes(buff, keyValues(0).getRowOffset, keyValues(0).getRowLength).asInstanceOf[AnyRef]
+    import JavaConversions._
 
+    val rowId = keyConverter.fromBytes(result.getRow).asInstanceOf[AnyRef]
     val ds = DeserializedResult(rowId, families.size)
 
-    var itr = 0
+    val scanner = result.cellScanner()
 
-    while (itr < keyValues.length) {
-      val kv = keyValues(itr)
-      val family = kv.getFamily
-      val key = kv.getQualifier
+    while(scanner.advance()) {
+      val cell = scanner.current()
       try {
-        val c = converterByBytes(family, key)
+
+        val familyBytes = cell.getFamily
+        val keyBytes = cell.getQualifier
+
+        val c = converterByBytes(familyBytes, keyBytes)
         if (c == null) {
           if (logSchemaInconsistencies) {
-            println("Table: " + tableName + " : Null Converter : " + Bytes.toString(kv.getFamily))
+            println("Table: " + tableName + " : Null Converter : " + Bytes.toString(cell.getFamilyArray))
           }
         }
         else if (!c.keyConverter.isInstanceOf[AnyConverterSignal] && !c.valueConverter.isInstanceOf[AnyConverterSignal]) {
           val f = c.family
-          val k = c.keyConverter.fromBytes(buff, kv.getQualifierOffset, kv.getQualifierLength).asInstanceOf[AnyRef]
-          val r = c.valueConverter.fromBytes(buff, kv.getValueOffset, kv.getValueLength).asInstanceOf[AnyRef]
-          val ts = kv.getTimestamp
-
-          ds.add(f, k, r, ts)
+          val k = c.keyConverter.fromBytes(cell.getQualifierArray, cell.getQualifierOffset, cell.getQualifierLength).asInstanceOf[AnyRef]
+          val r = c.valueConverter.fromBytes(cell.getValueArray, cell.getValueOffset, cell.getValueLength).asInstanceOf[AnyRef]
+          ds.add(f, k, r, cell.getTimestamp)
         } else {
           if (logSchemaInconsistencies) {
-            println("Table: " + tableName + " : Any Converter : " + Bytes.toString(kv.getFamily))
+            println("Table: " + tableName + " : Any Converter : " + Bytes.toString(cell.getFamilyArray))
           }
-          //TODO: Just like AnyNotSupportException, add a counter here because this means a column was removed, but the data is still in the database.
         }
-      } finally {
-        itr = itr + 1
       }
-
     }
     ds
   }
 
-  /**
-   *
-   * @param result
-   * @return
-   */
-  def convertResultRaw(result: Result) = {
-
-
-    val bytes = result.getBytes()
-    val buf = bytes.get()
-    var offset = bytes.getOffset
-    val finalOffset = bytes.getSize + offset
-    var row: Array[Byte] = null
-    var ds: DeserializedResult = null
-
-    while (offset < finalOffset) {
-      val keyLength = Bytes.toInt(buf, offset)
-      offset = offset + Bytes.SIZEOF_INT
-
-      val keyOffset = offset + KeyValue.ROW_OFFSET
-      val rowLength = Bytes.toShort(buf, keyOffset)
-      val familyOffset = offset + KeyValue.ROW_OFFSET + Bytes.SIZEOF_SHORT + rowLength + Bytes.SIZEOF_BYTE
-      val familyLength = buf(familyOffset - 1)
-      val family = new Array[Byte](familyLength)
-      System.arraycopy(buf, familyOffset, family, 0, familyLength)
-
-      val qualifierOffset = familyOffset + familyLength
-      val qualifierLength = keyLength - (KeyValue.KEY_INFRASTRUCTURE_SIZE + rowLength + familyLength)
-      val key = new Array[Byte](qualifierLength)
-      System.arraycopy(buf, qualifierOffset, key, 0, qualifierLength)
-
-      val valueOffset = keyOffset + keyLength
-      val valueLength = Bytes.toInt(buf, offset + Bytes.SIZEOF_INT)
-      val value = new Array[Byte](valueLength)
-      System.arraycopy(buf, valueOffset, value, 0, valueLength)
-
-      val tsOffset = keyOffset + keyLength - KeyValue.TIMESTAMP_TYPE_SIZE
-      val ts = Bytes.toLong(buf, tsOffset)
-
-      if (row == null) {
-        val rowOffset = keyOffset + Bytes.SIZEOF_SHORT
-        row = new Array[Byte](rowLength)
-        System.arraycopy(buf, rowOffset, row, 0, rowLength)
-        val rowId = keyConverter.fromBytes(result.getRow).asInstanceOf[AnyRef]
-        ds = DeserializedResult(rowId, families.size)
-      }
-
-      try {
-        val c = converterByBytes(family, key)
-        val f = c.family
-        val k = c.keyConverter.fromBytes(key).asInstanceOf[AnyRef]
-        val r = c.valueConverter.fromBytes(value).asInstanceOf[AnyRef]
-        println("Adding value " + r)
-        ds.add(f, k, r, ts)
-      } catch {
-        case ex: Exception => {
-          println("Adding error buffer")
-          ds.addErrorBuffer(family, key, value, ts)
-        }
-      }
-
-      offset = offset + keyLength
-    }
-    ds
-  }
 
 
   def familyBytes = families.map(family => family.familyBytes)

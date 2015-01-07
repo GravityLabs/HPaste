@@ -17,6 +17,7 @@
 
 package com.gravity.hbase.mapreduce
 
+import com.google.protobuf.InvalidProtocolBufferException
 import com.gravity.hbase.schema._
 import org.apache.hadoop.conf.Configuration
 import java.lang.Iterable
@@ -24,16 +25,17 @@ import com.gravity.hbase.schema.HbaseTable
 import com.gravity.hadoop.GravityTableOutputFormat
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable
 import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.hadoop.hbase.protobuf.ProtobufUtil
 import org.apache.hadoop.mapreduce.lib.input.{SequenceFileInputFormat, FileInputFormat}
 import org.apache.hadoop.mapreduce.lib.output.{SequenceFileOutputFormat, FileOutputFormat}
 import scala.collection.JavaConversions._
-import org.apache.hadoop.hbase.client.{Scan, Result}
+import org.apache.hadoop.hbase.client.{Mutation, Scan, Result}
 import org.apache.hadoop.hbase.filter.{FilterList, Filter}
 import org.apache.hadoop.hbase.util.Base64
 import com.gravity.hbase.schema._
 import scala.collection.mutable.Buffer
 import org.apache.hadoop.io._
-import java.io.{DataInputStream, ByteArrayInputStream, ByteArrayOutputStream}
+import java.io.{IOException, DataInputStream, ByteArrayInputStream, ByteArrayOutputStream}
 import org.apache.hadoop.hbase.mapreduce.{MultiTableOutputFormat, TableInputFormat}
 import org.joda.time.DateTime
 import scala.collection._
@@ -48,6 +50,24 @@ import org.apache.hadoop.mapred.JobConf
 object Settings {
 
   object None extends NoSettings
+  def convertScanToString(scan: Scan) = {
+    val proto : org.apache.hadoop.hbase.protobuf.generated.ClientProtos.Scan = ProtobufUtil.toScan(scan);
+    Base64.encodeBytes(proto.toByteArray());
+  }
+
+  def convertStringToScan(base64:String) =  {
+    val decoded = Base64.decode(base64);
+
+    var scan : org.apache.hadoop.hbase.protobuf.generated.ClientProtos.Scan = null
+    try {
+      scan = org.apache.hadoop.hbase.protobuf.generated.ClientProtos.Scan.parseFrom(decoded);
+    } catch {
+      case var4 : InvalidProtocolBufferException =>
+        throw new IOException(var4);
+    }
+
+    ProtobufUtil.toScan(scan);
+  }
 
 }
 
@@ -447,10 +467,7 @@ case class HTableQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], S <: Sett
     val scanner = thisQuery.makeScanner(maxVersions, cacheBlocks, cacheSize)
     job.getConfiguration.set("mapred.map.tasks.speculative.execution", "false")
 
-    val bas = new ByteArrayOutputStream()
-    val dos = new PrimitiveOutputStream(bas)
-    scanner.write(dos)
-    job.getConfiguration.set(TableInputFormat.SCAN, Base64.encodeBytes(bas.toByteArray))
+    job.getConfiguration.set(TableInputFormat.SCAN, Settings.convertScanToString(scanner))
 
 
 
@@ -470,10 +487,7 @@ case class HTableSettingsQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], S
     val scanner = thisQuery.makeScanner(maxVersions, cacheBlocks, cacheSize)
     job.getConfiguration.set("mapred.map.tasks.speculative.execution", "false")
 
-    val bas = new ByteArrayOutputStream()
-    val dos = new PrimitiveOutputStream(bas)
-    scanner.write(dos)
-    job.getConfiguration.set(TableInputFormat.SCAN, Base64.encodeBytes(bas.toByteArray))
+    job.getConfiguration.set(TableInputFormat.SCAN, Settings.convertScanToString(scanner))
 
 
 
@@ -521,10 +535,7 @@ case class HTableInput[T <: HbaseTable[T, _, _]](table: T, families: Families[T]
       scanner.setFilter(filterList)
     }
 
-    val bas = new ByteArrayOutputStream()
-    val dos = new PrimitiveOutputStream(bas)
-    scanner.write(dos)
-    job.getConfiguration.set(TableInputFormat.SCAN, Base64.encodeBytes(bas.toByteArray))
+    job.getConfiguration.set(TableInputFormat.SCAN, Settings.convertScanToString(scanner))
 
 
 
@@ -760,7 +771,7 @@ trait BinaryReadable {
   *
   */
 trait ToTableWritable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] {
-  this: MRWritable[NullWritable, Writable] =>
+  this: MRWritable[NullWritable, Mutation] =>
 
   def write(operation: OpBase[T, R]) {
     operation.getOperations.foreach {op => write(NullWritable.get(), op)}
@@ -771,7 +782,7 @@ trait ToTableWritable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] {
   *
   */
 trait MultiTableWritable {
-  this: MRWritable[ImmutableBytesWritable, Writable] =>
+  this: MRWritable[ImmutableBytesWritable, Mutation] =>
 
   val validTableNames: Set[String]
 
@@ -798,7 +809,7 @@ abstract class TableSelfMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](t
 
 
 abstract class FromTableToTableMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], TT <: HbaseTable[TT, RT, TTRR], RT, TTRR <: HRow[TT, RT]](fromTable: HbaseTable[T, R, RR], toTable: HbaseTable[TT, RT, TTRR])
-        extends FromTableMapper[T, R, RR, NullWritable, Writable](fromTable, classOf[NullWritable], classOf[Writable]) with ToTableWritable[TT, RT, TTRR] {
+        extends FromTableMapper[T, R, RR, NullWritable, Mutation](fromTable, classOf[NullWritable], classOf[Mutation]) with ToTableWritable[TT, RT, TTRR] {
 
 }
 
@@ -888,19 +899,19 @@ abstract class BinaryToTableReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, 
         extends ToTableReducer[T, R, RR, BytesWritable, BytesWritable](table) with BinaryReadable
 
 abstract class ToTableReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], MOK, MOV](table: HbaseTable[T, R, RR])
-        extends HReducer[MOK, MOV, NullWritable, Writable] with ToTableWritable[T, R, RR]
+        extends HReducer[MOK, MOV, NullWritable, Mutation] with ToTableWritable[T, R, RR]
 
 abstract class BinaryToMultiTableReducer(tables: HbaseTable[_, _, _]*) extends ToMultiTableReducer[BytesWritable, BytesWritable](tables: _*)
 
-abstract class ToMultiTableReducer[MOK, MOV](tables: HbaseTable[_, _, _]*) extends HReducer[MOK, MOV, ImmutableBytesWritable, Writable] with MultiTableWritable {
+abstract class ToMultiTableReducer[MOK, MOV](tables: HbaseTable[_, _, _]*) extends HReducer[MOK, MOV, ImmutableBytesWritable, Mutation] with MultiTableWritable {
   val validTableNames = tables.map(_.tableName).toSet
 }
 
 abstract class ToTableBinaryReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
-        extends HReducer[BytesWritable, BytesWritable, NullWritable, Writable] with ToTableWritable[T, R, RR] with BinaryReadable
+        extends HReducer[BytesWritable, BytesWritable, NullWritable, Mutation] with ToTableWritable[T, R, RR] with BinaryReadable
 
 abstract class ToTableBinaryReducerFx[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
-        extends HReducer[BytesWritable, BytesWritable, NullWritable, Writable] with ToTableWritable[T, R, RR] with BinaryReadable with DelayedInit {
+        extends HReducer[BytesWritable, BytesWritable, NullWritable, Mutation] with ToTableWritable[T, R, RR] with BinaryReadable with DelayedInit {
   private var initCode: () => Unit = _
 
   override def delayedInit(body: => Unit) {
@@ -1280,7 +1291,7 @@ class HReduceContext[MOK, MOV, ROK, ROV, S <: SettingsBase](conf: Configuration,
   def write(key: ROK, value: ROV) {context.write(key, value)}
 }
 
-class ToTableReduceContext[MOK, MOV, T <: HbaseTable[T, R, _], R, S <: SettingsBase](conf: Configuration, counter: (String, Long) => Unit, context: Reducer[MOK, MOV, NullWritable, Writable]#Context) extends HReduceContext[MOK, MOV, NullWritable, Writable, S](conf, counter, context) {
+class ToTableReduceContext[MOK, MOV, T <: HbaseTable[T, R, _], R, S <: SettingsBase](conf: Configuration, counter: (String, Long) => Unit, context: Reducer[MOK, MOV, NullWritable, Mutation]#Context) extends HReduceContext[MOK, MOV, NullWritable, Mutation, S](conf, counter, context) {
   def write(operation: OpBase[T, R]) {
     operation.getOperations.foreach {op => write(NullWritable.get(), op)}
   }
