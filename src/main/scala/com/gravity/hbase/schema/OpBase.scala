@@ -112,6 +112,7 @@ abstract class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _
       table.withTable(tableName) {
         table =>
           table.batch(ops)
+
 //          if (puts.size > 0) {
 //            table.put(puts)
 //            //IN THEORY, the operations will happen in order.  If not, break this into two different batched calls for deletes and puts

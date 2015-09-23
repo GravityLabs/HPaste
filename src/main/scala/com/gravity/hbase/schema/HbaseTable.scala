@@ -346,7 +346,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
 
   def query2 = new Query2Builder(this)
 
-  def put(key: R, writeToWAL: Boolean = true) = new PutOp(this, keyConverter.toBytes(key))
+  def put(key: R, writeToWAL: Boolean = true) = new PutOp(this, keyConverter.toBytes(key), writeToWAL = writeToWAL)
 
   def delete(key: R) = new DeleteOp(this, keyConverter.toBytes(key))
 
