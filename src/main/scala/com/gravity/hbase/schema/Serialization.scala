@@ -116,16 +116,13 @@ class PrimitiveOutputStream(output: OutputStream) extends DataOutputStream(outpu
           case (colKey: AnyRef, colVal: AnyRef) =>
             //See if it's a strongly typed column
             val converters: KeyValueConvertible[_, _, _] = row.table.columnsByName.get(colKey) match {
-              case Some(col) => {
+              case Some(col) if col.family.index == colFam.index =>
                 writeBoolean(true)
                 writeInt(col.columnIndex)
                 col
-
-              }
-              case None => {
+              case _ =>
                 writeBoolean(false)
                 colFam
-              }
             }
 
             val keyBytes = converters.keyToBytesUnsafe(colKey)
