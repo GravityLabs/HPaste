@@ -221,13 +221,12 @@ trait BaseQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] {
       Some(vc)
     }
 
-
     def columnValueMustBePresent[F, K, V](column: (T) => Column[T, R, F, K, V]) = {
       val c = column(table.pops)
       val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.NOT_EQUAL, Bytes.toBytes(0))
       vc.setFilterIfMissing(true)
       vc.setLatestVersionOnly(true)
-      Some(new SkipFilter(vc))
+      Some(vc)
     }
 
     def lessThanColumnKey[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], value: K) = {
@@ -256,21 +255,25 @@ trait BaseQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] {
     //    this
     //  }
 
-
-    def whereColumnMustExist[F, K, _](column: (T) => Column[T, R, F, K, _]) = {
+    /**
+     * This filter only returns rows that have the desired column (as expected),
+     * but does NOT actually return the column value with the results (which is behavior that you probably didn't expect).
+     *
+     * That's pretty surprising behavior, so it's now deprecated in favor of columnValueMustBePresent,
+     * which filters out rows that don't contain the column and also does actually return the column value with the results.
+     */
+    @deprecated def whereColumnMustExist[F, K, _](column: (T) => Column[T, R, F, K, _]) = {
       val c = column(table.pops)
       val valFilter = new SingleColumnValueExcludeFilter(c.familyBytes, c.columnBytes, CompareOp.NOT_EQUAL, new Array[Byte](0))
       valFilter.setFilterIfMissing(true)
       Some(valFilter)
     }
 
-
     def betweenColumnKeys[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], lower: K, upper: K) = {
       val fam = family(table.pops)
       val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(fam.familyBytes))
       val begin = new QualifierFilter(CompareOp.GREATER_OR_EQUAL, new BinaryComparator(fam.keyConverter.toBytes(lower)))
       val end = new QualifierFilter(CompareOp.LESS_OR_EQUAL, new BinaryComparator(fam.keyConverter.toBytes(upper)))
-
 
       val filterList = new FilterList(Operator.MUST_PASS_ALL)
       filterList.addFilter(familyFilter)

@@ -134,7 +134,7 @@ class ExampleSchemaTest extends HPasteTestCase(ExampleSchema) {
 
     ExampleSchema.ExampleTable.put("Chris").valueMap(_.kittens,kittens).execute()
 
-    val result = ExampleSchema.ExampleTable.query2.withKey("Chris").withFamilies(_.kittens).single(skipCache = false)
+    val result = ExampleSchema.ExampleTable.query2.withKey("Chris").withFamilies(_.kittens).single(skipCache = true)
 
     val kittens2 = result.family(_.kittens)
 
@@ -278,10 +278,32 @@ enable 'schema_example'"""
 
       }
     }
-
   }
 
+  @Test def testColumnValueMustBePresent() {
+    ExampleSchema.ExampleTable
+      .put("Manny").value(_.title, "Pep Boys #1").value(_.views, 1l)
+      .put("Moe").value(_.title, "Pep Boys #2")
+      .put("Jack").value(_.views, 3l)
+      .execute()
 
+    val mapRes = ExampleSchema.ExampleTable.query2
+      .withKeys(Set("Manny", "Moe", "Jack"))
+      .withColumns(_.title, _.views)
+      .filter(
+        _.and(
+          _.columnValueMustBePresent(_.views)
+        )
+      ).multiMap(skipCache = false)
 
+    // Moe doesn't have any views, so we should only see Manny and Jack.
+    Assert.assertEquals(Set("Manny", "Jack"), mapRes.keySet)
+
+    // The surviving rows should all have views (because that was required).
+    Assert.assertEquals(true, mapRes.values.forall(_.column(_.views).isDefined))
+
+    // At least one of the surviving rows should also have a title (because Manny has a title).
+    Assert.assertEquals(true, mapRes.values.exists(_.isColumnPresent(_.title)))
+  }
 }
 
