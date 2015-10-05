@@ -83,7 +83,7 @@ object ExampleSchema extends Schema {
   //A table definition, where the row keys are Strings
   class ExampleTable extends HbaseTable[ExampleTable,String, ExampleTableRow](tableName = "schema_example",rowKeyClass=classOf[String], tableConfig = HbaseTableConfig(maxFileSizeInBytes=1073741824), cache = new TestCache())
   {
-    def rowBuilder(result:DeserializedResult) = new ExampleTableRow(this,result)
+    def rowBuilder(result:HbaseTable[ExampleTable,String, ExampleTableRow]#DeserializedResult) = new ExampleTableRow(this,result)
 
     val meta = family[String, String, Any]("meta")
     //Column family definition
@@ -109,9 +109,10 @@ object ExampleSchema extends Schema {
 
     //A column family called kittens whose column values are the custom Kitten type
     val kittens = family[String,String,Kitten]("kittens")
+
+    class ExampleTableRow(table:ExampleTable,result:HbaseTable[ExampleTable,String, ExampleTableRow]#DeserializedResult) extends HbaseTable[ExampleTable,String, ExampleTableRow]#HRow(result,table)
   }
 
-  class ExampleTableRow(table:ExampleTable,result:DeserializedResult) extends HRow[ExampleTable,String](result,table)
 
   //Register the table (DON'T FORGET TO DO THIS :) )
   val ExampleTable = table(new ExampleTable)
@@ -132,13 +133,20 @@ class ExampleSchemaTest extends HPasteTestCase(ExampleSchema) {
   @Test def testComplexCustomType() {
     val kittens = Map("Suki" -> Kitten("Suki",9,8.6), "Efrem" -> Kitten("Efrem",8,6.8), "Rory" -> Kitten("Rory",9,9.6),"Scout"->Kitten("Scout",8,12.3))
 
-    ExampleSchema.ExampleTable.put("Chris").valueMap(_.kittens,kittens).execute()
+    while(true) {
+      ExampleSchema.ExampleTable.put("Chris").valueMap(_.kittens,kittens).execute()
 
-    val result = ExampleSchema.ExampleTable.query2.withKey("Chris").withFamilies(_.kittens).single(skipCache = true)
+      val result = ExampleSchema.ExampleTable.query2.withKey("Chris").withFamilies(_.kittens).single(skipCache=false)
 
-    val kittens2 = result.family(_.kittens)
+      val kittens2 = result.family(_.kittens)
 
-    Assert.assertEquals(kittens,kittens2)
+      Assert.assertEquals(kittens,kittens2)
+
+      Thread.sleep(1l)
+      ExampleSchema.ExampleTable.delete("Chris").execute()
+      Thread.sleep(1l)
+    }
+
   }
 
   /**

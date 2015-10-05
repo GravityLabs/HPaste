@@ -50,12 +50,12 @@ class PrimitiveInputStream(input: InputStream) extends DataInputStream(input) {
   def skipLong() {this.skipBytes(8)}
 
   //WORK IN PROGRESS
-  def readRow[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR]) = {
+  def readRow[T <: HbaseTable[T, R, RR], R, RR <: T#HRow](table: HbaseTable[T, R, RR]) = {
     val rowBytesLength = readInt()
     val rowBytes = new Array[Byte](rowBytesLength)
     read(rowBytes)
     val rowId = table.rowKeyConverter.fromBytes(rowBytes)
-    val ds = DeserializedResult(rowId.asInstanceOf[AnyRef], table.families.length)
+    val ds = table.makeDeserializedResult(rowId.asInstanceOf[AnyRef], table.families.length)
 
     val famCount = readInt()
 
@@ -94,7 +94,7 @@ class PrimitiveInputStream(input: InputStream) extends DataInputStream(input) {
 class PrimitiveOutputStream(output: OutputStream) extends DataOutputStream(output) {
 
   //WORK IN PROGRESS
-  def writeRow[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T,R,RR],row: RR) {
+  def writeRow[T <: HbaseTable[T, R, RR], R, RR <: T#HRow](table: HbaseTable[T,R,RR],row: RR) {
 
     //Serialize row id
     val rowIdBytes = row.table.rowKeyConverter.toBytes(row.rowid)
@@ -115,7 +115,7 @@ class PrimitiveOutputStream(output: OutputStream) extends DataOutputStream(outpu
         family.foreach {
           case (colKey: AnyRef, colVal: AnyRef) =>
             //See if it's a strongly typed column
-            val converters: KeyValueConvertible[_, _, _] = row.table.columnsByName.get(colKey) match {
+            val converters: HbaseTable[T,R,RR]#KeyValueConvertible[_, _] = row.table.columnsByName.get(colKey) match {
               case Some(col) if col.family.index == colFam.index =>
                 writeBoolean(true)
                 writeInt(col.columnIndex)

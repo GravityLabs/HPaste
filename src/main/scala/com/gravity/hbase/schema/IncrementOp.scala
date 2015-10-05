@@ -8,32 +8,3 @@ import scala.collection.Map
  .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
 
-/**
- * An increment operation -- can increment multiple columns in a single go.
- * @param table
- * @param key
- * @param previous
- * @tparam T
- * @tparam R
- */
-class IncrementOp[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) extends OpBase[T, R](table, key, previous) {
-  val increment = new Increment(key)
-  increment.setWriteToWAL(false)
-
-  def +(that: OpBase[T, R]) = new IncrementOp(table,key, previous ++ that.previous)
-
-
-  def value[F, K, Long](column: (T) => Column[T, R, F, K, Long], value: java.lang.Long) = {
-    val col = column(table.pops)
-    increment.addColumn(col.familyBytes, col.columnBytes, value)
-    this
-  }
-
-  def valueMap[F, K, Long](family: (T) => ColumnFamily[T, R, F, K, Long], values: Map[K, Long]) = {
-    val fam = family(table.pops)
-    for ((key, value) <- values) {
-      increment.addColumn(fam.familyBytes, fam.keyConverter.toBytes(key), value.asInstanceOf[java.lang.Long])
-    }
-    this
-  }
-}

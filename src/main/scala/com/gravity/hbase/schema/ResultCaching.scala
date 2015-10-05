@@ -33,7 +33,7 @@ case class ScanCachePolicy(ttlMinutes: Int)
  * @tparam R
  * @tparam RR
  */
-trait QueryResultCache[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,R]] {
+trait QueryResultCache[T <: HbaseTable[T, R, RR], R, RR <: T#HRow] {
 
   def getScanResult(key: Scan): Option[Seq[RR]]
 
@@ -64,7 +64,7 @@ trait QueryResultCache[T <: HbaseTable[T, R, RR], R, RR <: HRow[T,R]] {
  * @tparam R
  * @tparam RR
  */
-class NoOpCache[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]] extends QueryResultCache[T, R, RR] {
+class NoOpCache[T <: HbaseTable[T, R,RR], R, RR <: T#HRow] extends QueryResultCache[T, R, RR] {
 
   def getScanResult(key: Scan): Option[Seq[RR]] = None
 
@@ -89,7 +89,7 @@ class NoOpCache[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]] extends QueryResul
   def instrumentRequest(requestSize: Int, localHits: Int, localMisses: Int, remoteHits: Int, remoteMisses: Int) {}
 }
 
-private[schema] class TestCache[T <: HbaseTable[T, R,RR], R, RR <: HRow[T,R]] extends QueryResultCache[T, R, RR] {
+private[schema] class TestCache[T <: HbaseTable[T, R,RR], R, RR <: T#HRow] extends QueryResultCache[T, R, RR] {
   private val local = new java.util.concurrent.ConcurrentHashMap[String, Option[RR]]()
   private val remote = new java.util.concurrent.ConcurrentHashMap[String, Option[RR]]()
   def getScanResult(key: Scan): Option[Seq[RR]] = None
