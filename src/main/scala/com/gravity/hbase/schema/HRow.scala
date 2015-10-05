@@ -24,7 +24,7 @@ abstract class HRow[T <: HbaseTable[T, R, _], R](result: DeserializedResult, tab
 
   def prettyPrintNoValues() {println(prettyFormatNoValues())}
 
-  def size = {
+  def size: Int = {
     var _size = 0
     for (i <- 0 until result.values.length) {
       val familyMap = result.values(i)
@@ -35,7 +35,7 @@ abstract class HRow[T <: HbaseTable[T, R, _], R](result: DeserializedResult, tab
     _size
   }
 
-  def prettyFormatNoValues() = {
+  def prettyFormatNoValues(): String = {
     val sb = new StringBuilder()
     sb.append("Row Key: " + result.rowid + " (" + result.values.size + " families)" + "\n")
     for (i <- 0 until result.values.length) {
@@ -49,7 +49,7 @@ abstract class HRow[T <: HbaseTable[T, R, _], R](result: DeserializedResult, tab
   }
 
 
-  def prettyFormat() = {
+  def prettyFormat(): String = {
     val sb = new StringBuilder()
     sb.append("Row Key: " + result.rowid + " (" + result.values.size + " families)" + "\n")
     for (i <- 0 until result.values.length) {

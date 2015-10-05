@@ -19,13 +19,13 @@ import scala.collection.Map
  * @tparam R
  */
 class PutOp[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: Array[Byte], previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]](), writeToWAL: Boolean = true) extends OpBase[T, R](table, key, previous) {
-  val put = new Put(key)
+  val put: Put = new Put(key)
   put.setWriteToWAL(writeToWAL)
 
 
-  def +(that: OpBase[T, R]) = new PutOp(table,key, previous ++ that.previous, writeToWAL)
+  def +(that: OpBase[T, R]): PutOp[T, R] = new PutOp(table,key, previous ++ that.previous, writeToWAL)
 
-  def value[F, K, V](column: (T) => Column[T, R, F, K, V], value: V, timeStamp: DateTime = null) = {
+  def value[F, K, V](column: (T) => Column[T, R, F, K, V], value: V, timeStamp: DateTime = null): PutOp[T, R] = {
     val col = column(table.asInstanceOf[T])
     if (timeStamp == null) {
       put.add(col.familyBytes, col.columnBytes, col.valueConverter.toBytes(value))
@@ -35,7 +35,7 @@ class PutOp[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: Array[
     this
   }
 
-  def valueMap[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], values: Map[K, V]) = {
+  def valueMap[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], values: Map[K, V]): PutOp[T, R] = {
     val fam = family(table.pops)
     for ((key, value) <- values) {
       put.add(fam.familyBytes, fam.keyConverter.toBytes(key), fam.valueConverter.toBytes(value))

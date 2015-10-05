@@ -81,7 +81,7 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
    *
    * @note if there is no explicitly defined `val` for the desired column, use `columnFromFamily`
    */
-  def column[F, K, V](column: (T) => Column[T, R, F, K, V]) = {
+  def column[F, K, V](column: (T) => Column[T, R, F, K, V]): Option[V] = {
     val co = column(table.pops)
     val colVal = result.columnValueSpecific(co)
     if (colVal == null) {
@@ -103,7 +103,7 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
    *
    * @return `Some` value of type `V` if the column value is present, otherwise `None`
    */
-  def columnFromFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K) = {
+  def columnFromFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K): Option[V] = {
     val fam = family(table.pops)
     val colVal = result.columnValue(fam, columnName.asInstanceOf[AnyRef])
     if (colVal == null) {
@@ -125,7 +125,7 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
    *
    * @return `Some` [[org.joda.time.DateTime]] if the column value is present, otherwise `None`
    */
-  def columnFromFamilyTimestamp[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K) = {
+  def columnFromFamilyTimestamp[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K): Option[DateTime] = {
     val fam = family(table.pops)
     val colVal = result.columnTimestampByNameAsDate(fam, columnName.asInstanceOf[AnyRef])
     if (colVal == null) {
@@ -219,9 +219,9 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
   /**The row identifier deserialized as type `R`
    *
    */
-  def rowid = result.getRow[R]()
+  def rowid: R = result.getRow[R]()
 
-  def getTableName = tableName
+  def getTableName: String = tableName
 }
 
 /**
@@ -239,71 +239,13 @@ class QueryResult[T <: HbaseTable[T, R, _], R](val result: DeserializedResult, v
 
 
 
-/**
- * A query for retrieving values.  It works somewhat differently than the data modification operations, in that you do the following:
- * 1. Specify one or more keys
- * 2. Specify columns and families to scan in for ALL the specified keys
- *
- * In other words there's no concept of having multiple rows fetched with different columns for each row (that seems to be a rare use-case and
- * would make the API very complex).
- */
-
-trait KeyValueConvertible[F, K, V] {
-  val familyConverter: ByteConverter[F]
-  val keyConverter: ByteConverter[K]
-  val valueConverter: ByteConverter[V]
-
-  def keyToBytes(key: K) = keyConverter.toBytes(key)
-
-  def valueToBytes(value: V) = valueConverter.toBytes(value)
-
-  def keyToBytesUnsafe(key: AnyRef) = keyConverter.toBytes(key.asInstanceOf[K])
-
-  def valueToBytesUnsafe(value: AnyRef) = valueConverter.toBytes(value.asInstanceOf[V])
-
-  def keyFromBytesUnsafe(bytes: Array[Byte]) = keyConverter.fromBytes(bytes).asInstanceOf[AnyRef]
-
-  def valueFromBytesUnsafe(bytes: Array[Byte]) = valueConverter.fromBytes(bytes).asInstanceOf[AnyRef]
-
-  def family: ColumnFamily[_, _, _, _, _]
-}
-
-/**
- * Represents the specification of a Column Family
- */
-class ColumnFamily[T <: HbaseTable[T, R, _], R, F, K, V](val table: HbaseTable[T, R, _], val familyName: F, val compressed: Boolean = false, val versions: Int = 1, val index: Int, val ttlInSeconds: Int = HColumnDescriptor.DEFAULT_TTL)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
-  val familyConverter = c
-  val keyConverter = d
-  val valueConverter = e
-  val familyBytes = c.toBytes(familyName)
 
 
-  def family = this
-}
-
-/**
- * Represents the specification of a Column.
- */
-class Column[T <: HbaseTable[T, R, _], R, F, K, V](table: HbaseTable[T, R, _], columnFamily: ColumnFamily[T, R, F, K, _], val columnName: K, val columnIndex: Int)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
-  val columnBytes = kc.toBytes(columnName)
-  val familyBytes = columnFamily.familyBytes
-  val columnNameRef = columnName.asInstanceOf[AnyRef]
-
-  val familyConverter = fc
-  val keyConverter = kc
-  val valueConverter = kv
-
-  def getQualifier: K = columnName
-
-  def family = columnFamily.asInstanceOf[ColumnFamily[_, _, _, _, _]]
-
-
-}
 
 trait Schema {
-  val tables = scala.collection.mutable.Set[HbaseTable[_, _, _]]()
+  val tables: mutable.Set[HbaseTable[_, _, _]] = scala.collection.mutable.Set[HbaseTable[_, _, _]]()
 
-  def table[T <: HbaseTable[T, _, _]](table: T) = {
+  def table[T <: HbaseTable[T, _, _]](table: T): T = {
     tables += table
     table.init()
     table
@@ -323,7 +265,7 @@ case class CommaSet(items: Set[String]) {
 }
 
 object CommaSet {
-  val empty = CommaSet(Set.empty[String])
+  val empty: CommaSet = CommaSet(Set.empty[String])
 
   def apply(items: String*): CommaSet = CommaSet(items.toSet)
 }

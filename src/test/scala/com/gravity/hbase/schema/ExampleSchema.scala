@@ -85,7 +85,7 @@ object ExampleSchema extends Schema {
   {
     def rowBuilder(result:DeserializedResult) = new ExampleTableRow(this,result)
 
-    val meta = family[String, String, Any]("meta")
+    val meta = family[String, Any]("meta")
     //Column family definition
     //Inside meta, assume a column called title whose value is a string
     val title = column(meta, "title", classOf[String])
@@ -99,16 +99,16 @@ object ExampleSchema extends Schema {
     //A column called viewsArr whose value is a sequence of strings
     val viewsArr = column(meta,"viewsArr", classOf[Seq[String]])
     //A column called viewsMap whose value is a map of String to Long
-    val viewsMap = column(meta,"viewsMap", classOf[Map[String,Long]])
+    val viewsMap: Col[Map[String, Long]] = column(meta,"viewsMap", classOf[Map[String,Long]])
 
     //A column family called views whose column names are Strings and values are Longs.  Can be treated as a Map
-    val viewCounts = family[String, String, Long]("views")
+    val viewCounts = family[String, Long]("views")
 
     //A column family called views whose column names are YearDay instances and whose values are Longs
-    val viewCountsByDay = family[String, YearDay, Long]("viewsByDay")
+    val viewCountsByDay = family[YearDay, Long]("viewsByDay")
 
     //A column family called kittens whose column values are the custom Kitten type
-    val kittens = family[String,String,Kitten]("kittens")
+    val kittens = family[String,Kitten]("kittens")
   }
 
   class ExampleTableRow(table:ExampleTable,result:DeserializedResult) extends HRow[ExampleTable,String](result,table)

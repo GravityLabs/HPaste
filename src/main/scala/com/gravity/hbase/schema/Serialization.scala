@@ -20,6 +20,7 @@ package com.gravity.hbase.schema
 
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util._
+import scala.Predef
 import scala.collection.JavaConversions._
 import org.apache.hadoop.conf.Configuration
 import java.io._
@@ -43,14 +44,14 @@ class PrimitiveInputStream(input: InputStream) extends DataInputStream(input) {
     * Read an object, assuming the existence of a ComplexByteConverter[T] implementation
     * The byte converter is stateless and should be therefore defined somewhere as an implicit object
     */
-  def readObj[T](implicit c: ComplexByteConverter[T]) = {
+  def readObj[T](implicit c: ComplexByteConverter[T]): T = {
     c.read(this)
   }
 
   def skipLong() {this.skipBytes(8)}
 
   //WORK IN PROGRESS
-  def readRow[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR]) = {
+  def readRow[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR]): RR = {
     val rowBytesLength = readInt()
     val rowBytes = new Array[Byte](rowBytesLength)
     read(rowBytes)
@@ -163,7 +164,7 @@ abstract class ByteConverter[T] {
     fromBytes(Bytes.toBytesBinary(str))
   }
 
-  def toByteString(item: T) = {
+  def toByteString(item: T): String = {
     Bytes.toStringBinary(toBytes(item))
   }
 
@@ -262,7 +263,7 @@ class ImmutableMapConverter[K, V](implicit val c: ByteConverter[K],val  d: ByteC
     writeMap(map,output)
   }
 
-  override def read(input: PrimitiveInputStream) = {
+  override def read(input: PrimitiveInputStream): Predef.Map[K, V] = {
     val kvarr = readMap(input)
     scala.collection.immutable.Map[K, V](kvarr: _*)
   }
@@ -273,7 +274,7 @@ class MutableMapConverter[K, V](implicit val c: ByteConverter[K],val  d: ByteCon
     writeMap(map,output)
   }
 
-  override def read(input: PrimitiveInputStream) = {
+  override def read(input: PrimitiveInputStream): mutable.Map[K, V] = {
     val kvarr = readMap(input)
     scala.collection.mutable.Map[K, V](kvarr: _*)
   }
@@ -285,7 +286,7 @@ class MapConverter[K, V](implicit val c: ByteConverter[K],val  d: ByteConverter[
     writeMap(map,output)
   }
 
-  override def read(input: PrimitiveInputStream) = {
+  override def read(input: PrimitiveInputStream): Map[K, V] = {
     val kvarr = readMap(input)
     Map[K, V](kvarr: _*)
   }
@@ -333,7 +334,7 @@ class SeqConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter
     writeColl(seq, seq.length, output, c)
   }
 
-  override def read(input: PrimitiveInputStream) = readColl(input, c).toSeq
+  override def read(input: PrimitiveInputStream): scala.Seq[T] = readColl(input, c).toSeq
 }
 
 class BufferConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConverter[Buffer[T]] with CollStream[T] {
@@ -345,7 +346,7 @@ class BufferConverter[T](implicit c: ByteConverter[T]) extends ComplexByteConver
     writeColl(buf, buf.length, output, c)
   }
 
-  override def read(input: PrimitiveInputStream) = readColl(input, c)
+  override def read(input: PrimitiveInputStream): mutable.Buffer[T] = readColl(input, c)
 }
 
 trait CollStream[T] {

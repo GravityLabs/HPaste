@@ -1,5 +1,6 @@
 package com.gravity.hbase.schema
 
+import scala.collection.mutable
 import scala.collection.mutable.Buffer
 import org.apache.hadoop.io.Writable
 import org.apache.hadoop.hbase.client.{Mutation, Row}
@@ -24,22 +25,22 @@ abstract class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _
 
   def +(that:OpBase[T,R]) : OpBase[T,R]
 
-  def put(key: R, writeToWAL: Boolean = true) = {
+  def put(key: R, writeToWAL: Boolean = true): PutOp[T, R] = {
     val po = new PutOp(table, table.rowKeyConverter.toBytes(key), previous, writeToWAL)
     po
   }
 
-  def increment(key: R) = {
+  def increment(key: R): IncrementOp[T, R] = {
     val inc = new IncrementOp(table, table.rowKeyConverter.toBytes(key), previous)
     inc
   }
 
-  def delete(key: R) = {
+  def delete(key: R): DeleteOp[T, R] = {
     val del = new DeleteOp(table, table.rowKeyConverter.toBytes(key), previous)
     del
   }
 
-  def size = previous.size
+  def size: Int = previous.size
 
   def getOperations: Iterable[Mutation] = {
     val calls = Buffer[Mutation]()
@@ -76,7 +77,7 @@ abstract class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _
 
   }
 
-  def prepareOperations = {
+  def prepareOperations: (mutable.Buffer[Row], Int, Int, Int) = {
     val ops = Buffer[Row]()
 
     var puts = 0
@@ -103,7 +104,7 @@ abstract class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _
     (ops, puts, deletes, increments)
   }
 
-  def execute(tableName: String = table.tableName) = {
+  def execute(tableName: String = table.tableName): OpsResult = {
     val (ops, puts, deletes, increments) = prepareOperations
 
     if (ops.size == 0) {

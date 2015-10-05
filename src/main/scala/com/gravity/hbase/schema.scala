@@ -23,6 +23,8 @@ import org.joda.time.{DateMidnight, DateTime}
 import org.apache.hadoop.io.BytesWritable
 import java.io._
 
+import scala.util.matching.Regex
+
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
 `=,-,-'~~~   `----(,_..'--(,_..'`-.;.'  */
@@ -36,11 +38,11 @@ trait AnyConverterSignal
   */
 package object schema {
 
-  def toBytesWritable[T](item: T)(implicit c: ByteConverter[T]) = {
+  def toBytesWritable[T](item: T)(implicit c: ByteConverter[T]): BytesWritable = {
     c.toBytesWritable(item)
   }
 
-  def fromBytesWritable[T](bytes: BytesWritable)(implicit c: ByteConverter[T]) = {
+  def fromBytesWritable[T](bytes: BytesWritable)(implicit c: ByteConverter[T]): T = {
     c.fromBytesWritable(bytes)
   }
 
@@ -49,15 +51,15 @@ package object schema {
   type ColumnExtractor[T <: HbaseTable[T, R, _], R, F, K, V] = (T) => Column[T, R, F, K, V]
 
   implicit object AnyConverter extends ByteConverter[Any] with AnyConverterSignal {
-    override def toBytes(t: Any) = throw new AnyNotSupportedException()
+    override def toBytes(t: Any): Nothing = throw new AnyNotSupportedException()
 
-    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int) = throw new AnyNotSupportedException()
+    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int): Nothing = throw new AnyNotSupportedException()
   }
 
   implicit object StringConverter extends ByteConverter[String] {
-    override def toBytes(t: String) = Bytes.toBytes(t)
+    override def toBytes(t: String): Array[Byte] = Bytes.toBytes(t)
 
-    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int) = Bytes.toString(bytes, offset, length)
+    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int): String = Bytes.toString(bytes, offset, length)
   }
 
   implicit object StringSeqConverter extends SeqConverter[String]
@@ -66,9 +68,9 @@ package object schema {
 
 
   implicit object IntConverter extends ByteConverter[Int] {
-    override def toBytes(t: Int) = Bytes.toBytes(t)
+    override def toBytes(t: Int): Array[Byte] = Bytes.toBytes(t)
 
-    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int) = Bytes.toInt(bytes, offset, length)
+    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int): Int = Bytes.toInt(bytes, offset, length)
   }
 
   implicit object IntSeqConverter extends SeqConverter[Int]
@@ -76,9 +78,9 @@ package object schema {
   implicit object IntSetConverter extends SetConverter[Int]
 
   implicit object ShortConverter extends ByteConverter[Short] {
-    override def toBytes(t: Short) = Bytes.toBytes(t)
+    override def toBytes(t: Short): Array[Byte] = Bytes.toBytes(t)
 
-    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int) = Bytes.toShort(bytes, offset, length)
+    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int): Short = Bytes.toShort(bytes, offset, length)
   }
 
   implicit object ShortSeqConverter extends SeqConverter[Short]
@@ -86,9 +88,9 @@ package object schema {
   implicit object ShortSetConverter extends SetConverter[Short]
 
   implicit object BooleanConverter extends ByteConverter[Boolean] {
-    override def toBytes(t: Boolean) = Bytes.toBytes(t)
+    override def toBytes(t: Boolean): Array[Byte] = Bytes.toBytes(t)
 
-    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int) = {
+    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int): Boolean = {
       (bytes(offset) != 0)
     }
   }
@@ -98,9 +100,9 @@ package object schema {
   implicit object BooleanSetConverter extends SetConverter[Boolean]
 
   implicit object LongConverter extends ByteConverter[Long] {
-    override def toBytes(t: Long) = Bytes.toBytes(t)
+    override def toBytes(t: Long): Array[Byte] = Bytes.toBytes(t)
 
-    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int) = Bytes.toLong(bytes, offset, length)
+    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int): Long = Bytes.toLong(bytes, offset, length)
   }
 
   implicit object LongSeqConverter extends SeqConverter[Long]
@@ -108,9 +110,9 @@ package object schema {
   implicit object LongSetConverter extends SetConverter[Long]
 
   implicit object DoubleConverter extends ByteConverter[Double] {
-    override def toBytes(t: Double) = Bytes.toBytes(t)
+    override def toBytes(t: Double): Array[Byte] = Bytes.toBytes(t)
 
-    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int) = Bytes.toDouble(bytes, offset)
+    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int): Double = Bytes.toDouble(bytes, offset)
   }
 
   implicit object DoubleSeqConverter extends SeqConverter[Double]
@@ -119,9 +121,9 @@ package object schema {
 
 
   implicit object FloatConverter extends ByteConverter[Float] {
-    override def toBytes(t: Float) = Bytes.toBytes(t)
+    override def toBytes(t: Float): Array[Byte] = Bytes.toBytes(t)
 
-    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int) = Bytes.toFloat(bytes, offset)
+    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int): Float = Bytes.toFloat(bytes, offset)
   }
 
   implicit object FloatSeqConverter extends SeqConverter[Float]
@@ -130,11 +132,11 @@ package object schema {
 
 
   implicit object CommaSetConverter extends ByteConverter[CommaSet] {
-    val SPLITTER = ",".r
+    val SPLITTER: Regex = ",".r
 
-    override def toBytes(t: CommaSet) = Bytes.toBytes(t.items.mkString(","))
+    override def toBytes(t: CommaSet): Array[Byte] = Bytes.toBytes(t.items.mkString(","))
 
-    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int) = new CommaSet(SPLITTER.split(Bytes.toString(bytes, offset, length)).toSet)
+    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int): CommaSet = new CommaSet(SPLITTER.split(Bytes.toString(bytes, offset, length)).toSet)
   }
 
   implicit object CommaSetSeqConverter extends SeqConverter[CommaSet]
@@ -143,11 +145,11 @@ package object schema {
 
 
   implicit object YearDayConverter extends ByteConverter[YearDay] {
-    val SPLITTER = "_".r
+    val SPLITTER: Regex = "_".r
 
-    override def toBytes(t: YearDay) = Bytes.toBytes(t.year.toString + "_" + t.day.toString)
+    override def toBytes(t: YearDay): Array[Byte] = Bytes.toBytes(t.year.toString + "_" + t.day.toString)
 
-    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int) = {
+    override def fromBytes(bytes: Array[Byte], offset: Int, length: Int): YearDay = {
       val strRep = Bytes.toString(bytes, offset, length)
       val strRepSpl = SPLITTER.split(strRep)
       val year = strRepSpl(0).toInt
@@ -165,10 +167,10 @@ package object schema {
       output.writeLong(dm.getMillis)
     }
 
-    override def read(input: PrimitiveInputStream) = new DateMidnight(input.readLong())
+    override def read(input: PrimitiveInputStream): DateMidnight = new DateMidnight(input.readLong())
 
 
-    def apply(year: Int, day: Int) = new DateMidnight().withYear(year).withDayOfYear(day)
+    def apply(year: Int, day: Int): DateMidnight = new DateMidnight().withYear(year).withDayOfYear(day)
   }
 
   implicit object DateTimeConverter extends ComplexByteConverter[DateTime] {
@@ -176,7 +178,7 @@ package object schema {
       output.writeLong(dm.getMillis)
     }
 
-    override def read(input: PrimitiveInputStream) = new DateTime(input.readLong())
+    override def read(input: PrimitiveInputStream): DateTime = new DateTime(input.readLong())
   }
 
   implicit object DateTimeSeqConverter extends SeqConverter[DateTime]

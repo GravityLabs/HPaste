@@ -22,15 +22,15 @@ object WebCrawlingSchema extends Schema {
   class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName = "pages", rowKeyClass = classOf[String], cache = new TestCache(), logSchemaInconsistencies = true) {
     def rowBuilder(result: DeserializedResult) = new WebPageRow(this, result)
 
-    val meta = family[String, String, Any]("meta")
+    val meta = family[String, Any]("meta")
     val title = column(meta, "title", classOf[String])
     val lastCrawled = column(meta, "lastCrawled", classOf[DateTime])
 
-    val content = family[String, String, Any]("text", compressed = true)
+    val content = family[String, Any]("text", compressed = true)
     val article = column(content, "article", classOf[String])
     val attributes = column(content, "attrs", classOf[Map[String, String]])
 
-    val searchMetrics = family[String, DateMidnight, Long]("searchesByDay")
+    val searchMetrics = family[DateMidnight, Long]("searchesByDay")
 
 
   }
@@ -45,10 +45,10 @@ object WebCrawlingSchema extends Schema {
   class SiteMetricsTable extends HbaseTable[SiteMetricsTable, String, SiteMetricsRow](tableName = "site-metrics", rowKeyClass = classOf[String]) {
     def rowBuilder(result: DeserializedResult) = new SiteMetricsRow(this, result)
 
-    val meta = family[String, String, Any]("meta")
+    val meta = family[String, Any]("meta")
     val name = column(meta, "name", classOf[String])
 
-    val searchMetrics = family[String, DateMidnight, Long]("searchesByDay")
+    val searchMetrics = family[DateMidnight, Long]("searchesByDay")
   }
 
   class SiteMetricsRow(table: SiteMetricsTable, result: DeserializedResult) extends HRow[SiteMetricsTable, String](result, table)

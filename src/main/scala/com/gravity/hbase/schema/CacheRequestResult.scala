@@ -24,27 +24,27 @@ sealed abstract class CacheRequestResult[+A] extends Product with Serializable {
 final case class Found[+A](x: A) extends CacheRequestResult[A] {
   def hasValue = true
   def isEmptyValue = false
-  def get = x
-  def toOption = Some(x)
+  def get: A = x
+  def toOption: Some[A] = Some(x)
 }
 
 case object FoundEmpty extends CacheRequestResult[Nothing] {
   def hasValue = true
   def isEmptyValue = true
-  def get = throw new NoSuchElementException("FoundEmpty.get")
-  def toOption = None
+  def get: Nothing = throw new NoSuchElementException("FoundEmpty.get")
+  def toOption: None.type = None
 }
 
 case object NotFound extends CacheRequestResult[Nothing] {
   def hasValue = false
   def isEmptyValue = false
-  def get = throw new NoSuchElementException("NotFound.get")
-  def toOption = None
+  def get: Nothing = throw new NoSuchElementException("NotFound.get")
+  def toOption: None.type = None
 }
 
 final case class Error(message: String, exceptionOption: Option[Throwable]) extends CacheRequestResult[Nothing] {
   def hasValue = false
   def isEmptyValue = false
-  def get = throw new NoSuchElementException("Error.get")
-  def toOption = None
+  def get: Nothing = throw new NoSuchElementException("Error.get")
+  def toOption: None.type = None
 }
