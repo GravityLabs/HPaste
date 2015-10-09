@@ -22,12 +22,12 @@ object WebCrawlingSchema extends Schema {
   class WebTable extends HbaseTable[WebTable, String, WebPageRow](tableName = "pages", rowKeyClass = classOf[String], cache = new TestCache(), logSchemaInconsistencies = true) {
     def rowBuilder(result: DeserializedResult) = new WebPageRow(this, result)
 
-    val meta = family[String, Any]("meta")
-    val title = column(meta, "title", classOf[String])
-    val lastCrawled = column(meta, "lastCrawled", classOf[DateTime])
+    val meta : Fam[String,Any] = family("meta")
+    val title : Col[String] = column(meta, "title")
+    val lastCrawled: Col[DateTime] = column(meta, "lastCrawled")
 
-    val content = family[String, Any]("text", compressed = true)
-    val article = column(content, "article", classOf[String])
+    val content:Fam[String,Any] = family("text", compressed = true)
+    val article:Col[String] = column(content, "article")
     val attributes = column(content, "attrs", classOf[Map[String, String]])
 
     val searchMetrics = family[DateMidnight, Long]("searchesByDay")
@@ -202,6 +202,7 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
   @Test def testOpBaseAddition() {
     val url1 = "http://mycrawledsite.com/opbaseaddition.html"
     val url2 = "http://mycrawledsite.com/opbaseaddition2.html"
+
 
    val op1 =  WebCrawlingSchema.WebTable.put(url1).value(_.title,"Addition1")
     op1.value(_.article,"How stop blop blop?")

@@ -298,6 +298,36 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     c
   }
 
+  def columnTyped[K,V](columnFamily: Fam[K, _], columnName: K)(implicit ck: ByteConverter[K], kv: ByteConverter[V]): TypedCol[K, V] = {
+    val c = new TypedCol[K, V](columnFamily, columnName, columnIdx)
+    columns += c
+
+    val famBytes = columnFamily.familyBytes
+    val colBytes = ck.toBytes(columnName)
+    val fullKey = ArrayUtils.addAll(famBytes, colBytes)
+    val bufferKey = ByteBuffer.wrap(fullKey)
+
+    columnsByName.put(columnName.asInstanceOf[AnyRef], c)
+    columnsByBytes.put(bufferKey, c)
+    columnIdx = columnIdx + 1
+    c
+  }
+
+
+  def column[V](columnFamily:Fam[String,_], columnName:String)(implicit kv:ByteConverter[V]) : Col[V] = {
+    val c = new Col[V](columnFamily, columnName, columnIdx)
+    columns += c
+
+    val famBytes = columnFamily.familyBytes
+    val colBytes = StringConverter.toBytes(columnName)
+    val fullKey = ArrayUtils.addAll(famBytes, colBytes)
+    val bufferKey = ByteBuffer.wrap(fullKey)
+
+    columnsByName.put(columnName.asInstanceOf[AnyRef], c)
+    columnsByBytes.put(bufferKey, c)
+    columnIdx = columnIdx + 1
+    c
+  }
 
   def column[V](columnFamily: Fam[String, _], columnName: String, valueClass: Class[V])(implicit kv: ByteConverter[V]): Col[V] = {
     val c = new Col[V](columnFamily, columnName, columnIdx)
