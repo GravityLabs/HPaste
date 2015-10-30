@@ -35,10 +35,16 @@ class PutOp[T <: HbaseTable[T, R, _], R](table: HbaseTable[T, R, _], key: Array[
     this
   }
 
-  def valueMap[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], values: Map[K, V]): PutOp[T, R] = {
+  def valueMap[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], values: Map[K, V], timeStamps: Map[K, DateTime] = Map.empty[K, DateTime]): PutOp[T, R] = {
     val fam = family(table.pops)
     for ((key, value) <- values) {
-      put.add(fam.familyBytes, fam.keyConverter.toBytes(key), fam.valueConverter.toBytes(value))
+      timeStamps.get(key) match {
+        case None =>
+          put.add(fam.familyBytes, fam.keyConverter.toBytes(key), fam.valueConverter.toBytes(value))
+
+        case Some(timeStamp) =>
+          put.add(fam.familyBytes, fam.keyConverter.toBytes(key), timeStamp.getMillis, fam.valueConverter.toBytes(value))
+      }
     }
     this
   }

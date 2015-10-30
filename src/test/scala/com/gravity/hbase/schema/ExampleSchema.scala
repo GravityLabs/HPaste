@@ -300,10 +300,37 @@ enable 'schema_example'"""
     Assert.assertEquals(Set("Manny", "Jack"), mapRes.keySet)
 
     // The surviving rows should all have views (because that was required).
-    Assert.assertEquals(true, mapRes.values.forall(_.column(_.views).isDefined))
+    Assert.assertTrue(mapRes.values.forall(_.column(_.views).isDefined))
 
     // At least one of the surviving rows should also have a title (because Manny has a title).
-    Assert.assertEquals(true, mapRes.values.exists(_.isColumnPresent(_.title)))
+    Assert.assertTrue(mapRes.values.exists(_.isColumnPresent(_.title)))
+  }
+
+  @Test def testFamilyPutTimeStamps(): Unit = {
+    val time3 = new DateTime()
+    val time2 = time3.minusSeconds(1)
+    val time1 = time3.minusSeconds(2)
+
+    val values     = Map("time1" -> 1L   , "time2" -> 2L   , "time3" -> 3L   , "time4" -> 4L)
+    val timeStamps = Map("time1" -> time1, "time2" -> time2, "time3" -> time3)
+
+    ExampleSchema.ExampleTable.put("testFamilyPutTimeStamps").valueMap(_.viewCounts, values, timeStamps).execute()
+
+    val time4 = new DateTime().plusSeconds(1)
+
+    val row = ExampleSchema.ExampleTable.query2.withKey("testFamilyPutTimeStamps").withAllColumns.single()
+
+    for (col <- values.keys) {
+      val actTimeStamp = row.columnFromFamilyTimestamp(_.viewCounts, col).get
+
+      timeStamps.get(col) match {
+        case Some(expTimeStamp) =>
+          Assert.assertEquals(expTimeStamp, actTimeStamp)
+
+        case None =>
+          Assert.assertTrue(actTimeStamp.getMillis >= time3.getMillis && actTimeStamp.getMillis < time4.getMillis)
+      }
+    }
   }
 }
 
