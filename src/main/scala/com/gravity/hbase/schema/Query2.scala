@@ -124,6 +124,8 @@ trait BaseQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] {
 
   class ClauseBuilder() {
 
+    def table: T = BaseQuery.this.table.asInstanceOf[T]
+
     def columnValueMustNotEqual[F, K, V](column: (T) => Column[T, R, F, K, V], value: V): Some[SingleColumnValueFilter] = {
       val c = column(table.pops)
       val vc = new SingleColumnValueFilter(c.familyBytes, c.columnBytes, CompareOp.NOT_EQUAL, c.valueConverter.toBytes(value))
