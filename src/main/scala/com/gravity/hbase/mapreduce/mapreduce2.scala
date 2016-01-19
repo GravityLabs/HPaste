@@ -149,7 +149,9 @@ case class SpeculativeExecutionConf(on: Boolean = false) extends HConfigLet {
   override def configure(job: Job) {
     if (!on) {
       job.getConfiguration.set("mapred.map.tasks.speculative.execution", "false")
+      job.getConfiguration.set("mapreduce.map.speculative", "false")
       job.getConfiguration.set("mapred.reduce.tasks.speculative.execution", "false")
+      job.getConfiguration.set("mapreduce.reduce.speculative", "false")
     }
   }
 }
@@ -158,6 +160,7 @@ case class ReuseJVMConf(reuse: Boolean = true) extends HConfigLet {
   override def configure(job: Job) {
     if (reuse) {
       job.getConfiguration.setInt("mapred.job.reuse.jvm.num.tasks", -1)
+      job.getConfiguration.setInt("mapreduce.job.jvm.numtasks", -1)
     }
   }
 }
@@ -167,16 +170,21 @@ case class BigMemoryConf(mapMemoryMB: Int, reduceMemoryMB: Int, mapBufferMB: Int
     val memory = mapMemoryMB
     val reducememory = reduceMemoryMB
     job.getConfiguration.set("mapred.map.child.java.opts", "-Xmx" + memory + "m" + " -Xms" + memory + "m")
+    job.getConfiguration.set("mapreduce.map.java.opts", "-Xmx" + memory + "m" + " -Xms" + memory + "m")
     //    conf.set("mapred.map.child.java.opts", "-Xmx" + memory + "m")
     job.getConfiguration.set("mapred.reduce.child.java.opts", "-Xmx" + reducememory + "m")
+    job.getConfiguration.set("mapreduce.reduce.java.opts", "-Xmx" + reducememory + "m")
     job.getConfiguration.setInt("mapred.job.map.memory.mb", memory + mapBufferMB)
+    job.getConfiguration.setInt("mapreduce.map.memory.mb", memory + mapBufferMB)
     job.getConfiguration.setInt("mapred.job.reduce.memory.mb", reducememory + reduceBufferMB)
+    job.getConfiguration.setInt("mapreduce.reduce.memory.mb", reducememory + reduceBufferMB)
   }
 }
 
 case class LongRunningJobConf(timeoutInSeconds: Int) extends HConfigLet {
   override def configure(job: Job) {
     job.getConfiguration.setInt("mapred.task.timeout", timeoutInSeconds)
+    job.getConfiguration.setInt("mapreduce.task.timeout", timeoutInSeconds)
   }
 }
 
@@ -324,6 +332,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
     def makeJob(task: HTask[_, _, _, _]) = {
       val taskConf = new Configuration(conf)
       taskConf.set("mapred.job.priority", priority.name)
+      taskConf.set("mapreduce.job.priority", priority.name)
       taskConf.setInt("hpaste.jobchain.mapper.idx", idx)
       taskConf.setInt("hpaste.jobchain.reducer.idx", idx)
 
@@ -467,6 +476,7 @@ case class HTableQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], S <: Sett
     val thisQuery = query
     val scanner = thisQuery.makeScanner(maxVersions, cacheBlocks, cacheSize)
     job.getConfiguration.set("mapred.map.tasks.speculative.execution", "false")
+    job.getConfiguration.set("mapreduce.map.speculative", "false")
 
     job.getConfiguration.set(TableInputFormat.SCAN, Settings.convertScanToString(scanner))
 
@@ -487,6 +497,7 @@ case class HTableSettingsQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], S
     val thisQuery = query(settings.asInstanceOf[S])
     val scanner = thisQuery.makeScanner(maxVersions, cacheBlocks, cacheSize)
     job.getConfiguration.set("mapred.map.tasks.speculative.execution", "false")
+    job.getConfiguration.set("mapreduce.map.speculative", "false")
 
     job.getConfiguration.set(TableInputFormat.SCAN, Settings.convertScanToString(scanner))
 
@@ -513,6 +524,7 @@ case class HTableInput[T <: HbaseTable[T, _, _]](table: T, families: Families[T]
 
     //Disabling speculative execution because it is never useful for a table input.
     job.getConfiguration.set("mapred.map.tasks.speculative.execution", "false")
+    job.getConfiguration.set("mapreduce.map.speculative", "false")
 
     val scanner = scan
     scanner.setCacheBlocks(false)
@@ -574,6 +586,7 @@ case class HMultiTableOutput(writeToTransactionLog: Boolean, tables: HbaseTable[
       job.getConfiguration.setBoolean(MultiTableOutputFormat.WAL_PROPERTY, MultiTableOutputFormat.WAL_OFF)
     }
     job.getConfiguration.set("mapred.reduce.tasks.speculative.execution", "false")
+    job.getConfiguration.set("mapreduce.reduce.speculative", "false")
     job.setOutputFormatClass(classOf[MultiTableOutputFormat])
   }
 }
@@ -588,6 +601,7 @@ case class HTableOutput[T <: HbaseTable[T, _, _]](table: T) extends HOutput {
   override def init(job: Job, settings: SettingsBase) {
     println("Initializing output table to: " + table.tableName)
     job.getConfiguration.set("mapred.reduce.tasks.speculative.execution", "false")
+    job.getConfiguration.set("mapreduce.reduce.speculative", "false")
     job.getConfiguration.set(GravityTableOutputFormat.OUTPUT_TABLE, table.tableName)
     job.setOutputFormatClass(classOf[GravityTableOutputFormat[ImmutableBytesWritable]])
   }
