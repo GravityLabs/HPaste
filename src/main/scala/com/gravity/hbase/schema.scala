@@ -47,8 +47,8 @@ package object schema {
   }
 
 
-  type FamilyExtractor[T <: HbaseTable[T, R, _], R, F, K, V] = (T) => ColumnFamily[T, R, F, K, V]
-  type ColumnExtractor[T <: HbaseTable[T, R, _], R, F, K, V] = (T) => Column[T, R, F, K, V]
+  type FamilyExtractor[T <: HbaseTable[T, _, _]] = (T) => ColumnFamily[T, _, _, _, _]
+  type ColumnExtractor[T <: HbaseTable[T, _, _]] = (T) => Column[T, _, _, _, _]
 
   implicit object AnyConverter extends ByteConverter[Any] with AnyConverterSignal {
     override def toBytes(t: Any): Nothing = throw new AnyNotSupportedException()

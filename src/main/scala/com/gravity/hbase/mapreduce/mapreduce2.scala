@@ -461,9 +461,9 @@ abstract class HOutput {
   def init(job: Job, settings: SettingsBase)
 }
 
-case class Columns[T <: HbaseTable[T, _, _]](columns: ColumnExtractor[T, _, _, _, _]*)
+case class Columns[T <: HbaseTable[T, _, _]](columns: ColumnExtractor[T]*)
 
-case class Families[T <: HbaseTable[T, _, _]](families: FamilyExtractor[T, _, _, _, _]*)
+case class Families[T <: HbaseTable[T, _, _]](families: FamilyExtractor[T]*)
 
 case class Filters[T <: HbaseTable[T, _, _]](filters: Filter*)
 
