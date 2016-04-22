@@ -125,6 +125,7 @@ object ExampleSchema extends Schema {
  * This test is intended to simultaneously test the library and show how you put together your own schema.
  */
 class ExampleSchemaTest extends HPasteTestCase(ExampleSchema) {
+  implicit val conf = LocalCluster.getTestConfiguration
 
   /**
    * Test that a complex custom type can be added and retrieved from a table as a Map

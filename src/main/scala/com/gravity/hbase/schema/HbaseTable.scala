@@ -49,15 +49,13 @@ object HbaseTable {
  * @tparam R
  * @tparam RR
  */
-abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val tableName: String, var cache: QueryResultCache[T, R, RR] = new NoOpCache[T, R, RR](), rowKeyClass: Class[R], logSchemaInconsistencies: Boolean = false, tableConfig:HbaseTableConfig = HbaseTable.defaultConfig)(implicit conf: Configuration, keyConverter: ByteConverter[R])
+abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val tableName: String, var cache: QueryResultCache[T, R, RR] = new NoOpCache[T, R, RR](), rowKeyClass: Class[R], logSchemaInconsistencies: Boolean = false, tableConfig:HbaseTableConfig = HbaseTable.defaultConfig)(implicit keyConverter: ByteConverter[R])
   extends TablePoolStrategy
 {
-
 
   def rowBuilder(result: DeserializedResult): RR
 
   def getTableConfig: HbaseTableConfig = tableConfig
-  def getConf: Configuration = conf
 
   def emptyRow(key:Array[Byte]): RR = rowBuilder(new DeserializedResult(rowKeyConverter.fromBytes(key).asInstanceOf[AnyRef],families.size))
   def emptyRow(key:R): RR = rowBuilder(new DeserializedResult(key.asInstanceOf[AnyRef],families.size))
@@ -72,27 +70,6 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     rowBuilder(convertResult(result))
   }
 
-
-  /**A pool of table objects with AutoFlush set to false --therefore usable for asynchronous write buffering */
-  val bufferTablePool: HTablePool = {
-    new HTablePool(conf, 2, new HTableInterfaceFactory {
-    def createHTableInterface(config: Configuration, tableName: Array[Byte]): HTableInterface = {
-      val table = new HTable(conf, tableName)
-      table.setWriteBufferSize(2000000L)
-      table.setAutoFlush(false)
-      table
-    }
-
-    def releaseHTableInterface(table: HTableInterface) {
-      try {
-        table.close()
-      } catch {
-        case ex: IOException => throw new RuntimeException(ex)
-      }
-    }
-  }) }
-
-
   @volatile private var famLookup: Array[Array[Byte]] = null
   @volatile private var colFamLookup: Array[Array[Byte]] = null
   @volatile private var famIdx: IndexedSeq[KeyValueConvertible[_, _, _]] = null
@@ -105,7 +82,6 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
       bc.compare(a, b)
     }
   }
-
 
   /**Looks up a KeyValueConvertible by the family and column bytes provided.
    * Because of the rules of the system, the lookup goes as follows:
@@ -132,8 +108,6 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
         null
       }
     }
-
-
   }
 
   /**Converts a result to a DeserializedObject. A conservative implementation that is slower than convertResultRaw but will always be more stable against
@@ -269,10 +243,6 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     "{NAME => '%s', VERSIONS => %d%s%s}".format(Bytes.toString(family.familyBytes), family.versions, compression, ttl)
   }
 
-
-
-  def getBufferedTable(name: String): HTableInterface = bufferTablePool.getTable(name)
-
   private val columns: ArrayBuffer[TypedCol[_, _]] = ArrayBuffer[TypedCol[_, _]]()
   val families: ArrayBuffer[Fam[_, _]] = ArrayBuffer[Fam[_, _]]()
 
@@ -354,17 +324,17 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     family
   }
 
-  def getTableOption(name: String): Option[HTableInterface] = {
+  def getTableOption(name: String, conf: Configuration): Option[HTableInterface] = {
     try {
-      Some(getTable(this))
+      Some(getTable(this, conf))
     } catch {
       case e: Exception => None
     }
   }
 
 
-  def withTableOption[Q](name: String)(work: (Option[HTableInterface]) => Q): Q = {
-    val table = getTableOption(name)
+  def withTableOption[Q](name: String, conf: Configuration)(work: (Option[HTableInterface]) => Q): Q = {
+    val table = getTableOption(name, conf)
     try {
       work(table)
     } finally {
@@ -372,17 +342,8 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     }
   }
 
-  def withBufferedTable[Q](mytableName: String = tableName)(work: (HTableInterface) => Q): Q = {
-    val table = getBufferedTable(mytableName)
-    try {
-      work(table)
-    } finally {
-      table.close()
-    }
-  }
-
-  def withTable[Q](mytableName: String = tableName)(funct: (HTableInterface) => Q): Q = {
-    withTableOption(mytableName) {
+  def withTable[Q](mytableName: String = tableName, conf: Configuration)(funct: (HTableInterface) => Q): Q = {
+    withTableOption(mytableName, conf) {
       case Some(table) => {
         funct(table)
       }

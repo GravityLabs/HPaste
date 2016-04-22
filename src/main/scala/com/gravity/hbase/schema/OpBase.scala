@@ -1,10 +1,10 @@
 package com.gravity.hbase.schema
 
-import scala.collection.mutable
-import scala.collection.mutable.Buffer
-import org.apache.hadoop.io.Writable
+import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.client.{Mutation, Row}
+
 import scala.collection.JavaConversions._
+import scala.collection.mutable
 
 /*             )\._.,--....,'``.
  .b--.        /;   _.. \   _\  (`._ ,.
@@ -19,7 +19,7 @@ import scala.collection.JavaConversions._
  * @tparam T
  * @tparam R
  */
-abstract class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _], key: Array[Byte], val previous: Buffer[OpBase[T, R]] = Buffer[OpBase[T, R]]()) {
+abstract class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _], key: Array[Byte], val previous: mutable.Buffer[OpBase[T, R]] = mutable.Buffer[OpBase[T, R]]()) {
 
   previous += this
 
@@ -43,74 +43,51 @@ abstract class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _
   def size: Int = previous.size
 
   def getOperations: Iterable[Mutation] = {
-    val calls = Buffer[Mutation]()
+    val calls = mutable.Buffer[Mutation]()
     previous.foreach {
-      case put: PutOp[T, R] => {
+      case put: PutOp[T, R] =>
         calls += put.put
-      }
-      case delete: DeleteOp[T, R] => {
+      case delete: DeleteOp[T, R] =>
         calls += delete.delete
-      }
-      case increment: IncrementOp[T, R] => {
+      case increment: IncrementOp[T, R] =>
         calls += increment.increment
-      }
     }
 
     calls
 
   }
 
-  /**
-   * This is an experimental call that utilizes a shared instance of a table to flush writes.
-   */
-  def withExecuteBuffered(tableName: String = table.tableName) {
-
-    val (ops, deletes, puts, increments) = prepareOperations
-
-    if (ops.size == 0) {
-    } else {
-      table.withBufferedTable(tableName) {
-        bufferTable =>
-          bufferTable.batch(ops)
-      }
-    }
-
-  }
-
   def prepareOperations: (mutable.Buffer[Row], Int, Int, Int) = {
-    val ops = Buffer[Row]()
+    val ops = mutable.Buffer[Row]()
 
     var puts = 0
     var increments = 0
     var deletes = 0
 
     previous.foreach {
-      case put: PutOp[T, R] => {
+      case put: PutOp[T, R] =>
         if (!put.put.isEmpty) {
           ops += put.put
           puts += 1
         }
-      }
-      case delete: DeleteOp[T, R] => {
+      case delete: DeleteOp[T, R] =>
         ops += delete.delete
         deletes += 1
-      }
-      case increment: IncrementOp[T, R] => {
+      case increment: IncrementOp[T, R] =>
         ops += increment.increment
         increments += 1
-      }
     }
 
     (ops, puts, deletes, increments)
   }
 
-  def execute(tableName: String = table.tableName): OpsResult = {
+  def execute(tableName: String = table.tableName)(implicit conf: Configuration): OpsResult = {
     val (ops, puts, deletes, increments) = prepareOperations
 
-    if (ops.size == 0) {
+    if (ops.isEmpty) {
       //No need to do anything if there are no real operations to execute
     } else {
-      table.withTable(tableName) {
+      table.withTable(tableName, conf) {
         table =>
           table.batch(ops)
 

@@ -1,14 +1,14 @@
 package com.gravity.hbase.schema
 
-import com.gravity.hbase.mapreduce._
-import java.lang.String
-import org.joda.time.{DateMidnight, DateTime}
-import com.gravity.hbase.mapreduce.{HMapReduceTask, HJob}
 import java.net.URL
-import scala.collection._
+
+import com.gravity.hbase.mapreduce.{HJob, HMapReduceTask, _}
 import com.gravity.hbase.schema.WebCrawlingSchema.WebPageRow
-import org.junit.{Assert, Test}
 import org.apache.hadoop.io.Text
+import org.joda.time.{DateMidnight, DateTime}
+import org.junit.{Assert, Test}
+
+import scala.collection._
 
 /*             )\._.,--....,'``.
  .b--.        /;   _.. \   _\  (`._ ,.
@@ -160,6 +160,7 @@ class WebTablePagesBySiteJob extends HJob[NoSettings]("Get articles by site",
 )
 
 class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
+  implicit val conf = LocalCluster.getTestConfiguration
 
   @Test def testWebTablePutsAndGets() {
     val day1 = new DateMidnight(2011, 6, 4)
