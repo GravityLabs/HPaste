@@ -421,10 +421,10 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
   def getMapperFunc[MK, MV, MOK, MOV](idx: Int): HMapper[MK, MV, MOK, MOV] = {
     val task = tasks(idx)
     task match {
-      case tk: HMapReduceTask[MK, MV, MOK, MOV, _, _] =>
-        tk.mapper
-      case tk: HMapTask[MK, MV, MOK, MOV] =>
-        tk.mapper
+      case tk: HMapReduceTask[_, _, _, _, _, _] =>
+        tk.mapper.asInstanceOf[HMapper[MK, MV, MOK, MOV]]
+      case tk: HMapTask[_, _, _, _] =>
+        tk.mapper.asInstanceOf[HMapper[MK, MV, MOK, MOV]]
       case _ =>
         throw new RuntimeException("Unable to find mapper for index " + idx)
     }
@@ -433,8 +433,8 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
   def getReducerFunc[MOK, MOV, ROK, ROV](idx: Int): HReducer[MOK, MOV, ROK, ROV] = {
     val task = tasks(idx)
     task match {
-      case tk: HMapReduceTask[_, _, MOK, MOV, ROK, ROV] =>
-        tk.reducer
+      case tk: HMapReduceTask[_, _, _, _, _, _] =>
+        tk.reducer.asInstanceOf[HReducer[MOK, MOV, ROK, ROV]]
       case _ =>
         throw new RuntimeException("Unable to find reducer for index " + idx)
     }

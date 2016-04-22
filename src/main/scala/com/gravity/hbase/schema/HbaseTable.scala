@@ -150,6 +150,11 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
           }
         }
       }
+      catch {
+        case e: Exception =>
+          println("Exception converting result in table " + tableName + ": " + e.toString)
+          throw e
+      }
     }
     ds
   }
