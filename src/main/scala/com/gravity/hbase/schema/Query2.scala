@@ -453,7 +453,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     this
   }
 
-  def single(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true)(implicit conf: Configuration): RR = singleOption(tableName, ttl, skipCache, noneOnEmpty = false).get
+  def single(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, timeOutMs: Int = 0)(implicit conf: Configuration): RR = singleOption(tableName, ttl, skipCache, noneOnEmpty = false, timeOutMs).get
 
   /**
    *
@@ -463,7 +463,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
    * @param noneOnEmpty If true, will return None if the result is empty.  If false, will return an empty row.  If caching is true, will cache the empty row.
    * @return
    */
-  def singleOption(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, noneOnEmpty: Boolean = true)(implicit conf: Configuration): Option[RR] = {
+  def singleOption(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, noneOnEmpty: Boolean = true, timeOutMs: Int = 0)(implicit conf: Configuration): Option[RR] = {
     require(keys.size == 1, "Calling single() with more than one key")
     require(keys.nonEmpty, "Calling a Get operation with no keys specified")
     val get = new Get(keys.head)
@@ -484,7 +484,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     }
 
     if (skipCache || table.cache.isInstanceOf[NoOpCache[T, R, RR]])
-      table.withTableOption(tableName, conf) {
+      table.withTableOption(tableName, conf, timeOutMs) {
         case Some(htable) =>
           val result = htable.get(get)
           if (noneOnEmpty && result.isEmpty) {
@@ -530,7 +530,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
                 Some(qr)
               }
             case NotFound =>
-              val fromTable = table.withTableOption(tableName, conf) {
+              val fromTable = table.withTableOption(tableName, conf, timeOutMs) {
                 case Some(htable) =>
                   val result = htable.get(get)
                   if (noneOnEmpty && result.isEmpty) {
@@ -557,7 +557,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
               table.cache.instrumentRequest(1, 0, 1, 0, 1)
               fromTable
             case Error(message, exceptionOption) => //don't save back to remote if there was an error - it's likely overloaded and this just creates a cascading failure
-              val fromTable = table.withTableOption(tableName, conf) {
+              val fromTable = table.withTableOption(tableName, conf, timeOutMs) {
                 case Some(htable) =>
                   val result = htable.get(get)
                   if (noneOnEmpty && result.isEmpty) {
@@ -597,7 +597,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
                 Some(qr)
               }
             case NotFound =>
-              val fromTable = table.withTableOption(tableName, conf) {
+              val fromTable = table.withTableOption(tableName, conf, timeOutMs) {
                 case Some(htable) =>
                   val result = htable.get(get)
                   if (noneOnEmpty && result.isEmpty) {
@@ -619,7 +619,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
               fromTable
             case Error(remoteMessage, remoteExceptionOption) => //don't save back to remote if there was an error - it's likely overloaded and this just creates a cascading failure
               table.cache.instrumentRequest(1, 0, 1, 0, 1)
-              table.withTableOption(tableName, conf) {
+              table.withTableOption(tableName, conf, timeOutMs) {
                 case Some(htable) =>
                   val result = htable.get(get)
                   if (noneOnEmpty && result.isEmpty) {
@@ -648,7 +648,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
    * @param skipCache Whether to skip any defined cache
    * @return
    */
-  def executeMap(tableName: String = table.tableName, ttl: Int = 30, skipCache:Boolean=true)(implicit conf: Configuration) : Map[R,RR] = multiMap(tableName, ttl, skipCache, returnEmptyRows = false)
+  def executeMap(tableName: String = table.tableName, ttl: Int = 30, skipCache:Boolean=true, timeOutMs: Int = 0)(implicit conf: Configuration) : Map[R,RR] = multiMap(tableName, ttl, skipCache, returnEmptyRows = false, timeOutMs)
 
   /**
    * @param tableName The Name of the table
@@ -658,7 +658,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
    *                        so this is off by default to keep the mental model simple.
    * @return
    */
-  def multiMap(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, returnEmptyRows:Boolean=false)(implicit conf: Configuration): Map[R, RR] = {
+  def multiMap(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, returnEmptyRows:Boolean=false, timeOutMs: Int = 0)(implicit conf: Configuration): Map[R, RR] = {
     if (keys.isEmpty) return Map.empty[R, RR] // don't get all started with nothing to do
 
     // init our result map and give it a hint of the # of keys we have
@@ -676,7 +676,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
 
     if(skipCache || table.cache.isInstanceOf[NoOpCache[T, R, RR]]) {
       if (gets.nonEmpty) {
-        table.withTable(tableName, conf) {
+        table.withTable(tableName, conf, timeOutMs) {
           htable =>
             htable.get(gets).foreach(res => {
               if (res != null && !res.isEmpty) {
@@ -752,7 +752,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
       val allCacheMissGets = cacheKeysRemaining.map(key => cacheKeysToGets(key)).toList
 
       if (allCacheMissGets.nonEmpty) {
-        table.withTable(tableName, conf) {
+        table.withTable(tableName, conf, timeOutMs) {
           htable =>
             htable.get(allCacheMissGets).foreach(res => {
               if (res != null && !res.isEmpty) {
@@ -886,7 +886,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     scan
   }
 
-  def scan(handler: (RR) => Unit, maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100, useLocalCache: Boolean = false, localTTL: Int = 30)(implicit conf: Configuration) {
+  def scan(handler: (RR) => Unit, maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100, useLocalCache: Boolean = false, localTTL: Int = 30, timeOutMs: Int = 0)(implicit conf: Configuration) {
     val scan = makeScanner(maxVersions, cacheBlocks, cacheSize)
 
     val results = if (useLocalCache) mutable.Buffer[RR]() else mutable.Buffer.empty[RR]
@@ -907,7 +907,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
         result.foreach(handler)
       case None =>
 
-        table.withTable(table.tableName, conf) {
+        table.withTable(table.tableName, conf, timeOutMs) {
           htable =>
 
             val scanner = htable.getScanner(scan)
@@ -933,7 +933,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
 
   }
 
-  def scanToIterable[I](handler: (RR) => I, maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100, useLocalCache: Boolean = false, localTTL: Int = 30)(implicit conf: Configuration): scala.Iterable[I] = {
+  def scanToIterable[I](handler: (RR) => I, maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100, useLocalCache: Boolean = false, localTTL: Int = 30, timeOutMs: Int = 0)(implicit conf: Configuration): scala.Iterable[I] = {
     val scan = makeScanner(maxVersions, cacheBlocks, cacheSize)
 
     val results = if (useLocalCache) mutable.Buffer[RR]() else mutable.Buffer.empty[RR]
@@ -951,7 +951,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     val results2 = whatWeGetFromCache match {
       case Some(rrs) => rrs.map(rr => handler(rr))
       case None =>
-        val runResults = table.withTable(table.tableName, conf) {
+        val runResults = table.withTable(table.tableName, conf, timeOutMs) {
           htable =>
             val scanner = htable.getScanner(scan)
             try {
@@ -978,8 +978,8 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
   /**Similar to the scan method but if your handler returns false, it will stop scanning.
    *
    */
-  def scanUntil(handler: (RR) => Boolean, maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100)(implicit conf: Configuration) {
-    table.withTable(table.tableName, conf) {
+  def scanUntil(handler: (RR) => Boolean, maxVersions: Int = 1, cacheBlocks: Boolean = true, cacheSize: Int = 100, timeOutMs: Int = 0)(implicit conf: Configuration) {
+    table.withTable(table.tableName, conf, timeOutMs) {
       htable =>
         val scan = makeScanner(maxVersions, cacheBlocks, cacheSize)
 

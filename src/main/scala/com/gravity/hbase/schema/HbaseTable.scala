@@ -324,17 +324,17 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     family
   }
 
-  def getTableOption(name: String, conf: Configuration): Option[HTableInterface] = {
+  def getTableOption(name: String, conf: Configuration, timeOutMs: Int): Option[HTableInterface] = {
     try {
-      Some(getTable(this, conf))
+      Some(getTable(this, conf, timeOutMs))
     } catch {
       case e: Exception => None
     }
   }
 
 
-  def withTableOption[Q](name: String, conf: Configuration)(work: (Option[HTableInterface]) => Q): Q = {
-    val table = getTableOption(name, conf)
+  def withTableOption[Q](name: String, conf: Configuration, timeOutMs: Int)(work: (Option[HTableInterface]) => Q): Q = {
+    val table = getTableOption(name, conf, timeOutMs)
     try {
       work(table)
     } finally {
@@ -342,8 +342,8 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     }
   }
 
-  def withTable[Q](mytableName: String = tableName, conf: Configuration)(funct: (HTableInterface) => Q): Q = {
-    withTableOption(mytableName, conf) {
+  def withTable[Q](mytableName: String, conf: Configuration, timeOutMs: Int)(funct: (HTableInterface) => Q): Q = {
+    withTableOption(mytableName, conf, timeOutMs) {
       case Some(table) => {
         funct(table)
       }

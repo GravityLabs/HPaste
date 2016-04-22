@@ -21,7 +21,6 @@ import org.junit.Assert._
 import scala.collection._
 import org.junit._
 import org.joda.time.DateTime
-import CustomTypes._
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -73,6 +72,7 @@ object CustomTypes {
 
 
 object ExampleSchema extends Schema {
+  import CustomTypes._
 
 
   //There should only be one HBaseConfiguration object per process.  You'll probably want to manage that

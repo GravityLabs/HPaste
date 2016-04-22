@@ -17,31 +17,29 @@
 
 package com.gravity.hbase.mapreduce
 
-import com.google.protobuf.InvalidProtocolBufferException
-import com.gravity.hbase.schema._
-import org.apache.hadoop.conf.Configuration
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream, IOException}
 import java.lang.Iterable
-import com.gravity.hbase.schema.HbaseTable
+
+import com.google.protobuf.InvalidProtocolBufferException
 import com.gravity.hadoop.GravityTableOutputFormat
-import org.apache.hadoop.hbase.io.ImmutableBytesWritable
+import com.gravity.hbase.schema.{HbaseTable, _}
+import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
-import org.apache.hadoop.hbase.protobuf.ProtobufUtil
-import org.apache.hadoop.mapreduce.lib.input.{SequenceFileInputFormat, FileInputFormat}
-import org.apache.hadoop.mapreduce.lib.output.{SequenceFileOutputFormat, FileOutputFormat}
-import scala.Predef
-import scala.collection.JavaConversions._
-import org.apache.hadoop.hbase.client.{Mutation, Scan, Result}
-import org.apache.hadoop.hbase.filter.{FilterList, Filter}
-import org.apache.hadoop.hbase.util.Base64
-import com.gravity.hbase.schema._
-import scala.collection.mutable.Buffer
-import org.apache.hadoop.io._
-import java.io.{IOException, DataInputStream, ByteArrayInputStream, ByteArrayOutputStream}
+import org.apache.hadoop.hbase.client.{Mutation, Result, Scan}
+import org.apache.hadoop.hbase.filter.{Filter, FilterList}
+import org.apache.hadoop.hbase.io.ImmutableBytesWritable
 import org.apache.hadoop.hbase.mapreduce.{MultiTableOutputFormat, TableInputFormat}
+import org.apache.hadoop.hbase.protobuf.ProtobufUtil
+import org.apache.hadoop.hbase.util.Base64
+import org.apache.hadoop.io._
+import org.apache.hadoop.mapreduce.lib.input.{FileInputFormat, SequenceFileInputFormat}
+import org.apache.hadoop.mapreduce.lib.output.{FileOutputFormat, SequenceFileOutputFormat}
+import org.apache.hadoop.mapreduce.{Job, Mapper, Partitioner, Reducer}
 import org.joda.time.DateTime
-import scala.collection._
-import org.apache.hadoop.mapreduce.{Job, Partitioner, Reducer, Mapper}
-import org.apache.hadoop.mapred.JobConf
+
+import scala.collection.JavaConversions._
+import scala.collection.{mutable, _}
+import scala.collection.mutable.Buffer
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -52,22 +50,22 @@ object Settings {
 
   object None extends NoSettings
   def convertScanToString(scan: Scan): String = {
-    val proto : org.apache.hadoop.hbase.protobuf.generated.ClientProtos.Scan = ProtobufUtil.toScan(scan);
-    Base64.encodeBytes(proto.toByteArray());
+    val proto : org.apache.hadoop.hbase.protobuf.generated.ClientProtos.Scan = ProtobufUtil.toScan(scan)
+    Base64.encodeBytes(proto.toByteArray)
   }
 
   def convertStringToScan(base64:String): Scan =  {
-    val decoded = Base64.decode(base64);
+    val decoded = Base64.decode(base64)
 
     var scan : org.apache.hadoop.hbase.protobuf.generated.ClientProtos.Scan = null
     try {
-      scan = org.apache.hadoop.hbase.protobuf.generated.ClientProtos.Scan.parseFrom(decoded);
+      scan = org.apache.hadoop.hbase.protobuf.generated.ClientProtos.Scan.parseFrom(decoded)
     } catch {
       case var4 : InvalidProtocolBufferException =>
-        throw new IOException(var4);
+        throw new IOException(var4)
     }
 
-    ProtobufUtil.toScan(scan);
+    ProtobufUtil.toScan(scan)
   }
 
 }
@@ -194,7 +192,7 @@ object HJob {
 
 
 class HJobBuilder(name: String) {
-  private val tasks = Buffer[HTask[_, _, _, _]]()
+  private val tasks = mutable.Buffer[HTask[_, _, _, _]]()
 
   def withTask(task: HTask[_, _, _, _]): HJobBuilder = {
     tasks += task
@@ -280,7 +278,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
   type RunResult = (Boolean, Seq[(HTask[_, _, _, _], Job)], mutable.Map[String, DateTime], mutable.Map[String, DateTime])
 
   def run(settings: S, conf: Configuration, dryRun: Boolean = false, skipToTask: String = null, priority: JobPriority = JobPriorities.NORMAL): RunResult = {
-    require(tasks.size > 0, "HJob requires at least one task to be defined")
+    require(tasks.nonEmpty, "HJob requires at least one task to be defined")
     conf.setStrings("hpaste.jobchain.jobclass", getClass.getName)
 
     var previousTask: HTask[_, _, _, _] = null
@@ -292,11 +290,10 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
         try {
           taskByName(task.taskId.previousTaskName).get
         } catch {
-          case ex: Exception => {
+          case ex: Exception =>
             println("WARNING: Task " + task.taskId.name + " specifies previous task " + task.taskId.previousTaskName + " which was not submitted to the job.  Make sure you did this intentionally")
             null
             //            throw new RuntimeException("Task " + task.taskId.name + " requires task " + task.taskId.previousTaskName + " which was not submitted to the job")
-          }
         }
       } else {
         if (!tasks.exists(_.taskId.name == task.taskId.requiredTask.taskId.name)) {
@@ -317,12 +314,12 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
           previousTask.nextTasks += task
 
           //If there is a previous HTask, then initialize the input of this task as the output of that task.
-          if (previousTask.hio.output.isInstanceOf[HRandomSequenceOutput[_, _]] && task.hio.input.isInstanceOf[HRandomSequenceInput[_, _]]) {
-            task.hio.input.asInstanceOf[HRandomSequenceInput[_, _]].previousPath = previousTask.hio.output.asInstanceOf[HRandomSequenceOutput[_, _]].path
+          previousTask.hio.output match {
+            case value: HRandomSequenceOutput[_, _] if task.hio.input.isInstanceOf[HRandomSequenceInput[_, _]] =>
+              task.hio.input.asInstanceOf[HRandomSequenceInput[_, _]].previousPath = value.path
+            case _ =>
           }
         }
-
-        //        task.hio.input = previousTask.hio.output
       }
     }
 
@@ -358,7 +355,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
     }
 
     def declare(tasks: Seq[HTask[_, _, _, _]], level: String = "\t") {
-      tasks.map {
+      tasks.foreach {
         task =>
           println(level + "Task: " + task.taskId.name)
           println(level + "\twill run after " + (if (task.previousTask == null) "nothing" else task.previousTask.taskId.name))
@@ -369,12 +366,12 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
       }
     }
 
-    val taskJobBuffer = Buffer[(HTask[_, _, _, _], Job)]()
+    val taskJobBuffer = mutable.Buffer[(HTask[_, _, _, _], Job)]()
     val taskStartTimes = mutable.Map[String, DateTime]()
     val taskEndTimes = mutable.Map[String, DateTime]()
 
     def runrecursively(tasks: Seq[HTask[_, _, _, _]]): RunResult = {
-      val jobs = tasks.map {
+      val jobs = tasks.flatMap {
         task =>
           if (skipToTask != null && task.taskId.name != skipToTask) {
             println("Skipping task: " + task.taskId.name + " because we're skipping to : " + skipToTask)
@@ -384,7 +381,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
             taskJobBuffer.add((task, job))
             Some(job)
           }
-      }.flatten
+      }
 
       jobs.foreach {
         job =>
@@ -400,7 +397,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
         (false, taskJobBuffer, taskStartTimes, taskEndTimes)
       } else {
         val nextTasks = tasks.flatMap(_.nextTasks)
-        if (nextTasks.size == 0) {
+        if (nextTasks.isEmpty) {
           (true, taskJobBuffer, taskStartTimes, taskEndTimes)
         } else {
           runrecursively(nextTasks)
@@ -423,25 +420,23 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
 
   def getMapperFunc[MK, MV, MOK, MOV](idx: Int): HMapper[MK, MV, MOK, MOV] = {
     val task = tasks(idx)
-    if (task.isInstanceOf[HMapReduceTask[MK, MV, MOK, MOV, _, _]]) {
-      val tk = task.asInstanceOf[HMapReduceTask[MK, MV, MOK, MOV, _, _]]
-      tk.mapper
-    }
-    else if (task.isInstanceOf[HMapTask[MK, MV, MOK, MOV]]) {
-      val tk = task.asInstanceOf[HMapTask[MK, MV, MOK, MOV]]
-      tk.mapper
-    } else {
-      throw new RuntimeException("Unable to find mapper for index " + idx)
+    task match {
+      case tk: HMapReduceTask[MK, MV, MOK, MOV, _, _] =>
+        tk.mapper
+      case tk: HMapTask[MK, MV, MOK, MOV] =>
+        tk.mapper
+      case _ =>
+        throw new RuntimeException("Unable to find mapper for index " + idx)
     }
   }
 
   def getReducerFunc[MOK, MOV, ROK, ROV](idx: Int): HReducer[MOK, MOV, ROK, ROV] = {
     val task = tasks(idx)
-    if (task.isInstanceOf[HMapReduceTask[_, _, MOK, MOV, ROK, ROV]]) {
-      val tk = task.asInstanceOf[HMapReduceTask[_, _, MOK, MOV, ROK, ROV]]
-      tk.reducer
-    } else {
-      throw new RuntimeException("Unable to find reducer for index " + idx)
+    task match {
+      case tk: HMapReduceTask[_, _, MOK, MOV, ROK, ROV] =>
+        tk.reducer
+      case _ =>
+        throw new RuntimeException("Unable to find reducer for index " + idx)
     }
   }
 }
@@ -542,7 +537,7 @@ case class HTableInput[T <: HbaseTable[T, _, _]](table: T, families: Families[T]
         scanner.addFamily(family.familyBytes)
     }
 
-    if (filters.size > 0) {
+    if (filters.nonEmpty) {
       val filterList = new FilterList(FilterList.Operator.MUST_PASS_ALL)
       filters.foreach {filter => filterList.addFilter(filter)}
       scanner.setFilter(filterList)
@@ -723,7 +718,7 @@ abstract class HTask[IK, IV, OK, OV](val taskId: HTaskID, val configLets: HTaskC
 
 
   var previousTask: HTask[_, _, _, _] = _
-  val nextTasks: mutable.Buffer[HTask[_, _, _, _]] = Buffer[HTask[_, _, _, _]]()
+  val nextTasks: mutable.Buffer[HTask[_, _, _, _]] = mutable.Buffer[HTask[_, _, _, _]]()
 
   def configure(conf: Configuration, previousTask: HTask[_, _, _, _]) {
 
@@ -838,7 +833,7 @@ abstract class FromTableBinaryMapperFx[T <: HbaseTable[T, R, RR], R, RR <: HRow[
   private var initCode: () => Unit = _
 
   override def delayedInit(body: => Unit) {
-    initCode = (() => body)
+    initCode = () => body
   }
 
   def map() {
@@ -930,7 +925,7 @@ abstract class ToTableBinaryReducerFx[T <: HbaseTable[T, R, RR], R, RR <: HRow[T
   private var initCode: () => Unit = _
 
   override def delayedInit(body: => Unit) {
-    initCode = (() => body)
+    initCode = () => body
   }
 
   def reduce() {
@@ -951,7 +946,7 @@ abstract class BinaryReducerFx extends BinaryReducer with DelayedInit {
   private var initCode: () => Unit = _
 
   override def delayedInit(body: => Unit) {
-    initCode = (() => body)
+    initCode = () => body
   }
 
   def reduce() {
@@ -964,7 +959,7 @@ abstract class BinaryToTextReducerFx extends BinaryToTextReducer with DelayedIni
   private var initCode: () => Unit = _
 
   override def delayedInit(body: => Unit) {
-    initCode = (() => body)
+    initCode = () => body
   }
 
   def reduce() {

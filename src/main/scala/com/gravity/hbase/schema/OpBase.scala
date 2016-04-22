@@ -81,13 +81,13 @@ abstract class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _
     (ops, puts, deletes, increments)
   }
 
-  def execute(tableName: String = table.tableName)(implicit conf: Configuration): OpsResult = {
+  def execute(tableName: String = table.tableName, timeOutMs : Int = 0)(implicit conf: Configuration): OpsResult = {
     val (ops, puts, deletes, increments) = prepareOperations
 
     if (ops.isEmpty) {
       //No need to do anything if there are no real operations to execute
     } else {
-      table.withTable(tableName, conf) {
+      table.withTable(tableName, conf, timeOutMs) {
         table =>
           table.batch(ops)
 
