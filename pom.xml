@@ -4,7 +4,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.gravity</groupId>
   <artifactId>gravity-hpaste_2.11</artifactId>
-  <version>0.4.0-LOCAL-CDH5.5.2</version>
+  <version>0.4.1-LOCAL-CDH5.5.2</version>
   <packaging>jar</packaging>
   <name>hpaste</name>
   <url>http://github.com/GravityLabs/HPaste</url>
@@ -26,7 +26,7 @@
     <maven.compiler.source>1.6</maven.compiler.source>
     <maven.compiler.target>1.6</maven.compiler.target>
     <encoding>UTF-8</encoding>
-    <scala.version>2.11.7</scala.version>
+    <scala.version>2.11.8</scala.version>
     <scala.major.version>2.11</scala.major.version>
   </properties>
 
@@ -34,7 +34,7 @@
     <profile>
       <id>scala_2.11</id>
       <properties>
-        <scala.version>2.11.7</scala.version>
+        <scala.version>2.11.8</scala.version>
         <scala.major.version>2.11</scala.major.version>
       </properties>
     </profile>

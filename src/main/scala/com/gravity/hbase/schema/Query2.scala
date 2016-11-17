@@ -236,11 +236,11 @@ trait BaseQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] {
 
     def lessThanColumnKey[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], value: K): Some[FilterList] = {
       val fam = family(table.pops)
-      val valueFilter = new QualifierFilter(CompareOp.LESS_OR_EQUAL, new BinaryComparator(fam.keyConverter.toBytes(value)))
-      val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(family(table.pops).familyBytes))
       val andFilter = new FilterList(Operator.MUST_PASS_ALL)
+      val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(family(table.pops).familyBytes))
+      val columnFilter = new ColumnRangeFilter(null, false, fam.keyConverter.toBytes(value), true)
       andFilter.addFilter(familyFilter)
-      andFilter.addFilter(valueFilter)
+      andFilter.addFilter(columnFilter)
       Some(andFilter)
     }
 
@@ -248,9 +248,10 @@ trait BaseQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] {
       val fam = family(table.pops)
       val andFilter = new FilterList(Operator.MUST_PASS_ALL)
       val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(fam.familyBytes))
-      val valueFilter = new QualifierFilter(CompareOp.GREATER_OR_EQUAL, new BinaryComparator(fam.keyConverter.toBytes(value)))
+      val columnFilter = new ColumnRangeFilter(fam.keyConverter.toBytes(value), true, null, false)
+
       andFilter.addFilter(familyFilter)
-      andFilter.addFilter(valueFilter)
+      andFilter.addFilter(columnFilter)
       Some(andFilter)
     }
 
@@ -277,13 +278,10 @@ trait BaseQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] {
     def betweenColumnKeys[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], lower: K, upper: K): Some[FilterList] = {
       val fam = family(table.pops)
       val familyFilter = new FamilyFilter(CompareOp.EQUAL, new BinaryComparator(fam.familyBytes))
-      val begin = new QualifierFilter(CompareOp.GREATER_OR_EQUAL, new BinaryComparator(fam.keyConverter.toBytes(lower)))
-      val end = new QualifierFilter(CompareOp.LESS_OR_EQUAL, new BinaryComparator(fam.keyConverter.toBytes(upper)))
-
+	    val columnFilter = new ColumnRangeFilter(fam.keyConverter.toBytes(lower), true, fam.keyConverter.toBytes(upper), true)
       val filterList = new FilterList(Operator.MUST_PASS_ALL)
       filterList.addFilter(familyFilter)
-      filterList.addFilter(begin)
-      filterList.addFilter(end)
+      filterList.addFilter(columnFilter)
       Some(filterList)
     }
 
