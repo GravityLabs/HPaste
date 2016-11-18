@@ -126,19 +126,146 @@ object ExampleSchema extends Schema {
  */
 class ExampleSchemaTest extends HPasteTestCase(ExampleSchema) {
 
-  /**
-   * Test that a complex custom type can be added and retrieved from a table as a Map
-   */
-  @Test def testComplexCustomType() {
-    val kittens = Map("Suki" -> Kitten("Suki",9,8.6), "Efrem" -> Kitten("Efrem",8,6.8), "Rory" -> Kitten("Rory",9,9.6),"Scout"->Kitten("Scout",8,12.3))
+  val kittensSeq = Seq(
+    "Efrem" -> Kitten("Efrem",8,6.8),
+    "Rory" -> Kitten("Rory",9,9.6),
+    "Scout"->Kitten("Scout",8,12.3),
+    "Suki" -> Kitten("Suki",9,8.6)
+  ).sortBy(_._1)
 
-    ExampleSchema.ExampleTable.put("Chris").valueMap(_.kittens,kittens).execute()
+  val Seq(kitten1Key, kitten2Key, kitten3Key, kitten4Key) = kittensSeq.map(_._1)
+
+  val kittensMap = kittensSeq.toMap
+
+  /**
+    * Test that a complex custom type can be added and retrieved from a table as a Map
+    */
+  @Test def testComplexCustomType() {
+    ExampleSchema.ExampleTable.put("Chris").valueMap(_.kittens,kittensMap).execute()
 
     val result = ExampleSchema.ExampleTable.query2.withKey("Chris").withFamilies(_.kittens).single(skipCache = true)
 
-    val kittens2 = result.family(_.kittens)
+    Assert.assertEquals(kittensMap,result.family(_.kittens))
+  }
 
-    Assert.assertEquals(kittens,kittens2)
+  /**
+    * Test that lessThanColumnKey, greaterThanColumnKey, and betweenColumnKeys have the expected semantics.
+    */
+  @Test def testFamilyKeyRangeSelectionBehavior(): Unit = {
+    ExampleSchema.ExampleTable.put("Chris").valueMap(_.kittens,kittensMap).execute()
+
+    {
+      // Ensure that we get the expected row and kittens when doing no filtering.
+      val result = ExampleSchema.ExampleTable.query2.withKey("Chris")
+        .withFamilies(_.kittens)
+        .single(skipCache = true)
+
+      Assert.assertEquals(kittensMap, result.family(_.kittens))
+    }
+
+    {
+      // Ensure that lessThanColumnKey returns the expected row and kittens when some kittens selected.
+      val result = ExampleSchema.ExampleTable.query2.withKey("Chris")
+        .withFamilies(_.kittens)
+        .filter(
+          _.or(
+            _.lessThanColumnKey(_.kittens, kitten2Key)
+          )
+        )
+        .single(skipCache = true)
+
+      // lessThanColumnKey is actually a <= filter.
+      Assert.assertEquals(kittensMap.filter(_._1 <= kitten2Key), result.family(_.kittens))
+    }
+
+    {
+      // Ensure that lessThanColumnKey returns the expected row and kittens when no kittens selected.
+      val result = ExampleSchema.ExampleTable.query2.withKey("Chris")
+        .withFamilies(_.kittens)
+        .filter(
+          _.or(
+            _.lessThanColumnKey(_.kittens, "A")
+          )
+        )
+        .single(skipCache = true)
+
+      // lessThanColumnKey is actually a <= filter.
+      Assert.assertEquals(kittensMap.filter(_._1 <= "A"), result.family(_.kittens))
+    }
+
+    {
+      // Ensure that greaterThanColumnKey returns the expected row and kittens when some kittens selected.
+      val result = ExampleSchema.ExampleTable.query2.withKey("Chris")
+        .withFamilies(_.kittens)
+        .filter(
+          _.or(
+            _.greaterThanColumnKey(_.kittens, kitten3Key)
+          )
+        )
+        .single(skipCache = true)
+
+      // greaterThanColumnKey is actually a >= filter.
+      Assert.assertEquals(kittensMap.filter(_._1 >= kitten3Key), result.family(_.kittens))
+    }
+
+    {
+      // Ensure that greaterThanColumnKey returns the expected row and kittens when no kittens selected.
+      val result = ExampleSchema.ExampleTable.query2.withKey("Chris")
+        .withFamilies(_.kittens)
+        .filter(
+          _.or(
+            _.greaterThanColumnKey(_.kittens, "Z")
+          )
+        )
+        .single(skipCache = true)
+
+      // greaterThanColumnKey is actually a >= filter.
+      Assert.assertEquals(kittensMap.filter(_._1 >= "Z"), result.family(_.kittens))
+    }
+
+    {
+      // Ensure that betweenColumnKeys returns the expected row and kittens when one kitten selected.
+      val result = ExampleSchema.ExampleTable.query2.withKey("Chris")
+        .withFamilies(_.kittens)
+        .filter(
+          _.or(
+            _.betweenColumnKeys(_.kittens, kitten2Key, kitten2Key)
+          )
+        )
+        .single(skipCache = true)
+
+      // betweenColumnKeys is an inclusive filter.
+      Assert.assertEquals(kittensMap.filterKeys(_ == kitten2Key), result.family(_.kittens))
+    }
+    {
+      // Ensure that betweenColumnKeys returns the expected row and kittens when some kittens selected.
+      val result = ExampleSchema.ExampleTable.query2.withKey("Chris")
+        .withFamilies(_.kittens)
+        .filter(
+          _.or(
+            _.betweenColumnKeys(_.kittens, kitten2Key, kitten3Key)
+          )
+        )
+        .single(skipCache = true)
+
+      // betweenColumnKeys is an inclusive filter.
+      Assert.assertEquals(kittensMap.filterKeys(str => str >= kitten2Key && str <= kitten3Key), result.family(_.kittens))
+    }
+
+    {
+      // Ensure that betweenColumnKeys returns the expected row and kittens when no kittens selected.
+      val result = ExampleSchema.ExampleTable.query2.withKey("Chris")
+        .withFamilies(_.kittens)
+        .filter(
+          _.or(
+            _.betweenColumnKeys(_.kittens, "A", "B")
+          )
+        )
+        .single(skipCache = true)
+
+      // betweenColumnKeys is an inclusive filter.
+      Assert.assertEquals(kittensMap.filterKeys(str => str >= "A" && str <= "B"), result.family(_.kittens))
+    }
   }
 
   /**
