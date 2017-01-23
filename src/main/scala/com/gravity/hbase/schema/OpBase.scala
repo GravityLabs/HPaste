@@ -109,4 +109,6 @@ abstract class OpBase[T <: HbaseTable[T, R, _], R](val table: HbaseTable[T, R, _
   }
 }
 
-case class OpsResult(numDeletes: Int, numPuts: Int, numIncrements: Int)
+case class OpsResult(numDeletes: Int, numPuts: Int, numIncrements: Int) {
+  def +(that: OpsResult): OpsResult = OpsResult(numDeletes + that.numDeletes, numPuts + that.numPuts, numIncrements + that.numIncrements)
+}

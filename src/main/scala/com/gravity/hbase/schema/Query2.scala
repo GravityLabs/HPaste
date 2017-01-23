@@ -663,7 +663,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     val resultMap = mutable.Map[R, RR]()
     resultMap.sizeHint(keys.size) // perf optimization
 
-    val localKeysToGetsAndCacheKeys: Map[Int, (Get, String)] = buildKeysToGetsAndCacheKeys()
+    val localKeysToGetsAndCacheKeys: Map[Long, (Get, String)] = buildKeysToGetsAndCacheKeys()
     val gets = localKeysToGetsAndCacheKeys.values.map(_._1).toList
 
     if(returnEmptyRows) {
@@ -754,7 +754,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
           htable =>
             htable.get(allCacheMissGets).foreach(res => {
               if (res != null && !res.isEmpty) {
-                val localKey = getIntFromBytes(res.getRow)
+                val localKey = getLongFromBytes(res.getRow)
                 val cacheKey = localKeysToGetsAndCacheKeys(localKey)._2
                 val theThingWeWant = Some(table.buildRow(res))
                 //put it in local cache now, and the resultBuffer will be used to send to remote in bulk later
@@ -793,14 +793,14 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     resultMap // DONE!
   }
 
-  private def getIntFromBytes(bytes: Array[Byte]) : Int = {
-    scala.util.hashing.MurmurHash3.arrayHash(bytes)
+  private def getLongFromBytes(bytes: Array[Byte]) : Long = {
+    com.gravity.utilities.MurmurHash.hash64(bytes, bytes.length)
   }
 
-  private def buildKeysToGetsAndCacheKeys(): Map[Int, (Get, String)] = {
-    if (keys.isEmpty) return Map.empty[Int,(Get, String)] // no keys..? nothing to see here... move along... move along.
+  private def buildKeysToGetsAndCacheKeys(): Map[Long, (Get, String)] = {
+    if (keys.isEmpty) return Map.empty[Long,(Get, String)] // no keys..? nothing to see here... move along... move along.
 
-    val gets = mutable.Buffer[(Int,Get)]() // buffer for the raw `Get's
+    val gets = mutable.Buffer[(Long,Get)]() // buffer for the raw `Get's
 
     for (key <- keys) {
       val get = new Get(key)
@@ -808,7 +808,7 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
         get.setTimeRange(startTime, endTime)
       }
 
-      gets += Tuple2(getIntFromBytes(key), get)
+      gets += Tuple2(getLongFromBytes(key), get)
     }
 
     // since the families and columns will be identical for all `Get's, only build them once
