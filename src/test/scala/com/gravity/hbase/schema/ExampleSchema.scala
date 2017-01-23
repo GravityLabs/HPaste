@@ -333,5 +333,32 @@ enable 'schema_example'"""
       }
     }
   }
+
+  @Test def testOpResultPlus(): Unit = {
+    val result1: OpsResult = ExampleSchema.ExampleTable
+      .put("Chris").value(_.title, "My Life, My Times")
+      .put("Joe").value(_.title, "Joe's Life and Times")
+      .put("Fred").value(_.viewsArr,Seq("Chris","Bissell"))
+      .increment("Chris").value(_.views, 10l)
+      .put("Chris").valueMap(_.viewCountsByDay, Map(YearDay(2011,16)->60l, YearDay(2011,17)->50l))
+      .put("Fred").value(_.viewsMap, mutable.Map("Chris"->50l,"Bissell"->100l))
+      .execute()
+
+    val result2: OpsResult = ExampleSchema.ExampleTable
+      .delete("Chris").family(_.viewCountsByDay)
+      .put("Tom").value(_.title, "Toms's Life and Times")
+      .put("Tom").valueMap(_.viewCountsByDay, Map(YearDay(2017,16)->60l, YearDay(2016,17)->50l))
+      .increment("Tom").value(_.views, 20l)
+      .execute()
+
+    val result3: OpsResult = ExampleSchema.ExampleTable
+      .delete("Tom").family(_.viewCountsByDay)
+      .put("Moe").value(_.title, "Moe's Life and Times")
+      .increment("Moe").value(_.views, 30l)
+      .execute()
+
+    val finalResult: OpsResult = result1 + result2 + result3
+    Assert.assertEquals(OpsResult(2,8,3), finalResult)
+  }
 }
 

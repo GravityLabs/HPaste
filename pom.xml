@@ -4,7 +4,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.gravity</groupId>
   <artifactId>gravity-hpaste_2.11</artifactId>
-  <version>0.4.0-LOCAL-CDH5.5.2</version>
+  <version>0.4.1-LOCAL-CDH5.5.2</version>
   <packaging>jar</packaging>
   <name>hpaste</name>
   <url>http://github.com/GravityLabs/HPaste</url>
@@ -304,12 +304,12 @@
     <repository>
       <id>deployment</id>
       <name>Internal Releases</name>
-      <url>http://nexus.corp.grv/nexus/content/repositories/releases/</url>
+      <url>http://nexus.prod.grv/nexus/content/repositories/releases/</url>
     </repository>
     <snapshotRepository>
       <id>deployment</id>
       <name>Internal Releases</name>
-      <url>http://nexus.corp.grv/nexus/content/repositories/snapshots/</url>
+      <url>http://nexus.prod.grv/nexus/content/repositories/snapshots/</url>
     </snapshotRepository>
   </distributionManagement>
 </project>
