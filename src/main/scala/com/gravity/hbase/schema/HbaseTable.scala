@@ -43,7 +43,6 @@ object HbaseTable {
  * @param cache
  * @param rowKeyClass
  * @param logSchemaInconsistencies
- * @param conf
  * @param keyConverter
  * @tparam T
  * @tparam R
@@ -52,6 +51,8 @@ object HbaseTable {
 abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val tableName: String, var cache: QueryResultCache[T, R, RR] = new NoOpCache[T, R, RR](), rowKeyClass: Class[R], logSchemaInconsistencies: Boolean = false, tableConfig:HbaseTableConfig = HbaseTable.defaultConfig)(implicit keyConverter: ByteConverter[R])
   extends TablePoolStrategy
 {
+
+  def asyncClient(conf: Configuration) = AsyncClient.client(conf)
 
   def rowBuilder(result: DeserializedResult): RR
 
@@ -110,6 +111,46 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     }
   }
 
+  /**
+   * Converts an AsynchBase result to an HPaste result.
+   * @param rowId The rowid is passed in because unlike Hbase's standard client, AsynchBase does not return the rowid back.
+   * @param result For AsynchBase the result is an ArrayList of Byte arrays.
+   * @return
+   */
+  def convertResultAsync(rowId:Array[Byte],result: Seq[org.hbase.async.KeyValue]) : DeserializedResult = {
+    val r = keyConverter.fromBytes(rowId).asInstanceOf[AnyRef]
+    val ds = new DeserializedResult(r, families.size)
+    var itr = 0
+    while(itr < result.length) {
+      val kv = result(itr)
+      val family = kv.family()
+      val key = kv.qualifier()
+      try {
+        val c = converterByBytes(family, key)
+        if (c == null) {
+          if (logSchemaInconsistencies) {
+            println("Table: " + tableName + " : Null Converter : " + Bytes.toString(kv.family()))
+          }
+        }
+        else if (!c.keyConverter.isInstanceOf[AnyConverterSignal] && !c.valueConverter.isInstanceOf[AnyConverterSignal]) {
+          val f = c.family
+          val k = c.keyConverter.fromBytes(key).asInstanceOf[AnyRef]
+          val r = c.valueConverter.fromBytes(kv.value()).asInstanceOf[AnyRef]
+          val ts = kv.timestamp()
+
+          ds.add(f, k, r, ts)
+        } else {
+          if (logSchemaInconsistencies) {
+            println("Table: " + tableName + " : Any Converter : " + Bytes.toString(kv.family()))
+          }
+          //TODO: Just like AnyNotSupportException, add a counter here because this means a column was removed, but the data is still in the database.
+        }
+      } finally {
+        itr = itr + 1
+      }
+    }
+    ds
+  }
   /**Converts a result to a DeserializedObject. A conservative implementation that is slower than convertResultRaw but will always be more stable against
    * binary changes to Hbase's KeyValue format.
    */

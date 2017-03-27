@@ -25,10 +25,12 @@ import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp
 import org.apache.hadoop.hbase.filter.FilterList.Operator
 import org.apache.hadoop.hbase.filter._
 import org.apache.hadoop.hbase.util._
+import org.hbase.async.GetRequest
 import org.joda.time.ReadableInstant
 
 import scala.collection.JavaConversions._
 import scala.collection._
+import immutable.TreeSet
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -455,6 +457,25 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
 
   def single(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, timeOutMs: Int = 0)(implicit conf: Configuration): RR = singleOption(tableName, ttl, skipCache, noneOnEmpty = false, timeOutMs).get
 
+
+  def singleOptionAsync(tableName: String = table.tableName, ttl: Int = 30, skipCache: Boolean = true, noneOnEmpty: Boolean = true)(implicit conf: Configuration): Option[RR] = {
+    require(families.size == 1,"Asynchbase does not allow more than one family to be fetched at a time")
+
+    val gr = new GetRequest(table.tableName, keys.head)
+    gr.family(families.head)
+    val cols = columns.map{column=>
+      require(column._1 == families.head,"Asynchbase does not allow more than one family to be specified in a single request")
+      column._2
+    }.toArray
+    gr.qualifiers(cols)
+
+    val defs = table.asyncClient(conf).get(gr)
+    val kvs = defs.join()
+
+    val desres = table.convertResultAsync(keys.head,kvs)
+    Some(table.rowBuilder(desres))
+  }
+
   /**
    *
    * @param tableName The Name of the table
@@ -473,12 +494,20 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
       get.setTimeRange(startTime, endTime)
     }
 
-    for (family <- families) {
-      get.addFamily(family)
+    // add all families
+    families.foreach{ case family => get.addFamily(family) }
+
+    // let's copy the families into a set using a comparator that is Array[Byte] friendly
+    // This isn't just for performance, but more so just to have the comparator for Array[Byte] for the .contains() below
+    val familySet = new TreeSet[Array[Byte]]()(Ordering.comparatorToOrdering(Bytes.BYTES_COMPARATOR)) ++ families
+
+    // add remaining columns not called out in a families above
+    for { (family, column) <- columns } yield {
+      if (!familySet.contains(family)) {
+        get.addColumn(family, column)
+      }
     }
-    for ((columnFamily, column) <- columns) {
-      get.addColumn(columnFamily, column)
-    }
+
     if (currentFilter != null) {
       get.setFilter(currentFilter)
     }
@@ -816,14 +845,20 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
     // since the families and columns will be identical for all `Get's, only build them once
     val firstGet = gets.head._2
 
-    // add all families to the first `Get'
-    for (family <- families) {
-      firstGet.addFamily(family)
+    // add all families
+    families.foreach{ case family => firstGet.addFamily(family) }
+
+    // let's copy the families into a set using a comparator that is Array[Byte] friendly
+    // This isn't just for performance, but more so just to have the comparator for Array[Byte] for the .contains() below
+    val familySet = new TreeSet[Array[Byte]]()(Ordering.comparatorToOrdering(Bytes.BYTES_COMPARATOR)) ++ families
+
+    // add remaining columns not called out in a families above
+    for { (family, column) <- columns } yield {
+      if (!familySet.contains(family)) {
+        firstGet.addColumn(family, column)
+      }
     }
-    // add all columns to the first `Get'
-    for ((columnFamily, column) <- columns) {
-      firstGet.addColumn(columnFamily, column)
-    }
+
     if (currentFilter != null) {
       firstGet.setFilter(currentFilter)
     }
@@ -872,11 +907,18 @@ class Query2[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private(
       scan.setStopRow(endRowBytes)
     }
 
-    for (family <- families) {
-      scan.addFamily(family)
-    }
-    for (column <- columns) {
-      scan.addColumn(column._1, column._2)
+    // add all families
+    families.foreach{ case family => scan.addFamily(family) }
+
+    // let's copy the families into a set using a comparator that is Array[Byte] friendly
+    // This isn't just for performance, but more so just to have the comparator for Array[Byte] for the .contains() below
+    val familySet = new TreeSet[Array[Byte]]()(Ordering.comparatorToOrdering(Bytes.BYTES_COMPARATOR)) ++ families
+
+    // add remaining columns not called out in a families above
+    for { (family, column) <- columns } yield {
+      if (!familySet.contains(family)) {
+        scan.addColumn(family, column)
+      }
     }
 
     if (currentFilter != null) {

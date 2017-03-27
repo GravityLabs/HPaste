@@ -109,6 +109,12 @@ object ExampleSchema extends Schema {
 
     //A column family called kittens whose column values are the custom Kitten type
     val kittens = family[String,Kitten]("kittens")
+
+    val misc = family[String, Any]("misc")
+
+    val misc1 = column(misc, "misc1", classOf[String])
+    val misc2 = column(misc, "misc2", classOf[String])
+    val misc3 = column(misc, "misc3", classOf[String])
   }
 
   class ExampleTableRow(table:ExampleTable,result:DeserializedResult) extends HRow[ExampleTable,String](result,table)
@@ -143,10 +149,24 @@ class ExampleSchemaTest extends HPasteTestCase(ExampleSchema) {
   }
 
   /**
+   * Test that a complex custom type can be added and retrieved from a table as a Map
+   */
+  @Test def testDuplicateMappings() {
+
+    ExampleSchema.ExampleTable.put("Chris").value(_.misc1, "value1").value(_.title, "some title").value(_.url, "http://example.com").execute()
+
+    val result = ExampleSchema.ExampleTable.query2.withKey("Chris").withFamilies(_.meta).withColumns(_.title, _.misc1).single()
+
+    Assert.assertEquals(Some("some title"), result.column(_.title))
+    Assert.assertEquals(Some("http://example.com"), result.column(_.url))
+    Assert.assertEquals(Some("value1"), result.column(_.misc1))
+  }
+
+  /**
    * Test that the create script looks right
    */
   @Test def testCreateScript() {
-    val createScript = """create 'schema_example', {NAME => 'meta', VERSIONS => 1},{NAME => 'views', VERSIONS => 1},{NAME => 'viewsByDay', VERSIONS => 1},{NAME => 'kittens', VERSIONS => 1}
+    val createScript = """create 'schema_example', {NAME => 'meta', VERSIONS => 1},{NAME => 'views', VERSIONS => 1},{NAME => 'viewsByDay', VERSIONS => 1},{NAME => 'kittens', VERSIONS => 1},{NAME => 'misc', VERSIONS => 1}
 alter 'schema_example', {METHOD => 'table_att', MAX_FILESIZE => '1073741824'}"""
     
     val create = ExampleSchema.ExampleTable.createScript()
@@ -279,6 +299,9 @@ enable 'schema_example'"""
 
       }
     }
+
+    println("ASYNC TIME")
+    ExampleSchema.ExampleTable.query2.withKey("Robbie").withFamilies(_.meta).singleOptionAsync().get.prettyPrint()
   }
 
   @Test def testColumnValueMustBePresent() {
