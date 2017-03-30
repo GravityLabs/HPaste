@@ -243,17 +243,6 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
     }
   }
 
-  @Test def testTestAsyncGet() {
-    val url1 = "http://mycrawledsite.com/asyncget1.html"
-    val url2 = "http://mycrawledsite.com/asyncget2.html"
-    val op1 =  WebCrawlingSchema.WebTable.put(url1).value(_.title,"asyncget1")
-    op1.value(_.article,"How stop blop blop?")
-    val op2 = WebCrawlingSchema.WebTable.put(url2).value(_.title,"asyncget2")
-    op2.value(_.article,"How now, brown cow")
-
-
-  }
-
   @Test def testAggregationMRJob() {
     withCleanup {
       WebCrawlingSchema.WebTable
@@ -397,23 +386,6 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
       Assert.assertTrue(resultWithEmptiesAndCaching.size == 2)
 
     }
-  }
-
-  @Test def testEmptiness() {
-    val result = WebCrawlingSchema.WebTable.query2.withKeys(Set("Hello","There")).withAllColumns.executeMap()
-   Assert.assertTrue(result.size == 0)
-
-    val resultWithEmpties = WebCrawlingSchema.WebTable.query2.withKeys(Set("Hello","There")).withAllColumns.executeMap(returnEmptyRows = true)
-
-    Assert.assertTrue(resultWithEmpties.size == 2)
-    resultWithEmpties.foreach{case (str: String, row: WebPageRow) =>
-      println("Rowid: " + str)
-      row.prettyPrint()
-    }
-
-    val resultWithEmptiesAndCaching = WebCrawlingSchema.WebTable.query2.withKeys(Set("Hello","There")).withAllColumns.executeMap(returnEmptyRows = true,skipCache=false)
-    Assert.assertTrue(resultWithEmptiesAndCaching.size == 2)
-
   }
 
   @Test def testContentSequencing() {
