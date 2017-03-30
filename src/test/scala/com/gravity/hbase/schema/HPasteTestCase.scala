@@ -1,9 +1,9 @@
 package com.gravity.hbase.schema
 
-import junit.framework.TestCase
-import org.apache.hadoop.hbase.util.Bytes
+import com.gravity.utilities.GrvConcurrentSet
+import junit.framework.TestSuite
 import org.apache.hadoop.hbase.HBaseTestingUtility
-import scala.collection.mutable.{SynchronizedSet, HashSet}
+import org.apache.hadoop.hbase.util.Bytes
 
 /*             )\._.,--....,'``.
  .b--.        /;   _.. \   _\  (`._ ,.
@@ -19,20 +19,42 @@ object LocalCluster {
 
   def getTestConfiguration = htest.getConfiguration
 
-  private val alreadyInittedTables = new HashSet[String] with SynchronizedSet[String]
+  private val alreadyInittedTables = new GrvConcurrentSet[String]()
 
-  def initializeSchema(schema:Schema) {
-    schema.tables.foreach {
-      table =>
-        if(!alreadyInittedTables.exists(_ == table.tableName)){
-          htest.createTable(Bytes.toBytes(table.tableName), table.familyBytes.toArray)
-          alreadyInittedTables += table.tableName
-        }
+  def initializeSchema(schema:Schema) = alreadyInittedTables.synchronized {
+
+    schema.tables.foreach { table =>
+      //we need to delete the old one before we can initialize the new one
+      if(alreadyInittedTables.contains(table.tableName)){
+        htest.deleteTable(Bytes.toBytes(table.tableName))
+      }
+      htest.createTable(Bytes.toBytes(table.tableName), table.familyBytes.toArray)
+      alreadyInittedTables += table.tableName
+    }
+  }
+
+  def deleteSchema(schema:Schema) = alreadyInittedTables.synchronized {
+    schema.tables.foreach { table =>
+      if(alreadyInittedTables.contains(table.tableName)) {
+        htest.deleteTable(Bytes.toBytes(table.tableName))
+      }
+      alreadyInittedTables -= table.tableName
     }
   }
 }
 
-class HPasteTestCase(schema:Schema) extends TestCase {
+class HPasteTestCase(schema:Schema) extends TestSuite {
 
   LocalCluster.initializeSchema(schema)
+
+  def withCleanup(work: => Unit) = {
+    LocalCluster.initializeSchema(schema)
+
+    try {
+      work
+    } finally {
+      LocalCluster.deleteSchema(schema)
+    }
+  }
+
 }

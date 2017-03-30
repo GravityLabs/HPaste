@@ -163,217 +163,239 @@ class WebCrawlSchemaTest extends HPasteTestCase(WebCrawlingSchema) {
   implicit val conf = LocalCluster.getTestConfiguration
 
   @Test def testWebTablePutsAndGets() {
-    val day1 = new DateMidnight(2011, 6, 4)
-    val day2 = new DateMidnight(2011, 6, 5)
+    withCleanup {
+      val day1 = new DateMidnight(2011, 6, 4)
+      val day2 = new DateMidnight(2011, 6, 5)
 
-    WebCrawlingSchema.WebTable
-            .put("http://mycrawledsite.com/crawledpage.html")
-            .value(_.title, "My Crawled Page Title")
-            .value(_.lastCrawled, new DateTime())
-            .value(_.article, "Jonsie went to the store.  She didn't notice the spinning of the Earth, nor did the Earth notice the expansion of the Universe.")
-            .value(_.attributes, Map("foo" -> "bar", "custom" -> "data"))
-            .valueMap(_.searchMetrics, Map(day1 -> 3l, day2 -> 34l))
-            .execute()
+      WebCrawlingSchema.WebTable
+        .put("http://mycrawledsite.com/crawledpage.html")
+        .value(_.title, "My Crawled Page Title")
+        .value(_.lastCrawled, new DateTime())
+        .value(_.article, "Jonsie went to the store.  She didn't notice the spinning of the Earth, nor did the Earth notice the expansion of the Universe.")
+        .value(_.attributes, Map("foo" -> "bar", "custom" -> "data"))
+        .valueMap(_.searchMetrics, Map(day1 -> 3l, day2 -> 34l))
+        .execute()
 
 
-    WebCrawlingSchema.WebTable.query2.withKey("http://mycrawledsite.com/crawledpage.html")
-            .withColumns(_.title, _.lastCrawled)
-            .withFamilies(_.content)
-            .withColumnsInFamily(_.searchMetrics, day1, day2)
-            .singleOption(skipCache = false) match {
-      case Some(pageRow) => {
-        println("Title: " + pageRow.column(_.title).getOrElse("No Title"))
-        println("Crawled on: " + pageRow.column(_.lastCrawled).getOrElse(new DateTime()))
-        println("First bit of content: " + pageRow.column(_.article).getOrElse("").take(50))
+      WebCrawlingSchema.WebTable.query2.withKey("http://mycrawledsite.com/crawledpage.html")
+        .withColumns(_.title, _.lastCrawled)
+        .withFamilies(_.content)
+        .withColumnsInFamily(_.searchMetrics, day1, day2)
+        .singleOption(skipCache = false) match {
+        case Some(pageRow) => {
+          println("Title: " + pageRow.column(_.title).getOrElse("No Title"))
+          println("Crawled on: " + pageRow.column(_.lastCrawled).getOrElse(new DateTime()))
+          println("First bit of content: " + pageRow.column(_.article).getOrElse("").take(50))
 
-        Assert.assertEquals(2, pageRow.family(_.searchMetrics).size)
+          Assert.assertEquals(2, pageRow.family(_.searchMetrics).size)
 
-        pageRow.family(_.searchMetrics).foreach {
-          case (date: DateMidnight, views: Long) =>
-            println("Got " + views + " views on date " + date.toString("MM-dd-yyyy"))
+          pageRow.family(_.searchMetrics).foreach {
+            case (date: DateMidnight, views: Long) =>
+              println("Got " + views + " views on date " + date.toString("MM-dd-yyyy"))
+          }
+          //Do something with title and crawled date...
         }
-        //Do something with title and crawled date...
-      }
-      case None => {
-        println("Row not found")
+        case None => {
+          println("Row not found")
+        }
       }
     }
   }
 
   @Test def testOpBaseAddition() {
-    val url1 = "http://mycrawledsite.com/opbaseaddition.html"
-    val url2 = "http://mycrawledsite.com/opbaseaddition2.html"
+    withCleanup {
+      val url1 = "http://mycrawledsite.com/opbaseaddition.html"
+      val url2 = "http://mycrawledsite.com/opbaseaddition2.html"
 
 
-   val op1 =  WebCrawlingSchema.WebTable.put(url1).value(_.title,"Addition1")
-    op1.value(_.article,"How stop blop blop?")
-    val op2 = WebCrawlingSchema.WebTable.put(url2).value(_.title,"Addition2")
-    op2.value(_.article,"How now, brown cow")
+      val op1 = WebCrawlingSchema.WebTable.put(url1).value(_.title, "Addition1")
+      op1.value(_.article, "How stop blop blop?")
+      val op2 = WebCrawlingSchema.WebTable.put(url2).value(_.title, "Addition2")
+      op2.value(_.article, "How now, brown cow")
 
-    val res = (op1 + op2).execute()
+      val res = (op1 + op2).execute()
 
-    val results = WebCrawlingSchema.WebTable.query2.withKeys(Set(url1,url2)).withAllColumns.executeMap(skipCache = false)
+      val results = WebCrawlingSchema.WebTable.query2.withKeys(Set(url1, url2)).withAllColumns.executeMap(skipCache = false)
 
-    Assert.assertEquals("Addition1",results(url1).column(_.title).get)
-    Assert.assertEquals("How stop blop blop?",results(url1).column(_.article).get)
-    Assert.assertEquals("Addition2",results(url2).column(_.title).get)
-    Assert.assertEquals("How now, brown cow",results(url2).column(_.article).get)
+      Assert.assertEquals("Addition1", results(url1).column(_.title).get)
+      Assert.assertEquals("How stop blop blop?", results(url1).column(_.article).get)
+      Assert.assertEquals("Addition2", results(url2).column(_.title).get)
+      Assert.assertEquals("How now, brown cow", results(url2).column(_.article).get)
 
-    results.foreach{case (test1: String, test2: WebPageRow) =>
+      results.foreach { case (test1: String, test2: WebPageRow) =>
 
         println(s"Key: $test1")
         test2.prettyPrint()
+      }
     }
   }
 
   @Test def testTestAsyncGet() {
-    val url1 = "http://mycrawledsite.com/asyncget1.html"
-    val url2 = "http://mycrawledsite.com/asyncget2.html"
-    val op1 =  WebCrawlingSchema.WebTable.put(url1).value(_.title,"asyncget1")
-    op1.value(_.article,"How stop blop blop?")
-    val op2 = WebCrawlingSchema.WebTable.put(url2).value(_.title,"asyncget2")
-    op2.value(_.article,"How now, brown cow")
+    withCleanup {
+      val url1 = "http://mycrawledsite.com/asyncget1.html"
+      val url2 = "http://mycrawledsite.com/asyncget2.html"
+      val op1 = WebCrawlingSchema.WebTable.put(url1).value(_.title, "asyncget1")
+      op1.value(_.article, "How stop blop blop?")
+      val op2 = WebCrawlingSchema.WebTable.put(url2).value(_.title, "asyncget2")
+      op2.value(_.article, "How now, brown cow")
 
 
+    }
   }
 
   @Test def testAggregationMRJob() {
-    WebCrawlingSchema.WebTable
-            .put("http://mycrawledsite.com/crawledpage2.html")
-            .value(_.title, "My Crawled Page Title")
-            .value(_.lastCrawled, new DateTime())
-            .value(_.article, "Jonsie went to the store.  She didn't notice the spinning of the Earth, nor did the Earth notice the expansion of the Universe.")
-            .value(_.attributes, Map("foo" -> "bar", "custom" -> "data"))
-            .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
-            .put("http://mycrawledsite.com/crawledpage3.html")
-            .value(_.title, "My Crawled Page Title")
-            .value(_.lastCrawled, new DateTime())
-            .value(_.article, "Jonsie went to the store.  She didn't notice the spinning of the Earth, nor did the Earth notice the expansion of the Universe.")
-            .value(_.attributes, Map("foo" -> "bar", "custom" -> "data"))
-            .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
-            .put("http://mycrawledsite.com/crawledpage4.html")
-            .value(_.title, "My Crawled Page Title")
-            .value(_.lastCrawled, new DateTime())
-            .value(_.article, "Jonsie went to the store.  She didn't notice the spinning of the Earth, nor did the Earth notice the expansion of the Universe.")
-            .value(_.attributes, Map("foo" -> "bar", "custom" -> "data"))
-            .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
-            .execute()
+    withCleanup {
+      WebCrawlingSchema.WebTable
+        .put("http://mycrawledsite.com/crawledpage2.html")
+        .value(_.title, "My Crawled Page Title")
+        .value(_.lastCrawled, new DateTime())
+        .value(_.article, "Jonsie went to the store.  She didn't notice the spinning of the Earth, nor did the Earth notice the expansion of the Universe.")
+        .value(_.attributes, Map("foo" -> "bar", "custom" -> "data"))
+        .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+        .put("http://mycrawledsite.com/crawledpage3.html")
+        .value(_.title, "My Crawled Page Title")
+        .value(_.lastCrawled, new DateTime())
+        .value(_.article, "Jonsie went to the store.  She didn't notice the spinning of the Earth, nor did the Earth notice the expansion of the Universe.")
+        .value(_.attributes, Map("foo" -> "bar", "custom" -> "data"))
+        .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+        .put("http://mycrawledsite.com/crawledpage4.html")
+        .value(_.title, "My Crawled Page Title")
+        .value(_.lastCrawled, new DateTime())
+        .value(_.article, "Jonsie went to the store.  She didn't notice the spinning of the Earth, nor did the Earth notice the expansion of the Universe.")
+        .value(_.attributes, Map("foo" -> "bar", "custom" -> "data"))
+        .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+        .execute()
 
 
-    new WebSearchAggregationJob().run(Settings.None, LocalCluster.getTestConfiguration)
+      new WebSearchAggregationJob().run(Settings.None, LocalCluster.getTestConfiguration)
 
-    WebCrawlingSchema.Sites.query2.withKey("mycrawledsite.com").withAllColumns.singleOption(skipCache = false) match {
-      case Some(siteRow) => {
-        siteRow.family(_.searchMetrics).foreach {println}
-      }
-      case None => {
-        println("Didn't find the site, strange!")
+      WebCrawlingSchema.Sites.query2.withKey("mycrawledsite.com").withAllColumns.singleOption(skipCache = false) match {
+        case Some(siteRow) => {
+          siteRow.family(_.searchMetrics).foreach {println}
+        }
+        case None => {
+          println("Didn't find the site, strange!")
+        }
       }
     }
   }
 
   @Test def testPagesBySiteJob() {
-    WebCrawlingSchema.WebTable
-            .put("http://mycrawledsite2.com/crawledpage2.html")
-            .value(_.title, "My Crawled Page Title2")
-            .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
-            .put("http://mycrawledsite2.com/crawledpage3.html")
-            .value(_.title, "My Crawled Page Title3")
-            .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
-            .put("http://mycrawledsite3.com/crawledpage4.html")
-            .value(_.title, "My Crawled Page Title4")
-            .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
-            .put("http://mycrawledsite3.com/crawledpage4.html")
-            .value(_.title, "My Crawled Page Title5")
-            .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
-            .put("http://mycrawledsite3.com/crawledpage4.html")
-            .value(_.title, "My Crawled Page Title6")
-            .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
-            .execute()
+    withCleanup {
+      WebCrawlingSchema.WebTable
+        .put("http://mycrawledsite2.com/crawledpage2.html")
+        .value(_.title, "My Crawled Page Title2")
+        .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+        .put("http://mycrawledsite2.com/crawledpage3.html")
+        .value(_.title, "My Crawled Page Title3")
+        .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+        .put("http://mycrawledsite3.com/crawledpage4.html")
+        .value(_.title, "My Crawled Page Title4")
+        .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+        .put("http://mycrawledsite3.com/crawledpage4.html")
+        .value(_.title, "My Crawled Page Title5")
+        .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+        .put("http://mycrawledsite3.com/crawledpage4.html")
+        .value(_.title, "My Crawled Page Title6")
+        .valueMap(_.searchMetrics, Map(new DateMidnight(2011, 6, 5) -> 3l, new DateMidnight(2011, 6, 4) -> 34l))
+        .execute()
 
-    new WebTablePagesBySiteJob().run(Settings.None, LocalCluster.getTestConfiguration)
+      new WebTablePagesBySiteJob().run(Settings.None, LocalCluster.getTestConfiguration)
+    }
   }
 
   @Test def testBeginValueFiltration() {
-    val site1 = "http://filtersite1.com/"
-    val site2 = "http://filtersite2.com/"
+    withCleanup {
+      val site1 = "http://filtersite1.com/"
+      val site2 = "http://filtersite2.com/"
 
-    val articles = Map("About Cats" -> "aboutcats.html", "About Dogs" -> "aboutdogs.html", "About Orangutans" -> "aboutorangutans.html", "Interview with a Kitten" -> "interview.html")
+      val articles = Map("About Cats" -> "aboutcats.html", "About Dogs" -> "aboutdogs.html", "About Orangutans" -> "aboutorangutans.html", "Interview with a Kitten" -> "interview.html")
 
-    for {
-      (title, shortUrl) <- articles
-      longUrl = site1 + shortUrl
-      longUrl2 = site2 + shortUrl
-    } {
-      WebCrawlingSchema.WebTable.put(longUrl).value(_.title, longUrl).execute()
-      WebCrawlingSchema.WebTable.put(longUrl2).value(_.title, longUrl2).execute()
+      for {
+        (title, shortUrl) <- articles
+        longUrl = site1 + shortUrl
+        longUrl2 = site2 + shortUrl
+      } {
+        WebCrawlingSchema.WebTable.put(longUrl).value(_.title, longUrl).execute()
+        WebCrawlingSchema.WebTable.put(longUrl2).value(_.title, longUrl2).execute()
+      }
+
+      val results = WebCrawlingSchema.WebTable.query2.withAllColumns.filter(_.or(_.columnValueMustContain(_.title, site1))).scanToIterable(itm => itm)
+      Assert.assertTrue(results.size == 4)
+
+      val results2 = WebCrawlingSchema.WebTable.query2.withAllColumns.filter(_.or(_.columnValueMustContain(_.title, site2))).scanToIterable(itm => itm)
+      Assert.assertTrue(results2.size == 4)
+
     }
-
-    val results = WebCrawlingSchema.WebTable.query2.withAllColumns.filter(_.or(_.columnValueMustContain(_.title,site1))).scanToIterable(itm=>itm)
-    Assert.assertTrue(results.size == 4)
-
-    val results2 = WebCrawlingSchema.WebTable.query2.withAllColumns.filter(_.or(_.columnValueMustContain(_.title,site2))).scanToIterable(itm=>itm)
-    Assert.assertTrue(results2.size == 4)
-
   }
 
   @Test def testNoOpExecute() {
-    WebCrawlingSchema.WebTable.put("Hello").execute()
+    withCleanup {
+      WebCrawlingSchema.WebTable.put("Hello").execute()
+    }
   }
 
   @Test def testDeletion() {
-    WebCrawlingSchema.WebTable.put("http://hithere.com/yo").value(_.title,"Hi, this will be deleted").execute()
-    WebCrawlingSchema.WebTable.delete("http://hithere.com/yo").execute()
+    withCleanup {
+      WebCrawlingSchema.WebTable.put("http://hithere.com/yo").value(_.title, "Hi, this will be deleted").execute()
+      WebCrawlingSchema.WebTable.delete("http://hithere.com/yo").execute()
 
-    WebCrawlingSchema.WebTable.query2.withKey("http://hithere.com/yo").withAllColumns.singleOption() match {
-      case Some(result) => {
-        Assert.fail("Deletion did not go through")
-      }
-      case None => {
+      WebCrawlingSchema.WebTable.query2.withKey("http://hithere.com/yo").withAllColumns.singleOption() match {
+        case Some(result) => {
+          Assert.fail("Deletion did not go through")
+        }
+        case None => {
+        }
       }
     }
   }
 
   @Test def testScanBatching() {
-    WebCrawlingSchema.WebTable.put("http://batching.com/article1").value(_.title,"Batch Title 1").value(_.article,"Content 1").execute()
-    WebCrawlingSchema.WebTable.put("http://batching.com/article2").value(_.title,"Batch Title 2").value(_.article,"Content 2").execute()
-    WebCrawlingSchema.WebTable.put("http://batching.com/article3").value(_.title,"Batch Title 3").value(_.article,"Content 3").execute()
-    WebCrawlingSchema.WebTable.put("http://batching.com/article4").value(_.title,"Batch Title 4").value(_.article,"Content 4").execute()
-    WebCrawlingSchema.WebTable.query2.withAllColumns.withBatchSize(1).scan({page=>
-       page.prettyPrintNoValues()
-      Assert.assertTrue(page.size <= 1)
-    })
+    withCleanup {
+      WebCrawlingSchema.WebTable.put("http://batching.com/article1").value(_.title, "Batch Title 1").value(_.article, "Content 1").execute()
+      WebCrawlingSchema.WebTable.put("http://batching.com/article2").value(_.title, "Batch Title 2").value(_.article, "Content 2").execute()
+      WebCrawlingSchema.WebTable.put("http://batching.com/article3").value(_.title, "Batch Title 3").value(_.article, "Content 3").execute()
+      WebCrawlingSchema.WebTable.put("http://batching.com/article4").value(_.title, "Batch Title 4").value(_.article, "Content 4").execute()
+      WebCrawlingSchema.WebTable.query2.withAllColumns.withBatchSize(1).scan({ page =>
+        page.prettyPrintNoValues()
+        Assert.assertTrue(page.size <= 1)
+      })
 
-    WebCrawlingSchema.WebTable.query2.withAllColumns.withBatchSize(2).scan({page=>
-       page.prettyPrintNoValues()
-      Assert.assertTrue(page.size <= 2)
-    })
+      WebCrawlingSchema.WebTable.query2.withAllColumns.withBatchSize(2).scan({ page =>
+        page.prettyPrintNoValues()
+        Assert.assertTrue(page.size <= 2)
+      })
 
+    }
   }
 
   @Test def testEmptiness() {
-    val result = WebCrawlingSchema.WebTable.query2.withKeys(Set("Hello","There")).withAllColumns.multiMap()
-   Assert.assertTrue(result.size == 0)
+    withCleanup {
+      val result = WebCrawlingSchema.WebTable.query2.withKeys(Set("Hello", "There")).withAllColumns.multiMap()
+      Assert.assertTrue(result.size == 0)
 
-    val resultWithEmpties = WebCrawlingSchema.WebTable.query2.withKeys(Set("Hello","There")).withAllColumns.multiMap(returnEmptyRows = true)
+      val resultWithEmpties = WebCrawlingSchema.WebTable.query2.withKeys(Set("Hello", "There")).withAllColumns.multiMap(returnEmptyRows = true)
 
-    Assert.assertTrue(resultWithEmpties.size == 2)
-    resultWithEmpties.foreach{case (str: String, row: WebPageRow) =>
-      println("Rowid: " + str)
-      row.prettyPrint()
+      Assert.assertTrue(resultWithEmpties.size == 2)
+      resultWithEmpties.foreach { case (str: String, row: WebPageRow) =>
+        println("Rowid: " + str)
+        row.prettyPrint()
+      }
+
+      val resultWithEmptiesAndCaching = WebCrawlingSchema.WebTable.query2.withKeys(Set("Hello", "There")).withAllColumns.multiMap(returnEmptyRows = true, skipCache = false)
+      Assert.assertTrue(resultWithEmptiesAndCaching.size == 2)
+
     }
-
-    val resultWithEmptiesAndCaching = WebCrawlingSchema.WebTable.query2.withKeys(Set("Hello","There")).withAllColumns.multiMap(returnEmptyRows = true,skipCache=false)
-    Assert.assertTrue(resultWithEmptiesAndCaching.size == 2)
-
   }
 
   @Test def testContentSequencing() {
-    val domain = "http://sequencing.com/"
-    WebCrawlingSchema.WebTable.put(domain + "article1").value(_.title,"Batch Title 1").value(_.article,"Content 1").execute()
-    WebCrawlingSchema.WebTable.put(domain + "article2").value(_.title,"Batch Title 2").value(_.article,"Content 2").execute()
-    WebCrawlingSchema.WebTable.put(domain + "article3").value(_.title,"Batch Title 3").value(_.article,"Content 3").execute()
-    WebCrawlingSchema.WebTable.put(domain + "article4").value(_.title,"Batch Title 4").value(_.article,"Content 4").execute()
-    new WebContentSequencingJob().run(Settings.None,LocalCluster.getTestConfiguration)
+    withCleanup {
+      val domain = "http://sequencing.com/"
+      WebCrawlingSchema.WebTable.put(domain + "article1").value(_.title, "Batch Title 1").value(_.article, "Content 1").execute()
+      WebCrawlingSchema.WebTable.put(domain + "article2").value(_.title, "Batch Title 2").value(_.article, "Content 2").execute()
+      WebCrawlingSchema.WebTable.put(domain + "article3").value(_.title, "Batch Title 3").value(_.article, "Content 3").execute()
+      WebCrawlingSchema.WebTable.put(domain + "article4").value(_.title, "Batch Title 4").value(_.article, "Content 4").execute()
+      new WebContentSequencingJob().run(Settings.None, LocalCluster.getTestConfiguration)
+    }
   }
 }
