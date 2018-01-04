@@ -19,11 +19,11 @@ package com.gravity.hbase.schema
 
 class Query2Builder[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private[schema](override val table: HbaseTable[T, R, RR]) extends BaseQuery[T, R, RR] with MinimumFiltersToExecute[T, R, RR] {
 
-  def toQuery2 = new Query2(table, keys, families, columns, currentFilter, startRowBytes, endRowBytes, batchSize, startTime, endTime)
+  def toQuery2: Query2[T, R, RR] = new Query2(table, keys, families, columns, currentFilter, startRowBytes, endRowBytes, batchSize, startTime, endTime)
 
-  def withAllColumns = toQuery2
+  def withAllColumns: Query2[T, R, RR] = toQuery2
 
-  override def withFamilies[F](firstFamily: (T) => ColumnFamily[T, R, F, _, _], familyList: ((T) => ColumnFamily[T, R, F, _, _])*) = {
+  override def withFamilies[F](firstFamily: (T) => ColumnFamily[T, R, F, _, _], familyList: ((T) => ColumnFamily[T, R, F, _, _])*): Query2[T, R, RR] = {
     for (family <- firstFamily +: familyList) {
       val fam = family(table.pops)
       families += fam.familyBytes
@@ -31,7 +31,7 @@ class Query2Builder[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private[sche
     toQuery2
   }
 
-  override def withColumnsInFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], firstColumn: K, columnList: K*) = {
+  override def withColumnsInFamily[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], firstColumn: K, columnList: K*): Query2[T, R, RR] = {
     val fam = family(table.pops)
     for (column <- firstColumn +: columnList) {
       columns += (fam.familyBytes -> fam.keyConverter.toBytes(column))
@@ -39,19 +39,19 @@ class Query2Builder[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] private[sche
     toQuery2
   }
 
-  override def withColumn[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K) = {
+  override def withColumn[F, K, V](family: (T) => ColumnFamily[T, R, F, K, V], columnName: K): Query2[T, R, RR] = {
     val fam = family(table.pops)
     columns += (fam.familyBytes -> fam.keyConverter.toBytes(columnName))
     toQuery2
   }
 
-  override def withColumn[F, K, V](column: (T) => Column[T, R, F, K, V]) = {
+  override def withColumn[F, K, V](column: (T) => Column[T, R, F, K, V]): Query2[T, R, RR] = {
     val col = column(table.pops)
     columns += (col.familyBytes -> col.columnBytes)
     toQuery2
   }
 
-  override def withColumns[F, K, V](firstColumn: (T) => Column[T, R, F, _, _], columnList: ((T) => Column[T, R, F, _, _])*) = {
+  override def withColumns[F, K, V](firstColumn: (T) => Column[T, R, F, _, _], columnList: ((T) => Column[T, R, F, _, _])*): Query2[T, R, RR] = {
     for (column <- firstColumn +: columnList) {
       val col = column(table.pops)
       columns += (col.familyBytes -> col.columnBytes)

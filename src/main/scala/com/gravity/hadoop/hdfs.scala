@@ -10,7 +10,7 @@ import scala.collection.mutable.Buffer
  * Convenience methods for reading and writing files to and from hdfs.
  */
 package object hdfs {
-  implicit def asRichFileSystem(fs: FileSystem) = new RichFileSystem(fs)
+  implicit def asRichFileSystem(fs: FileSystem): RichFileSystem = new RichFileSystem(fs)
 
 
   /**
@@ -40,7 +40,7 @@ package object hdfs {
     val glob = new Path(relpath)
 
     val files = fs.listStatus(glob, new PathFilter {
-      override def accept(path: Path) = path.getName.startsWith(fileBeginsWith)
+      override def accept(path: Path): Boolean = path.getName.startsWith(fileBeginsWith)
     })
 
     for (file <- files) {

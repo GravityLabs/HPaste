@@ -24,5 +24,5 @@ package object mapreduce {
 
   type ReducerFunc[MOK,MOV,ROK,ROV, S<:SettingsBase] = (HReduceContext[MOK,MOV,ROK,ROV,S]) => Unit
 
-  def genTmpFile = "/tmp/htemp-" + new Random().nextInt(Int.MaxValue)
+  def genTmpFile: String = "/tmp/htemp-" + new Random().nextInt(Int.MaxValue)
 }

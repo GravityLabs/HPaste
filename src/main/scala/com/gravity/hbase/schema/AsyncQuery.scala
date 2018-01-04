@@ -1,11 +1,9 @@
 package com.gravity.hbase.schema
 
-import collection.mutable.Buffer
-import org.apache.hadoop.hbase.filter.FilterList
-import org.hbase.async.{GetRequest, HBaseClient}
-import collection._
 import org.apache.hadoop.conf.Configuration
-import scala.collection.JavaConversions._
+import org.hbase.async.HBaseClient
+
+import scala.collection._
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -16,10 +14,10 @@ object AsyncClient {
 
   def client(conf:Configuration) = {
     val quorum = conf.get("hbase.zookeeper.quorum")
+    val clientPort = conf.get("hbase.zookeeper.property.clientPort")
     println("USING QUORUM: " + quorum)
-    if(quorum == "localhost") clients.getOrElseUpdate(quorum, new HBaseClient("localhost:21818"))
+    if(quorum == "localhost") clients.getOrElseUpdate(quorum, new HBaseClient("localhost:" + clientPort))
     else clients.getOrElseUpdate(quorum, new HBaseClient(quorum))
   }
 
 }
-

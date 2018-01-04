@@ -28,7 +28,7 @@ class RichFileSystem(fs: FileSystem) {
    */
   def openParts(dir: Path): SequenceInputStream = {
     val parts = fs.listStatus(dir, new PathFilter {
-      override def accept(path: Path) = path.getName.startsWith("part-")
+      override def accept(path: Path): Boolean = path.getName.startsWith("part-")
     }).toIterator
     val inputStreams = parts map (fileStatus => fs.open(fileStatus.getPath))
     new SequenceInputStream(inputStreams)

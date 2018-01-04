@@ -20,5 +20,5 @@ package com.gravity.hadoop
 import org.apache.hadoop.fs.FileSystem
 
 object Implicits {
-  implicit def asRichFileSystem(fs: FileSystem) = new RichFileSystem(fs)
+  implicit def asRichFileSystem(fs: FileSystem): RichFileSystem = new RichFileSystem(fs)
 }

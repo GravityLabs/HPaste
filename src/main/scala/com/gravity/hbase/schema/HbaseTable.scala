@@ -1,6 +1,7 @@
 package com.gravity.hbase.schema
 
 import java.nio.ByteBuffer
+import java.{lang, util}
 import scala.collection.mutable.ArrayBuffer
 import scala.collection._
 import org.apache.commons.lang.ArrayUtils
@@ -10,7 +11,7 @@ import org.apache.hadoop.hbase.util.Bytes.ByteArrayComparator
 import java.io.IOException
 import org.apache.hadoop.conf.Configuration
 import java.util.Arrays
-import org.apache.hadoop.hbase.{HColumnDescriptor, KeyValue}
+import org.apache.hadoop.hbase.{CellUtil, HColumnDescriptor, KeyValue}
 import scala.Int
 import org.apache.hadoop.hbase.client._
 
@@ -29,7 +30,7 @@ case class HbaseTableConfig(
                                    )
 
 object HbaseTable {
-  def defaultConfig = HbaseTableConfig()
+  def defaultConfig: HbaseTableConfig = HbaseTableConfig()
 }
 
 /**
@@ -42,66 +43,46 @@ object HbaseTable {
  * @param cache
  * @param rowKeyClass
  * @param logSchemaInconsistencies
- * @param conf
  * @param keyConverter
  * @tparam T
  * @tparam R
  * @tparam RR
  */
-abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val tableName: String, var cache: QueryResultCache[T, R, RR] = new NoOpCache[T, R, RR](), rowKeyClass: Class[R], logSchemaInconsistencies: Boolean = false, tableConfig:HbaseTableConfig = HbaseTable.defaultConfig)(implicit conf: Configuration, keyConverter: ByteConverter[R]) {
+abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val tableName: String, var cache: QueryResultCache[T, R, RR] = new NoOpCache[T, R, RR](), rowKeyClass: Class[R], logSchemaInconsistencies: Boolean = false, tableConfig:HbaseTableConfig = HbaseTable.defaultConfig)(implicit keyConverter: ByteConverter[R])
+  extends TablePoolStrategy
+{
 
-  def asyncClient = AsyncClient.client(conf)
+  def asyncClient(conf: Configuration) = AsyncClient.client(conf)
 
   def rowBuilder(result: DeserializedResult): RR
 
-  def emptyRow(key:Array[Byte]) = rowBuilder(new DeserializedResult(rowKeyConverter.fromBytes(key).asInstanceOf[AnyRef],families.size))
-  def emptyRow(key:R) = rowBuilder(new DeserializedResult(key.asInstanceOf[AnyRef],families.size))
+  def getTableConfig: HbaseTableConfig = tableConfig
 
-  val rowKeyConverter = keyConverter
+  def emptyRow(key:Array[Byte]): RR = rowBuilder(new DeserializedResult(rowKeyConverter.fromBytes(key).asInstanceOf[AnyRef],families.size))
+  def emptyRow(key:R): RR = rowBuilder(new DeserializedResult(key.asInstanceOf[AnyRef],families.size))
+
+  val rowKeyConverter: ByteConverter[R] = keyConverter
 
   /**Provides the client with an instance of the superclass this table was defined against. */
-  def pops = this.asInstanceOf[T]
+  def pops: T = this.asInstanceOf[T]
 
   /**A method injected by the super class that will build a strongly-typed row object.  */
   def buildRow(result: Result): RR = {
     rowBuilder(convertResult(result))
   }
 
-  /**A pool of table objects with AutoFlush set to true */
-  val tablePool = new HTablePool(conf, tableConfig.tablePoolSize)
+  @volatile private var famLookup: Array[Array[Byte]] = null
+  @volatile private var colFamLookup: Array[Array[Byte]] = null
+  @volatile private var famIdx: IndexedSeq[KeyValueConvertible[_, _, _]] = null
+  @volatile private var colFamIdx: IndexedSeq[KeyValueConvertible[_, _, _]] = null
 
-  /**A pool of table objects with AutoFlush set to false --therefore usable for asynchronous write buffering */
-  val bufferTablePool = new HTablePool(conf, 1, new HTableInterfaceFactory {
-    def createHTableInterface(config: Configuration, tableName: Array[Byte]): HTableInterface = {
-      val table = new HTable(conf, tableName)
-      table.setWriteBufferSize(2000000L)
-      table.setAutoFlush(false)
-      table
-    }
+  private val bc: ByteArrayComparator = new ByteArrayComparator()
 
-    def releaseHTableInterface(table: HTableInterface) {
-      try {
-        table.close()
-      } catch {
-        case ex: IOException => throw new RuntimeException(ex)
-      }
-    }
-  })
-
-
-  @volatile var famLookup: Array[Array[Byte]] = null
-  @volatile var colFamLookup: Array[Array[Byte]] = null
-  @volatile var famIdx: IndexedSeq[KeyValueConvertible[_, _, _]] = null
-  @volatile var colFamIdx: IndexedSeq[KeyValueConvertible[_, _, _]] = null
-
-  val bc = new ByteArrayComparator()
-
-  implicit val o = new math.Ordering[Array[Byte]] {
+  implicit private val o: Ordering[Array[Byte]] = new math.Ordering[Array[Byte]] {
     def compare(a: Array[Byte], b: Array[Byte]): Int = {
       bc.compare(a, b)
     }
   }
-
 
   /**Looks up a KeyValueConvertible by the family and column bytes provided.
    * Because of the rules of the system, the lookup goes as follows:
@@ -128,8 +109,6 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
         null
       }
     }
-
-
   }
 
   /**
@@ -175,124 +154,60 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
   /**Converts a result to a DeserializedObject. A conservative implementation that is slower than convertResultRaw but will always be more stable against
    * binary changes to Hbase's KeyValue format.
    */
-  def convertResult(result: Result) = {
+  def convertResult(result: Result): DeserializedResult = {
     if (result.isEmpty) {
       throw new RuntimeException("Attempting to deserialize an empty result.  If you want to handle the eventuality of an empty result, call singleOption() instead of single()")
     }
-    val keyValues = result.raw()
-    val buff = result.getBytes.get()
+    val cells = result.rawCells()
 
-    val rowId = keyConverter.fromBytes(buff, keyValues(0).getRowOffset, keyValues(0).getRowLength).asInstanceOf[AnyRef]
+    import JavaConversions._
 
+    val rowId = keyConverter.fromBytes(result.getRow).asInstanceOf[AnyRef]
     val ds = DeserializedResult(rowId, families.size)
 
-    var itr = 0
+    val scanner = result.cellScanner()
 
-    while (itr < keyValues.length) {
-      val kv = keyValues(itr)
-      val family = kv.getFamily
-      val key = kv.getQualifier
+    while(scanner.advance()) {
+      val cell = scanner.current()
       try {
-        val c = converterByBytes(family, key)
+
+        val familyBytes = cell.getFamily
+        val keyBytes = cell.getQualifier
+
+        val c = converterByBytes(familyBytes, keyBytes)
         if (c == null) {
           if (logSchemaInconsistencies) {
-            println("Table: " + tableName + " : Null Converter : " + Bytes.toString(kv.getFamily))
+            println("Table: " + tableName + " : Null Converter : " + Bytes.toString(cell.getFamilyArray))
           }
         }
         else if (!c.keyConverter.isInstanceOf[AnyConverterSignal] && !c.valueConverter.isInstanceOf[AnyConverterSignal]) {
           val f = c.family
-          val k = c.keyConverter.fromBytes(buff, kv.getQualifierOffset, kv.getQualifierLength).asInstanceOf[AnyRef]
-          val r = c.valueConverter.fromBytes(buff, kv.getValueOffset, kv.getValueLength).asInstanceOf[AnyRef]
-          val ts = kv.getTimestamp
-
-          ds.add(f, k, r, ts)
+          val k = c.keyConverter.fromBytes(cell.getQualifierArray, cell.getQualifierOffset, cell.getQualifierLength).asInstanceOf[AnyRef]
+          val r = c.valueConverter.fromBytes(cell.getValueArray, cell.getValueOffset, cell.getValueLength).asInstanceOf[AnyRef]
+          ds.add(f, k, r, cell.getTimestamp)
         } else {
           if (logSchemaInconsistencies) {
-            println("Table: " + tableName + " : Any Converter : " + Bytes.toString(kv.getFamily))
+            println("Table: " + tableName + " : Any Converter : " + Bytes.toString(cell.getFamilyArray))
           }
-          //TODO: Just like AnyNotSupportException, add a counter here because this means a column was removed, but the data is still in the database.
-        }
-      } finally {
-        itr = itr + 1
-      }
-
-    }
-    ds
-  }
-
-  /**
-   *
-   * @param result
-   * @return
-   */
-  def convertResultRaw(result: Result) = {
-
-
-    val bytes = result.getBytes()
-    val buf = bytes.get()
-    var offset = bytes.getOffset
-    val finalOffset = bytes.getSize + offset
-    var row: Array[Byte] = null
-    var ds: DeserializedResult = null
-
-    while (offset < finalOffset) {
-      val keyLength = Bytes.toInt(buf, offset)
-      offset = offset + Bytes.SIZEOF_INT
-
-      val keyOffset = offset + KeyValue.ROW_OFFSET
-      val rowLength = Bytes.toShort(buf, keyOffset)
-      val familyOffset = offset + KeyValue.ROW_OFFSET + Bytes.SIZEOF_SHORT + rowLength + Bytes.SIZEOF_BYTE
-      val familyLength = buf(familyOffset - 1)
-      val family = new Array[Byte](familyLength)
-      System.arraycopy(buf, familyOffset, family, 0, familyLength)
-
-      val qualifierOffset = familyOffset + familyLength
-      val qualifierLength = keyLength - (KeyValue.KEY_INFRASTRUCTURE_SIZE + rowLength + familyLength)
-      val key = new Array[Byte](qualifierLength)
-      System.arraycopy(buf, qualifierOffset, key, 0, qualifierLength)
-
-      val valueOffset = keyOffset + keyLength
-      val valueLength = Bytes.toInt(buf, offset + Bytes.SIZEOF_INT)
-      val value = new Array[Byte](valueLength)
-      System.arraycopy(buf, valueOffset, value, 0, valueLength)
-
-      val tsOffset = keyOffset + keyLength - KeyValue.TIMESTAMP_TYPE_SIZE
-      val ts = Bytes.toLong(buf, tsOffset)
-
-      if (row == null) {
-        val rowOffset = keyOffset + Bytes.SIZEOF_SHORT
-        row = new Array[Byte](rowLength)
-        System.arraycopy(buf, rowOffset, row, 0, rowLength)
-        val rowId = keyConverter.fromBytes(result.getRow).asInstanceOf[AnyRef]
-        ds = DeserializedResult(rowId, families.size)
-      }
-
-      try {
-        val c = converterByBytes(family, key)
-        val f = c.family
-        val k = c.keyConverter.fromBytes(key).asInstanceOf[AnyRef]
-        val r = c.valueConverter.fromBytes(value).asInstanceOf[AnyRef]
-        println("Adding value " + r)
-        ds.add(f, k, r, ts)
-      } catch {
-        case ex: Exception => {
-          println("Adding error buffer")
-          ds.addErrorBuffer(family, key, value, ts)
         }
       }
-
-      offset = offset + keyLength
+      catch {
+        case e: Exception =>
+          println("Exception converting result in table " + tableName + ": " + e.toString)
+          throw e
+      }
     }
     ds
   }
 
 
-  def familyBytes = families.map(family => family.familyBytes)
 
-  def familyByIndex(idx: Int) = familyArray(idx)
+  def familyBytes: ArrayBuffer[Array[Byte]] = families.map(family => family.familyBytes)
 
-  lazy val familyArray = {
-    val arr = new Array[ColumnFamily[_, _, _, _, _]](families.length)
+  def familyByIndex(idx: Int): Fam[_, _] = familyArray(idx)
+
+  private lazy val familyArray: Array[Fam[ _,_]] = {
+    val arr = new Array[Fam[_, _]](families.length)
     families.foreach {
       fam =>
         arr(fam.index) = fam
@@ -300,10 +215,10 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     arr
   }
 
-  def columnByIndex(idx: Int) = columnArray(idx)
+  def columnByIndex(idx: Int): TypedCol[_, _] = columnArray(idx)
 
-  lazy val columnArray = {
-    val arr = new Array[Column[_, _, _, _, _]](columns.length)
+  lazy val columnArray: Array[TypedCol[_, _]] = {
+    val arr = new Array[TypedCol[_, _]](columns.length)
     columns.foreach {col => arr(col.columnIndex) = col}
     arr
   }
@@ -316,7 +231,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
    * @param tableNameOverride
    * @return
    */
-  def createScript(tableNameOverride: String = tableName) = {
+  def createScript(tableNameOverride: String = tableName): String = {
     var create = "create '" + tableNameOverride + "', "
     create += (for (family <- families) yield {
       familyDef(family)
@@ -327,7 +242,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     create
   }
 
-  def alterTableAttributesScripts(tableName:String) = {
+  def alterTableAttributesScripts(tableName:String): String = {
     var alterScript = ""
     if(tableConfig.memstoreFlushSizeInBytes > -1) {
       alterScript += alterTableAttributeScript(tableName, "MEMSTORE_FLUSHSIZE", tableConfig.memstoreFlushSizeInBytes.toString)
@@ -338,11 +253,11 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     alterScript
   }
 
-  def alterTableAttributeScript(tableName:String, attributeName:String, value:String) = {
+  def alterTableAttributeScript(tableName:String, attributeName:String, value:String): String = {
     "\nalter '" + tableName + "', {METHOD => 'table_att', "+attributeName+" => '" + value + "'}"
   }
 
-  def deleteScript(tableNameOverride: String = tableName) = {
+  def deleteScript(tableNameOverride: String = tableName): String = {
     val delete = "disable '" + tableNameOverride + "'\n"
 
     delete + "delete '" + tableNameOverride + "'"
@@ -354,7 +269,7 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
    * @param families
    * @return
    */
-  def alterScript(tableNameOverride: String = tableName, families: Seq[ColumnFamily[T, _, _, _, _]] = families) = {
+  def alterScript(tableNameOverride: String = tableName, families: Seq[Fam[_, _]] = families): String = {
 
     var alter = "flush '" + tableNameOverride + "'\n"
     alter += "disable '" + tableNameOverride + "'\n"
@@ -368,33 +283,28 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     alter
   }
 
-  def familyDef(family: ColumnFamily[T, _, _, _, _]) = {
+  def familyDef(family: Fam[_, _]): String = {
     val compression = if (family.compressed) ", COMPRESSION=>'lzo'" else ""
     val ttl = if (family.ttlInSeconds < HColumnDescriptor.DEFAULT_TTL) ", TTL=>'" + family.ttlInSeconds + "'" else ""
     "{NAME => '%s', VERSIONS => %d%s%s}".format(Bytes.toString(family.familyBytes), family.versions, compression, ttl)
   }
 
+  private val columns: ArrayBuffer[TypedCol[_, _]] = ArrayBuffer[TypedCol[_, _]]()
+  val families: ArrayBuffer[Fam[_, _]] = ArrayBuffer[Fam[_, _]]()
 
-  def getTable(name: String) = tablePool.getTable(name)
+  val columnsByName: mutable.Map[AnyRef, TypedCol[_, _]] = mutable.Map[AnyRef, TypedCol[_, _]]()
 
-  def getBufferedTable(name: String) = bufferTablePool.getTable(name)
+  private val columnsByBytes: mutable.Map[ByteBuffer, KeyValueConvertible[_, _, _]] = mutable.Map[ByteBuffer, KeyValueConvertible[_, _, _]]()
+  private val familiesByBytes: mutable.Map[ByteBuffer, KeyValueConvertible[_, _, _]] = mutable.Map[ByteBuffer, KeyValueConvertible[_, _, _]]()
 
-  private val columns = ArrayBuffer[Column[T, R, _, _, _]]()
-  val families = ArrayBuffer[ColumnFamily[T, R, _, _, _]]()
+  private var columnIdx: Int = 0
 
-  val columnsByName = mutable.Map[AnyRef, Column[T, R, _, _, _]]()
-
-  private val columnsByBytes = mutable.Map[ByteBuffer, KeyValueConvertible[_, _, _]]()
-  private val familiesByBytes = mutable.Map[ByteBuffer, KeyValueConvertible[_, _, _]]()
-
-  var columnIdx = 0
-
-  def column[F, K, V](columnFamily: ColumnFamily[T, R, F, K, _], columnName: K, valueClass: Class[V])(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) = {
-    val c = new Column[T, R, F, K, V](this, columnFamily, columnName, columnIdx)
+  def columnTyped[K,V](columnFamily: Fam[K, _], columnName: K, valueClass: Class[V])(implicit ck: ByteConverter[K], kv: ByteConverter[V]): TypedCol[K, V] = {
+    val c = new TypedCol[K, V](columnFamily, columnName, columnIdx)
     columns += c
 
     val famBytes = columnFamily.familyBytes
-    val colBytes = c.columnBytes
+    val colBytes = ck.toBytes(columnName)
     val fullKey = ArrayUtils.addAll(famBytes, colBytes)
     val bufferKey = ByteBuffer.wrap(fullKey)
 
@@ -404,45 +314,82 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     c
   }
 
-  var familyIdx = 0
+  def columnTyped[K,V](columnFamily: Fam[K, _], columnName: K)(implicit ck: ByteConverter[K], kv: ByteConverter[V]): TypedCol[K, V] = {
+    val c = new TypedCol[K, V](columnFamily, columnName, columnIdx)
+    columns += c
 
-  def family[F, K, V](familyName: F, compressed: Boolean = false, versions: Int = 1, rowTtlInSeconds: Int = Int.MaxValue)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) = {
-    val family = new ColumnFamily[T, R, F, K, V](this, familyName, compressed, versions, familyIdx, rowTtlInSeconds)
+    val famBytes = columnFamily.familyBytes
+    val colBytes = ck.toBytes(columnName)
+    val fullKey = ArrayUtils.addAll(famBytes, colBytes)
+    val bufferKey = ByteBuffer.wrap(fullKey)
+
+    columnsByName.put(columnName.asInstanceOf[AnyRef], c)
+    columnsByBytes.put(bufferKey, c)
+    columnIdx = columnIdx + 1
+    c
+  }
+
+
+  def column[V](columnFamily:Fam[String,_], columnName:String)(implicit kv:ByteConverter[V]) : Col[V] = {
+    val c = new Col[V](columnFamily, columnName, columnIdx)
+    columns += c
+
+    val famBytes = columnFamily.familyBytes
+    val colBytes = StringConverter.toBytes(columnName)
+    val fullKey = ArrayUtils.addAll(famBytes, colBytes)
+    val bufferKey = ByteBuffer.wrap(fullKey)
+
+    columnsByName.put(columnName.asInstanceOf[AnyRef], c)
+    columnsByBytes.put(bufferKey, c)
+    columnIdx = columnIdx + 1
+    c
+  }
+
+  def column[V](columnFamily: Fam[String, _], columnName: String, valueClass: Class[V])(implicit kv: ByteConverter[V]): Col[V] = {
+    val c = new Col[V](columnFamily, columnName, columnIdx)
+    columns += c
+
+    val famBytes = columnFamily.familyBytes
+    val colBytes = StringConverter.toBytes(columnName)
+    val fullKey = ArrayUtils.addAll(famBytes, colBytes)
+    val bufferKey = ByteBuffer.wrap(fullKey)
+
+    columnsByName.put(columnName.asInstanceOf[AnyRef], c)
+    columnsByBytes.put(bufferKey, c)
+    columnIdx = columnIdx + 1
+    c
+  }
+
+  private var familyIdx = 0
+
+  def family[K, V](familyName: String, compressed: Boolean = false, versions: Int = 1, rowTtlInSeconds: Int = Int.MaxValue)(implicit d: ByteConverter[K], e: ByteConverter[V]): Fam[K, V] = {
+    val family = new Fam[K, V](familyName, compressed, versions, familyIdx, rowTtlInSeconds)
     familyIdx = familyIdx + 1
     families += family
     familiesByBytes.put(ByteBuffer.wrap(family.familyBytes), family)
     family
   }
 
-  def getTableOption(name: String) = {
+  def getTableOption(name: String, conf: Configuration, timeOutMs: Int): Option[HTableInterface] = {
     try {
-      Some(getTable(name))
+      Some(getTable(this, conf, timeOutMs))
     } catch {
       case e: Exception => None
     }
   }
 
 
-  def withTableOption[Q](name: String)(work: (Option[HTableInterface]) => Q): Q = {
-    val table = getTableOption(name)
+  def withTableOption[Q](name: String, conf: Configuration, timeOutMs: Int)(work: (Option[HTableInterface]) => Q): Q = {
+    val table = getTableOption(name, conf, timeOutMs)
     try {
       work(table)
     } finally {
-      table foreach (tbl => tablePool.putTable(tbl))
+      table foreach (tbl => releaseTable(this,tbl))
     }
   }
 
-  def withBufferedTable[Q](mytableName: String = tableName)(work: (HTableInterface) => Q): Q = {
-    val table = getBufferedTable(mytableName)
-    try {
-      work(table)
-    } finally {
-      bufferTablePool.putTable(table)
-    }
-  }
-
-  def withTable[Q](mytableName: String = tableName)(funct: (HTableInterface) => Q): Q = {
-    withTableOption(mytableName) {
+  def withTable[Q](mytableName: String, conf: Configuration, timeOutMs: Int)(funct: (HTableInterface) => Q): Q = {
+    withTableOption(mytableName, conf, timeOutMs) {
       case Some(table) => {
         funct(table)
       }
@@ -450,20 +397,13 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     }
   }
 
-  @deprecated("Use query2 instead, it is a generic interface for gets or scans")
-  def scan = new ScanQuery(this)
+  def query2: Query2Builder[T, R, RR] = new Query2Builder(this)
 
-  @deprecated("Use query2 instead")
-  def query = new Query(this)
+  def put(key: R, writeToWAL: Boolean = true): PutOp[T, R] = new PutOp(this, keyConverter.toBytes(key), writeToWAL = writeToWAL)
 
-  def query2 = new Query2Builder(this)
+  def delete(key: R): DeleteOp[T, R] = new DeleteOp(this, keyConverter.toBytes(key))
 
-
-  def put(key: R, writeToWAL: Boolean = true) = new PutOp(this, keyConverter.toBytes(key))
-
-  def delete(key: R) = new DeleteOp(this, keyConverter.toBytes(key))
-
-  def increment(key: R) = new IncrementOp(this, keyConverter.toBytes(key))
+  def increment(key: R): IncrementOp[T, R] = new IncrementOp(this, keyConverter.toBytes(key))
 
 
   def init() {
@@ -482,4 +422,123 @@ abstract class HbaseTable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](val ta
     colFamIdx = columns.sortBy(col => ArrayUtils.addAll(col.familyBytes, col.columnBytes)).toIndexedSeq
   }
 
+  /**
+   * Represents the specification of a Column.
+   */
+  class Col[V](columnFamily: Fam[String, _], override val columnName: String, override val columnIndex: Int)(implicit kv: ByteConverter[V])
+    extends TypedCol[String, V](columnFamily, columnName, columnIndex) {
+    override val columnBytes: Array[Byte] = StringConverter.toBytes(columnName)
+    override val familyBytes: Array[Byte] = columnFamily.familyBytes
+    override val columnNameRef: AnyRef = columnName.asInstanceOf[AnyRef]
+
+    override val familyConverter: StringConverter.type = StringConverter
+    override val keyConverter: StringConverter.type = StringConverter
+    override val valueConverter: ByteConverter[V] = kv
+
+    override def getQualifier: String = columnName
+
+    override def family: ColumnFamily[_, _, _, _, _] = columnFamily.asInstanceOf[ColumnFamily[_, _, _, _, _]]
+
+
+  }
+
+
+  /**
+   * Represents the specification of a Column.
+   */
+  class TypedCol[K, V](columnFamily: Fam[K, _], override val columnName: K, override val columnIndex: Int)(implicit kc: ByteConverter[K], kv: ByteConverter[V])
+    extends Column[T,R,String, K, V](this,columnFamily, columnName, columnIndex) {
+    override val columnBytes: Array[Byte] = kc.toBytes(columnName)
+    override val familyBytes: Array[Byte] = columnFamily.familyBytes
+    override val columnNameRef: AnyRef = columnName.asInstanceOf[AnyRef]
+
+    override val familyConverter: StringConverter.type = StringConverter
+    override val keyConverter: ByteConverter[K] = kc
+    override val valueConverter: ByteConverter[V] = kv
+
+    override def getQualifier: K = columnName
+
+    override def family: ColumnFamily[_, _, _, _, _] = columnFamily.asInstanceOf[ColumnFamily[_, _, _, _, _]]
+
+
+  }
+
+  /**
+   * Represents the specification of a Column Family
+   */
+  class Fam[K, V](override val familyName: String, override val compressed: Boolean = false, override val versions: Int = 1, override val index: Int, override val ttlInSeconds: Int = HColumnDescriptor.DEFAULT_TTL)(implicit d: ByteConverter[K], e: ByteConverter[V])
+    extends ColumnFamily[T,R,String, K, V](this, familyName,compressed,versions,index, ttlInSeconds) {
+    override val familyConverter: StringConverter.type = StringConverter
+    override val keyConverter: ByteConverter[K] = d
+    override val valueConverter: ByteConverter[V] = e
+    override val familyBytes: Array[Byte] = familyConverter.toBytes(familyName)
+
+
+    override def family: Fam[K, V] = this
+  }
+
+
+
+}
+
+
+/**
+ * Represents the specification of a Column Family
+ */
+class ColumnFamily[T <: HbaseTable[T, R, _], R, F, K, V](val table: HbaseTable[T, R, _], val familyName: F, val compressed: Boolean = false, val versions: Int = 1, val index: Int, val ttlInSeconds: Int = HColumnDescriptor.DEFAULT_TTL)(implicit c: ByteConverter[F], d: ByteConverter[K], e: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
+  val familyConverter: ByteConverter[F] = c
+  val keyConverter: ByteConverter[K] = d
+  val valueConverter: ByteConverter[V] = e
+  val familyBytes: Array[Byte] = c.toBytes(familyName)
+
+
+  def family: ColumnFamily[T, R, F, K, V] = this
+}
+
+/**
+ * Represents the specification of a Column.
+ */
+class Column[T <: HbaseTable[T, R, _], R, F, K, V](table: HbaseTable[T, R, _], columnFamily: ColumnFamily[T, R, F, K, _], val columnName: K, val columnIndex: Int)(implicit fc: ByteConverter[F], kc: ByteConverter[K], kv: ByteConverter[V]) extends KeyValueConvertible[F, K, V] {
+  val columnBytes: Array[Byte] = kc.toBytes(columnName)
+  val familyBytes: Array[Byte] = columnFamily.familyBytes
+  val columnNameRef: AnyRef = columnName.asInstanceOf[AnyRef]
+
+  val familyConverter: ByteConverter[F] = fc
+  val keyConverter: ByteConverter[K] = kc
+  val valueConverter: ByteConverter[V] = kv
+
+  def getQualifier: K = columnName
+
+  def family: ColumnFamily[_, _, _, _, _] = columnFamily.asInstanceOf[ColumnFamily[_, _, _, _, _]]
+
+
+}
+
+/**
+ * A query for retrieving values.  It works somewhat differently than the data modification operations, in that you do the following:
+ * 1. Specify one or more keys
+ * 2. Specify columns and families to scan in for ALL the specified keys
+ *
+ * In other words there's no concept of having multiple rows fetched with different columns for each row (that seems to be a rare use-case and
+ * would make the API very complex).
+ */
+
+trait KeyValueConvertible[F, K, V] {
+  val familyConverter: ByteConverter[F]
+  val keyConverter: ByteConverter[K]
+  val valueConverter: ByteConverter[V]
+
+  def keyToBytes(key: K): Array[Byte] = keyConverter.toBytes(key)
+
+  def valueToBytes(value: V): Array[Byte] = valueConverter.toBytes(value)
+
+  def keyToBytesUnsafe(key: AnyRef): Array[Byte] = keyConverter.toBytes(key.asInstanceOf[K])
+
+  def valueToBytesUnsafe(value: AnyRef): Array[Byte] = valueConverter.toBytes(value.asInstanceOf[V])
+
+  def keyFromBytesUnsafe(bytes: Array[Byte]): AnyRef = keyConverter.fromBytes(bytes).asInstanceOf[AnyRef]
+
+  def valueFromBytesUnsafe(bytes: Array[Byte]): AnyRef = valueConverter.fromBytes(bytes).asInstanceOf[AnyRef]
+
+  def family: ColumnFamily[_, _, _, _, _]
 }

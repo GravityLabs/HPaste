@@ -17,28 +17,29 @@
 
 package com.gravity.hbase.mapreduce
 
-import com.gravity.hbase.schema._
-import org.apache.hadoop.conf.Configuration
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream, IOException}
 import java.lang.Iterable
-import com.gravity.hbase.schema.HbaseTable
+
+import com.google.protobuf.InvalidProtocolBufferException
 import com.gravity.hadoop.GravityTableOutputFormat
-import org.apache.hadoop.hbase.io.ImmutableBytesWritable
+import com.gravity.hbase.schema.{HbaseTable, _}
+import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
-import org.apache.hadoop.mapreduce.lib.input.{SequenceFileInputFormat, FileInputFormat}
-import org.apache.hadoop.mapreduce.lib.output.{SequenceFileOutputFormat, FileOutputFormat}
-import scala.collection.JavaConversions._
-import org.apache.hadoop.hbase.client.{Scan, Result}
-import org.apache.hadoop.hbase.filter.{FilterList, Filter}
-import org.apache.hadoop.hbase.util.Base64
-import com.gravity.hbase.schema._
-import scala.collection.mutable.Buffer
-import org.apache.hadoop.io._
-import java.io.{DataInputStream, ByteArrayInputStream, ByteArrayOutputStream}
+import org.apache.hadoop.hbase.client.{Mutation, Result, Scan}
+import org.apache.hadoop.hbase.filter.{Filter, FilterList}
+import org.apache.hadoop.hbase.io.ImmutableBytesWritable
 import org.apache.hadoop.hbase.mapreduce.{MultiTableOutputFormat, TableInputFormat}
+import org.apache.hadoop.hbase.protobuf.ProtobufUtil
+import org.apache.hadoop.hbase.util.Base64
+import org.apache.hadoop.io._
+import org.apache.hadoop.mapreduce.lib.input.{FileInputFormat, SequenceFileInputFormat}
+import org.apache.hadoop.mapreduce.lib.output.{FileOutputFormat, SequenceFileOutputFormat}
+import org.apache.hadoop.mapreduce.{Job, Mapper, Partitioner, Reducer}
 import org.joda.time.DateTime
-import scala.collection._
-import org.apache.hadoop.mapreduce.{Job, Partitioner, Reducer, Mapper}
-import org.apache.hadoop.mapred.JobConf
+
+import scala.collection.JavaConversions._
+import scala.collection.{mutable, _}
+import scala.collection.mutable.Buffer
 
 /*             )\._.,--....,'``.
 .b--.        /;   _.. \   _\  (`._ ,.
@@ -48,6 +49,24 @@ import org.apache.hadoop.mapred.JobConf
 object Settings {
 
   object None extends NoSettings
+  def convertScanToString(scan: Scan): String = {
+    val proto : org.apache.hadoop.hbase.protobuf.generated.ClientProtos.Scan = ProtobufUtil.toScan(scan)
+    Base64.encodeBytes(proto.toByteArray)
+  }
+
+  def convertStringToScan(base64:String): Scan =  {
+    val decoded = Base64.decode(base64)
+
+    var scan : org.apache.hadoop.hbase.protobuf.generated.ClientProtos.Scan = null
+    try {
+      scan = org.apache.hadoop.hbase.protobuf.generated.ClientProtos.Scan.parseFrom(decoded)
+    } catch {
+      case var4 : InvalidProtocolBufferException =>
+        throw new IOException(var4)
+    }
+
+    ProtobufUtil.toScan(scan)
+  }
 
 }
 
@@ -128,7 +147,9 @@ case class SpeculativeExecutionConf(on: Boolean = false) extends HConfigLet {
   override def configure(job: Job) {
     if (!on) {
       job.getConfiguration.set("mapred.map.tasks.speculative.execution", "false")
+      job.getConfiguration.set("mapreduce.map.speculative", "false")
       job.getConfiguration.set("mapred.reduce.tasks.speculative.execution", "false")
+      job.getConfiguration.set("mapreduce.reduce.speculative", "false")
     }
   }
 }
@@ -137,6 +158,7 @@ case class ReuseJVMConf(reuse: Boolean = true) extends HConfigLet {
   override def configure(job: Job) {
     if (reuse) {
       job.getConfiguration.setInt("mapred.job.reuse.jvm.num.tasks", -1)
+      job.getConfiguration.setInt("mapreduce.job.jvm.numtasks", -1)
     }
   }
 }
@@ -146,33 +168,38 @@ case class BigMemoryConf(mapMemoryMB: Int, reduceMemoryMB: Int, mapBufferMB: Int
     val memory = mapMemoryMB
     val reducememory = reduceMemoryMB
     job.getConfiguration.set("mapred.map.child.java.opts", "-Xmx" + memory + "m" + " -Xms" + memory + "m")
+    job.getConfiguration.set("mapreduce.map.java.opts", "-Xmx" + memory + "m" + " -Xms" + memory + "m")
     //    conf.set("mapred.map.child.java.opts", "-Xmx" + memory + "m")
     job.getConfiguration.set("mapred.reduce.child.java.opts", "-Xmx" + reducememory + "m")
+    job.getConfiguration.set("mapreduce.reduce.java.opts", "-Xmx" + reducememory + "m")
     job.getConfiguration.setInt("mapred.job.map.memory.mb", memory + mapBufferMB)
+    job.getConfiguration.setInt("mapreduce.map.memory.mb", memory + mapBufferMB)
     job.getConfiguration.setInt("mapred.job.reduce.memory.mb", reducememory + reduceBufferMB)
+    job.getConfiguration.setInt("mapreduce.reduce.memory.mb", reducememory + reduceBufferMB)
   }
 }
 
 case class LongRunningJobConf(timeoutInSeconds: Int) extends HConfigLet {
   override def configure(job: Job) {
     job.getConfiguration.setInt("mapred.task.timeout", timeoutInSeconds)
+    job.getConfiguration.setInt("mapreduce.task.timeout", timeoutInSeconds)
   }
 }
 
 object HJob {
-  def job(name: String) = new HJobBuilder(name)
+  def job(name: String): HJobBuilder = new HJobBuilder(name)
 }
 
 
 class HJobBuilder(name: String) {
-  private val tasks = Buffer[HTask[_, _, _, _]]()
+  private val tasks = mutable.Buffer[HTask[_, _, _, _]]()
 
-  def withTask(task: HTask[_, _, _, _]) = {
+  def withTask(task: HTask[_, _, _, _]): HJobBuilder = {
     tasks += task
     this
   }
 
-  def build[S <: SettingsBase] = new HJob[S](name, tasks: _*)
+  def build[S <: SettingsBase]: HJob[S] = new HJob[S](name, tasks: _*)
 
 }
 
@@ -236,10 +263,10 @@ case class JobPriority(name: String)
 
 object JobPriorities {
   val VERY_LOW = JobPriority("VERY_LOW")
-  val LOW = JobPriority("LOW")
-  val NORMAL = JobPriority("NORMAL")
-  val HIGH = JobPriority("HIGH")
-  val VERY_HIGH = JobPriority("VERY_HIGH")
+  val LOW: JobPriority = JobPriority("LOW")
+  val NORMAL: JobPriority = JobPriority("NORMAL")
+  val HIGH: JobPriority = JobPriority("HIGH")
+  val VERY_HIGH: JobPriority = JobPriority("VERY_HIGH")
 }
 
 /**
@@ -251,7 +278,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
   type RunResult = (Boolean, Seq[(HTask[_, _, _, _], Job)], mutable.Map[String, DateTime], mutable.Map[String, DateTime])
 
   def run(settings: S, conf: Configuration, dryRun: Boolean = false, skipToTask: String = null, priority: JobPriority = JobPriorities.NORMAL): RunResult = {
-    require(tasks.size > 0, "HJob requires at least one task to be defined")
+    require(tasks.nonEmpty, "HJob requires at least one task to be defined")
     conf.setStrings("hpaste.jobchain.jobclass", getClass.getName)
 
     var previousTask: HTask[_, _, _, _] = null
@@ -263,11 +290,10 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
         try {
           taskByName(task.taskId.previousTaskName).get
         } catch {
-          case ex: Exception => {
+          case ex: Exception =>
             println("WARNING: Task " + task.taskId.name + " specifies previous task " + task.taskId.previousTaskName + " which was not submitted to the job.  Make sure you did this intentionally")
             null
             //            throw new RuntimeException("Task " + task.taskId.name + " requires task " + task.taskId.previousTaskName + " which was not submitted to the job")
-          }
         }
       } else {
         if (!tasks.exists(_.taskId.name == task.taskId.requiredTask.taskId.name)) {
@@ -288,12 +314,12 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
           previousTask.nextTasks += task
 
           //If there is a previous HTask, then initialize the input of this task as the output of that task.
-          if (previousTask.hio.output.isInstanceOf[HRandomSequenceOutput[_, _]] && task.hio.input.isInstanceOf[HRandomSequenceInput[_, _]]) {
-            task.hio.input.asInstanceOf[HRandomSequenceInput[_, _]].previousPath = previousTask.hio.output.asInstanceOf[HRandomSequenceOutput[_, _]].path
+          previousTask.hio.output match {
+            case value: HRandomSequenceOutput[_, _] if task.hio.input.isInstanceOf[HRandomSequenceInput[_, _]] =>
+              task.hio.input.asInstanceOf[HRandomSequenceInput[_, _]].previousPath = value.path
+            case _ =>
           }
         }
-
-        //        task.hio.input = previousTask.hio.output
       }
     }
 
@@ -303,6 +329,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
     def makeJob(task: HTask[_, _, _, _]) = {
       val taskConf = new Configuration(conf)
       taskConf.set("mapred.job.priority", priority.name)
+      taskConf.set("mapreduce.job.priority", priority.name)
       taskConf.setInt("hpaste.jobchain.mapper.idx", idx)
       taskConf.setInt("hpaste.jobchain.reducer.idx", idx)
 
@@ -328,7 +355,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
     }
 
     def declare(tasks: Seq[HTask[_, _, _, _]], level: String = "\t") {
-      tasks.map {
+      tasks.foreach {
         task =>
           println(level + "Task: " + task.taskId.name)
           println(level + "\twill run after " + (if (task.previousTask == null) "nothing" else task.previousTask.taskId.name))
@@ -339,12 +366,12 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
       }
     }
 
-    val taskJobBuffer = Buffer[(HTask[_, _, _, _], Job)]()
+    val taskJobBuffer = mutable.Buffer[(HTask[_, _, _, _], Job)]()
     val taskStartTimes = mutable.Map[String, DateTime]()
     val taskEndTimes = mutable.Map[String, DateTime]()
 
     def runrecursively(tasks: Seq[HTask[_, _, _, _]]): RunResult = {
-      val jobs = tasks.map {
+      val jobs = tasks.flatMap {
         task =>
           if (skipToTask != null && task.taskId.name != skipToTask) {
             println("Skipping task: " + task.taskId.name + " because we're skipping to : " + skipToTask)
@@ -354,7 +381,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
             taskJobBuffer.add((task, job))
             Some(job)
           }
-      }.flatten
+      }
 
       jobs.foreach {
         job =>
@@ -370,7 +397,7 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
         (false, taskJobBuffer, taskStartTimes, taskEndTimes)
       } else {
         val nextTasks = tasks.flatMap(_.nextTasks)
-        if (nextTasks.size == 0) {
+        if (nextTasks.isEmpty) {
           (true, taskJobBuffer, taskStartTimes, taskEndTimes)
         } else {
           runrecursively(nextTasks)
@@ -391,27 +418,25 @@ class HJob[S <: SettingsBase](val name: String, tasks: HTask[_, _, _, _]*) {
     }
   }
 
-  def getMapperFunc[MK, MV, MOK, MOV](idx: Int) = {
+  def getMapperFunc[MK, MV, MOK, MOV](idx: Int): HMapper[MK, MV, MOK, MOV] = {
     val task = tasks(idx)
-    if (task.isInstanceOf[HMapReduceTask[MK, MV, MOK, MOV, _, _]]) {
-      val tk = task.asInstanceOf[HMapReduceTask[MK, MV, MOK, MOV, _, _]]
-      tk.mapper
-    }
-    else if (task.isInstanceOf[HMapTask[MK, MV, MOK, MOV]]) {
-      val tk = task.asInstanceOf[HMapTask[MK, MV, MOK, MOV]]
-      tk.mapper
-    } else {
-      throw new RuntimeException("Unable to find mapper for index " + idx)
+    task match {
+      case tk: HMapReduceTask[_, _, _, _, _, _] =>
+        tk.mapper.asInstanceOf[HMapper[MK, MV, MOK, MOV]]
+      case tk: HMapTask[_, _, _, _] =>
+        tk.mapper.asInstanceOf[HMapper[MK, MV, MOK, MOV]]
+      case _ =>
+        throw new RuntimeException("Unable to find mapper for index " + idx)
     }
   }
 
-  def getReducerFunc[MOK, MOV, ROK, ROV](idx: Int) = {
+  def getReducerFunc[MOK, MOV, ROK, ROV](idx: Int): HReducer[MOK, MOV, ROK, ROV] = {
     val task = tasks(idx)
-    if (task.isInstanceOf[HMapReduceTask[_, _, MOK, MOV, ROK, ROV]]) {
-      val tk = task.asInstanceOf[HMapReduceTask[_, _, MOK, MOV, ROK, ROV]]
-      tk.reducer
-    } else {
-      throw new RuntimeException("Unable to find reducer for index " + idx)
+    task match {
+      case tk: HMapReduceTask[_, _, _, _, _, _] =>
+        tk.reducer.asInstanceOf[HReducer[MOK, MOV, ROK, ROV]]
+      case _ =>
+        throw new RuntimeException("Unable to find reducer for index " + idx)
     }
   }
 }
@@ -431,9 +456,9 @@ abstract class HOutput {
   def init(job: Job, settings: SettingsBase)
 }
 
-case class Columns[T <: HbaseTable[T, _, _]](columns: ColumnExtractor[T, _, _, _, _]*)
+case class Columns[T <: HbaseTable[T, _, _]](columns: ColumnExtractor[T]*)
 
-case class Families[T <: HbaseTable[T, _, _]](families: FamilyExtractor[T, _, _, _, _]*)
+case class Families[T <: HbaseTable[T, _, _]](families: FamilyExtractor[T]*)
 
 case class Filters[T <: HbaseTable[T, _, _]](filters: Filter*)
 
@@ -446,11 +471,9 @@ case class HTableQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], S <: Sett
     val thisQuery = query
     val scanner = thisQuery.makeScanner(maxVersions, cacheBlocks, cacheSize)
     job.getConfiguration.set("mapred.map.tasks.speculative.execution", "false")
+    job.getConfiguration.set("mapreduce.map.speculative", "false")
 
-    val bas = new ByteArrayOutputStream()
-    val dos = new PrimitiveOutputStream(bas)
-    scanner.write(dos)
-    job.getConfiguration.set(TableInputFormat.SCAN, Base64.encodeBytes(bas.toByteArray))
+    job.getConfiguration.set(TableInputFormat.SCAN, Settings.convertScanToString(scanner))
 
 
 
@@ -469,11 +492,9 @@ case class HTableSettingsQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], S
     val thisQuery = query(settings.asInstanceOf[S])
     val scanner = thisQuery.makeScanner(maxVersions, cacheBlocks, cacheSize)
     job.getConfiguration.set("mapred.map.tasks.speculative.execution", "false")
+    job.getConfiguration.set("mapreduce.map.speculative", "false")
 
-    val bas = new ByteArrayOutputStream()
-    val dos = new PrimitiveOutputStream(bas)
-    scanner.write(dos)
-    job.getConfiguration.set(TableInputFormat.SCAN, Base64.encodeBytes(bas.toByteArray))
+    job.getConfiguration.set(TableInputFormat.SCAN, Settings.convertScanToString(scanner))
 
 
 
@@ -491,13 +512,14 @@ case class HTableSettingsQuery[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], S
 case class HTableInput[T <: HbaseTable[T, _, _]](table: T, families: Families[T] = Families[T](), columns: Columns[T] = Columns[T](), filters: Seq[Filter] = Seq(), scan: Scan = new Scan(), scanCache: Int = 100) extends HInput {
 
 
-  override def toString = "Input: From table: \"" + table.tableName + "\""
+  override def toString: String = "Input: From table: \"" + table.tableName + "\""
 
   override def init(job: Job, settings: SettingsBase) {
     println("Setting input table to: " + table.tableName)
 
     //Disabling speculative execution because it is never useful for a table input.
     job.getConfiguration.set("mapred.map.tasks.speculative.execution", "false")
+    job.getConfiguration.set("mapreduce.map.speculative", "false")
 
     val scanner = scan
     scanner.setCacheBlocks(false)
@@ -515,16 +537,13 @@ case class HTableInput[T <: HbaseTable[T, _, _]](table: T, families: Families[T]
         scanner.addFamily(family.familyBytes)
     }
 
-    if (filters.size > 0) {
+    if (filters.nonEmpty) {
       val filterList = new FilterList(FilterList.Operator.MUST_PASS_ALL)
       filters.foreach {filter => filterList.addFilter(filter)}
       scanner.setFilter(filterList)
     }
 
-    val bas = new ByteArrayOutputStream()
-    val dos = new PrimitiveOutputStream(bas)
-    scanner.write(dos)
-    job.getConfiguration.set(TableInputFormat.SCAN, Base64.encodeBytes(bas.toByteArray))
+    job.getConfiguration.set(TableInputFormat.SCAN, Settings.convertScanToString(scanner))
 
 
 
@@ -539,7 +558,7 @@ case class HTableInput[T <: HbaseTable[T, _, _]](table: T, families: Families[T]
   */
 case class HPathInput(paths: Seq[String]) extends HInput {
 
-  override def toString = "Input: Paths: " + paths.mkString("{", ",", "}")
+  override def toString: String = "Input: Paths: " + paths.mkString("{", ",", "}")
 
   override def init(job: Job, settings: SettingsBase) {
     paths.foreach(path => {
@@ -554,7 +573,7 @@ case class HPathInput(paths: Seq[String]) extends HInput {
   * purely for documentation.  There is no check in the output that will keep you from writing to other tables.
   */
 case class HMultiTableOutput(writeToTransactionLog: Boolean, tables: HbaseTable[_, _, _]*) extends HOutput {
-  override def toString = "Output: The following tables: " + tables.map(_.tableName).mkString("{", ",", "}")
+  override def toString: String = "Output: The following tables: " + tables.map(_.tableName).mkString("{", ",", "}")
 
 
   override def init(job: Job, settings: SettingsBase) {
@@ -562,6 +581,7 @@ case class HMultiTableOutput(writeToTransactionLog: Boolean, tables: HbaseTable[
       job.getConfiguration.setBoolean(MultiTableOutputFormat.WAL_PROPERTY, MultiTableOutputFormat.WAL_OFF)
     }
     job.getConfiguration.set("mapred.reduce.tasks.speculative.execution", "false")
+    job.getConfiguration.set("mapreduce.reduce.speculative", "false")
     job.setOutputFormatClass(classOf[MultiTableOutputFormat])
   }
 }
@@ -571,11 +591,12 @@ case class HMultiTableOutput(writeToTransactionLog: Boolean, tables: HbaseTable[
   */
 case class HTableOutput[T <: HbaseTable[T, _, _]](table: T) extends HOutput {
 
-  override def toString = "Output: Table: " + table.tableName
+  override def toString: String = "Output: Table: " + table.tableName
 
   override def init(job: Job, settings: SettingsBase) {
     println("Initializing output table to: " + table.tableName)
     job.getConfiguration.set("mapred.reduce.tasks.speculative.execution", "false")
+    job.getConfiguration.set("mapreduce.reduce.speculative", "false")
     job.getConfiguration.set(GravityTableOutputFormat.OUTPUT_TABLE, table.tableName)
     job.setOutputFormatClass(classOf[GravityTableOutputFormat[ImmutableBytesWritable]])
   }
@@ -587,7 +608,7 @@ case class HTableOutput[T <: HbaseTable[T, _, _]](table: T) extends HOutput {
 case class HPathOutput(path: String) extends HOutput {
 
 
-  override def toString = "Output: File: " + path
+  override def toString: String = "Output: File: " + path
 
   override def init(job: Job, settings: SettingsBase) {
     FileSystem.get(job.getConfiguration).delete(new Path(path), true)
@@ -603,7 +624,7 @@ case class HRandomSequenceInput[K, V]() extends HInput {
   var previousPath: Path = _
 
 
-  override def toString = "Input: Random Sequence File at " + previousPath.toUri.toString
+  override def toString: String = "Input: Random Sequence File at " + previousPath.toUri.toString
 
   override def init(job: Job, settings: SettingsBase) {
     FileInputFormat.addInputPath(job, previousPath)
@@ -619,7 +640,7 @@ case class HRandomSequenceInput[K, V]() extends HInput {
   * @tparam V Value class of input
   */
 case class HSequenceInput[K,V](paths:Seq[String]) extends HInput {
-  override def toString = "Input: Sequence Files at: " + paths.mkString("{",",","}")
+  override def toString: String = "Input: Sequence Files at: " + paths.mkString("{",",","}")
 
   override def init(job: Job, settings: SettingsBase) {
     paths.foreach(path => {
@@ -658,9 +679,9 @@ case class HSequenceSettingsOutput[K : Manifest,V : Manifest, S <: SettingsBase]
   * @tparam V
   */
 case class HSequenceOutput[K : Manifest,V : Manifest](seqPath:String) extends HOutput {
-  override def toString = "Output: Sequence File at " + path.toUri.toString
+  override def toString: String = "Output: Sequence File at " + path.toUri.toString
 
-  var path = new Path(seqPath)
+  var path: Path = new Path(seqPath)
 
   override def init(job: Job, settings: SettingsBase) {
     FileSystem.get(job.getConfiguration).delete(path, true)
@@ -675,9 +696,9 @@ case class HSequenceOutput[K : Manifest,V : Manifest](seqPath:String) extends HO
   */
 case class HRandomSequenceOutput[K, V]() extends HOutput {
 
-  override def toString = "Output: Random Sequence File at " + path.toUri.toString
+  override def toString: String = "Output: Random Sequence File at " + path.toUri.toString
 
-  var path = new Path(genTmpFile)
+  var path: Path = new Path(genTmpFile)
 
   override def init(job: Job, settings: SettingsBase) {
     job.setOutputFormatClass(classOf[SequenceFileOutputFormat[K, V]])
@@ -697,7 +718,7 @@ abstract class HTask[IK, IV, OK, OV](val taskId: HTaskID, val configLets: HTaskC
 
 
   var previousTask: HTask[_, _, _, _] = _
-  val nextTasks = Buffer[HTask[_, _, _, _]]()
+  val nextTasks: mutable.Buffer[HTask[_, _, _, _]] = mutable.Buffer[HTask[_, _, _, _]]()
 
   def configure(conf: Configuration, previousTask: HTask[_, _, _, _]) {
 
@@ -706,7 +727,7 @@ abstract class HTask[IK, IV, OK, OV](val taskId: HTaskID, val configLets: HTaskC
 
   def decorateJob(job: Job)
 
-  def makeJob(previousTask: HTask[_, _, _, _], settings: SettingsBase) = {
+  def makeJob(previousTask: HTask[_, _, _, _], settings: SettingsBase): Job = {
 
     val job = new Job(configuration)
 
@@ -749,18 +770,18 @@ trait BinaryWritable {
 trait BinaryReadable {
   this: HReducer[BytesWritable, BytesWritable, _, _] =>
 
-  def readKey[T](reader: (PrimitiveInputStream) => T) = readWritable(key) {reader}
+  def readKey[T](reader: (PrimitiveInputStream) => T): T = readWritable(key) {reader}
 
   def perValue(reader: (PrimitiveInputStream) => Unit) {values.foreach {value => readWritable(value)(reader)}}
 
-  def makePerValue[T](reader: (PrimitiveInputStream) => T) = values.map {value => readWritable(value)(reader)}
+  def makePerValue[T](reader: (PrimitiveInputStream) => T): scala.Iterable[T] = values.map {value => readWritable(value)(reader)}
 }
 
 /** Can write to a specific table
   *
   */
 trait ToTableWritable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] {
-  this: MRWritable[NullWritable, Writable] =>
+  this: MRWritable[NullWritable, Mutation] =>
 
   def write(operation: OpBase[T, R]) {
     operation.getOperations.foreach {op => write(NullWritable.get(), op)}
@@ -771,7 +792,7 @@ trait ToTableWritable[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]] {
   *
   */
 trait MultiTableWritable {
-  this: MRWritable[ImmutableBytesWritable, Writable] =>
+  this: MRWritable[ImmutableBytesWritable, Mutation] =>
 
   val validTableNames: Set[String]
 
@@ -790,7 +811,7 @@ trait MultiTableWritable {
 abstract class FromTableMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], MOK, MOV](table: HbaseTable[T, R, RR], outputKey: Class[MOK], outputValue: Class[MOV])
         extends HMapper[ImmutableBytesWritable, Result, MOK, MOV] {
 
-  def row = table.buildRow(context.getCurrentValue)
+  def row: RR = table.buildRow(context.getCurrentValue)
 }
 
 /** In a map-only job, this covers a table that will write to itself */
@@ -798,7 +819,7 @@ abstract class TableSelfMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](t
 
 
 abstract class FromTableToTableMapper[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], TT <: HbaseTable[TT, RT, TTRR], RT, TTRR <: HRow[TT, RT]](fromTable: HbaseTable[T, R, RR], toTable: HbaseTable[TT, RT, TTRR])
-        extends FromTableMapper[T, R, RR, NullWritable, Writable](fromTable, classOf[NullWritable], classOf[Writable]) with ToTableWritable[TT, RT, TTRR] {
+        extends FromTableMapper[T, R, RR, NullWritable, Mutation](fromTable, classOf[NullWritable], classOf[Mutation]) with ToTableWritable[TT, RT, TTRR] {
 
 }
 
@@ -812,7 +833,7 @@ abstract class FromTableBinaryMapperFx[T <: HbaseTable[T, R, RR], R, RR <: HRow[
   private var initCode: () => Unit = _
 
   override def delayedInit(body: => Unit) {
-    initCode = (() => body)
+    initCode = () => body
   }
 
   def map() {
@@ -888,23 +909,23 @@ abstract class BinaryToTableReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, 
         extends ToTableReducer[T, R, RR, BytesWritable, BytesWritable](table) with BinaryReadable
 
 abstract class ToTableReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R], MOK, MOV](table: HbaseTable[T, R, RR])
-        extends HReducer[MOK, MOV, NullWritable, Writable] with ToTableWritable[T, R, RR]
+        extends HReducer[MOK, MOV, NullWritable, Mutation] with ToTableWritable[T, R, RR]
 
 abstract class BinaryToMultiTableReducer(tables: HbaseTable[_, _, _]*) extends ToMultiTableReducer[BytesWritable, BytesWritable](tables: _*)
 
-abstract class ToMultiTableReducer[MOK, MOV](tables: HbaseTable[_, _, _]*) extends HReducer[MOK, MOV, ImmutableBytesWritable, Writable] with MultiTableWritable {
-  val validTableNames = tables.map(_.tableName).toSet
+abstract class ToMultiTableReducer[MOK, MOV](tables: HbaseTable[_, _, _]*) extends HReducer[MOK, MOV, ImmutableBytesWritable, Mutation] with MultiTableWritable {
+  val validTableNames: Predef.Set[String] = tables.map(_.tableName).toSet
 }
 
 abstract class ToTableBinaryReducer[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
-        extends HReducer[BytesWritable, BytesWritable, NullWritable, Writable] with ToTableWritable[T, R, RR] with BinaryReadable
+        extends HReducer[BytesWritable, BytesWritable, NullWritable, Mutation] with ToTableWritable[T, R, RR] with BinaryReadable
 
 abstract class ToTableBinaryReducerFx[T <: HbaseTable[T, R, RR], R, RR <: HRow[T, R]](table: HbaseTable[T, R, RR])
-        extends HReducer[BytesWritable, BytesWritable, NullWritable, Writable] with ToTableWritable[T, R, RR] with BinaryReadable with DelayedInit {
+        extends HReducer[BytesWritable, BytesWritable, NullWritable, Mutation] with ToTableWritable[T, R, RR] with BinaryReadable with DelayedInit {
   private var initCode: () => Unit = _
 
   override def delayedInit(body: => Unit) {
-    initCode = (() => body)
+    initCode = () => body
   }
 
   def reduce() {
@@ -925,7 +946,7 @@ abstract class BinaryReducerFx extends BinaryReducer with DelayedInit {
   private var initCode: () => Unit = _
 
   override def delayedInit(body: => Unit) {
-    initCode = (() => body)
+    initCode = () => body
   }
 
   def reduce() {
@@ -938,7 +959,7 @@ abstract class BinaryToTextReducerFx extends BinaryToTextReducer with DelayedIni
   private var initCode: () => Unit = _
 
   override def delayedInit(body: => Unit) {
-    initCode = (() => body)
+    initCode = () => body
   }
 
   def reduce() {
@@ -1000,9 +1021,9 @@ abstract class HMapper[MK, MV, MOK, MOV] extends Mapper[MK, MV, MOK, MOV] with M
 
   def write(key: MOK, value: MOV) {context.write(key, value)}
 
-  def key = context.getCurrentKey
+  def key: MK = context.getCurrentKey
 
-  def value = context.getCurrentValue
+  def value: MV = context.getCurrentValue
 
   def map()
 
@@ -1031,9 +1052,9 @@ abstract class HReducer[MOK, MOV, ROK, ROV] extends Reducer[MOK, MOV, ROK, ROV] 
   def write(key: ROK, value: ROV) {context.write(key, value)}
 
 
-  def key = context.getCurrentKey
+  def key: MOK = context.getCurrentKey
 
-  def values = context.getValues
+  def values: Iterable[MOV] = context.getValues
 
   override def setup(context: Reducer[MOK, MOV, ROK, ROV]#Context) {
     this.context = context
@@ -1125,13 +1146,13 @@ abstract class HBinaryComparator extends RawComparator[BytesWritable] {
       compareBytes(new PrimitiveInputStream(thisInput), new PrimitiveInputStream(thatInput))
     }
 
-  override def compare(bw:BytesWritable,bw2:BytesWritable) = {
+  override def compare(bw:BytesWritable,bw2:BytesWritable): Int = {
     println("Compare called")
     0
   }
 
   /** Override for a less cheap comparison */
-  def compareBytes(thisReader: PrimitiveInputStream, thatReader: PrimitiveInputStream) = {
+  def compareBytes(thisReader: PrimitiveInputStream, thatReader: PrimitiveInputStream): Int = {
     println("Compare bytes called")
     0
   }
@@ -1254,7 +1275,7 @@ abstract class HPartitioner[MOK, MOV]() extends Partitioner[MOK, MOV] {
 
 class TableToBinaryMapContext[T <: HbaseTable[T, R, _], R, S <: SettingsBase](table: T, conf: Configuration, counter: (String, Long) => Unit, context: Mapper[ImmutableBytesWritable, Result, BytesWritable, BytesWritable]#Context)
         extends HMapContext[ImmutableBytesWritable, Result, BytesWritable, BytesWritable, S](conf, counter, context) {
-  def row = new QueryResult[T, R](table.convertResult(context.getCurrentValue), table, table.tableName)
+  def row: QueryResult[T, R] = new QueryResult[T, R](table.convertResult(context.getCurrentValue), table, table.tableName)
 }
 
 /**
@@ -1262,9 +1283,9 @@ class TableToBinaryMapContext[T <: HbaseTable[T, R, _], R, S <: SettingsBase](ta
   * It contains simplified functions for writing values and incrementing counters.
   */
 class HMapContext[MK, MV, MOK, MOV, S <: SettingsBase](conf: Configuration, counter: (String, Long) => Unit, val context: Mapper[MK, MV, MOK, MOV]#Context) extends HContext[S](conf, counter) {
-  def key = context.getCurrentKey
+  def key: MK = context.getCurrentKey
 
-  def value = context.getCurrentValue
+  def value: MV = context.getCurrentValue
 
   def write(key: MOK, value: MOV) {context.write(key, value)}
 }
@@ -1273,14 +1294,14 @@ class HMapContext[MK, MV, MOK, MOV, S <: SettingsBase](conf: Configuration, coun
   * This is the context object for a Reduce function.  It gets passed into the reducer defined in an HTask.
   */
 class HReduceContext[MOK, MOV, ROK, ROV, S <: SettingsBase](conf: Configuration, counter: (String, Long) => Unit, val context: Reducer[MOK, MOV, ROK, ROV]#Context) extends HContext[S](conf, counter) {
-  def key = context.getCurrentKey
+  def key: MOK = context.getCurrentKey
 
-  def values = context.getValues
+  def values: Iterable[MOV] = context.getValues
 
   def write(key: ROK, value: ROV) {context.write(key, value)}
 }
 
-class ToTableReduceContext[MOK, MOV, T <: HbaseTable[T, R, _], R, S <: SettingsBase](conf: Configuration, counter: (String, Long) => Unit, context: Reducer[MOK, MOV, NullWritable, Writable]#Context) extends HReduceContext[MOK, MOV, NullWritable, Writable, S](conf, counter, context) {
+class ToTableReduceContext[MOK, MOV, T <: HbaseTable[T, R, _], R, S <: SettingsBase](conf: Configuration, counter: (String, Long) => Unit, context: Reducer[MOK, MOV, NullWritable, Mutation]#Context) extends HReduceContext[MOK, MOV, NullWritable, Mutation, S](conf, counter, context) {
   def write(operation: OpBase[T, R]) {
     operation.getOperations.foreach {op => write(NullWritable.get(), op)}
   }
@@ -1292,7 +1313,7 @@ class ToTableReduceContext[MOK, MOV, T <: HbaseTable[T, R, _], R, S <: SettingsB
 class HContext[S <: SettingsBase](val conf: Configuration, val counter: (String, Long) => Unit) {
   def apply(message: String, count: Long) {counter(message, count)}
 
-  val settings = Class.forName(conf.get("hpaste.settingsclass")).newInstance().asInstanceOf[S]
+  val settings: S = Class.forName(conf.get("hpaste.settingsclass")).newInstance().asInstanceOf[S]
   settings.fromSettings(conf)
 
 }

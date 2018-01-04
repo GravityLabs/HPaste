@@ -1,5 +1,8 @@
 package com.gravity.hbase.schema
 
+import java.util
+
+import gnu.trove.map.TObjectLongMap
 import org.joda.time.DateTime
 import scala.collection.mutable.Buffer
 
@@ -14,12 +17,14 @@ import scala.collection.mutable.Buffer
  */
 case class DeserializedResult(rowid: AnyRef, famCount: Int) {
 
-  def isEmpty = values.size == 0
+  def isEmpty: Boolean = values.size == 0
 
-  def getRow[R]() = rowid.asInstanceOf[R]
+  def isEmptyRow: Boolean = ! values.exists(family=>family != null && family.size() > 0)
+
+  def getRow[R](): R = rowid.asInstanceOf[R]
 
 
-  def familyValueMap[K, V](fam: ColumnFamily[_, _, _, _, _]) = {
+  def familyValueMap[K, V](fam: ColumnFamily[_, _, _, _, _]): util.Map[K, V] = {
     val famMap = family(fam)
     if (famMap != null) {
       famMap.asInstanceOf[java.util.Map[K, V]]
@@ -28,7 +33,7 @@ case class DeserializedResult(rowid: AnyRef, famCount: Int) {
     }
   }
 
-  def familyKeySet[K](fam: ColumnFamily[_, _, _, _, _]) = {
+  def familyKeySet[K](fam: ColumnFamily[_, _, _, _, _]): util.Set[K] = {
     val famMap = family(fam)
     if (famMap != null) {
       famMap.keySet.asInstanceOf[java.util.Set[K]]
@@ -37,20 +42,20 @@ case class DeserializedResult(rowid: AnyRef, famCount: Int) {
     }
   }
 
-  def family(family: ColumnFamily[_, _, _, _, _]) = {
+  def family(family: ColumnFamily[_, _, _, _, _]): util.Map[AnyRef, AnyRef] = {
     values(family.index)
   }
 
-  def familyOf(column: Column[_, _, _, _, _]) = family(column.family)
+  def familyOf(column: Column[_, _, _, _, _]): util.Map[AnyRef, AnyRef] = family(column.family)
 
-  def familyMap(fam: ColumnFamily[_, _, _, _, _]) = family(fam)
+  def familyMap(fam: ColumnFamily[_, _, _, _, _]): util.Map[AnyRef, AnyRef] = family(fam)
 
-  def hasColumn(column: Column[_, _, _, _, _]) = {
+  def hasColumn(column: Column[_, _, _, _, _]): Boolean = {
     val valueMap = familyOf(column)
     if (valueMap == null || valueMap.size == 0) false else true
   }
 
-  def columnValue(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = {
+  def columnValue(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef): AnyRef = {
     val valueMap = family(fam)
     if (valueMap == null) {
       null
@@ -59,7 +64,7 @@ case class DeserializedResult(rowid: AnyRef, famCount: Int) {
     }
   }
 
-  def columnTimestamp(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = {
+  def columnTimestamp(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef): Long = {
     val res = timestampLookaside(fam.index)
     if (res != null) {
       val colRes = res.get(columnName)
@@ -71,7 +76,7 @@ case class DeserializedResult(rowid: AnyRef, famCount: Int) {
   }
 
 
-  def columnTimestampAsDate(column: Column[_, _, _, _, _]) = {
+  def columnTimestampAsDate(column: Column[_, _, _, _, _]): DateTime = {
     val cts = columnTimestamp(column.family, column.columnNameRef)
     if (cts > 0) {
       new DateTime(cts)
@@ -80,12 +85,12 @@ case class DeserializedResult(rowid: AnyRef, famCount: Int) {
     }
   }
 
-  def columnTimestampByName(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = {
+  def columnTimestampByName(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef): Long = {
     val cts = columnTimestamp(fam, columnName)
     cts
   }
 
-  def columnTimestampByNameAsDate(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef) = {
+  def columnTimestampByNameAsDate(fam: ColumnFamily[_, _, _, _, _], columnName: AnyRef): DateTime = {
     val cts = columnTimestamp(fam, columnName)
     if (cts > 0) {
       new DateTime(cts)
@@ -96,14 +101,14 @@ case class DeserializedResult(rowid: AnyRef, famCount: Int) {
   }
 
 
-  def columnValueSpecific(column: Column[_, _, _, _, _]) = {
+  def columnValueSpecific(column: Column[_, _, _, _, _]): AnyRef = {
     columnValue(column.family, column.columnNameRef)
   }
 
 
- var values = new Array[java.util.Map[AnyRef, AnyRef]](famCount)
+ var values: Array[util.Map[AnyRef, AnyRef]] = new Array[java.util.Map[AnyRef, AnyRef]](famCount)
 
-  private val timestampLookaside = new Array[gnu.trove.map.TObjectLongMap[AnyRef]](famCount)
+  private val timestampLookaside: Array[TObjectLongMap[AnyRef]] = new Array[gnu.trove.map.TObjectLongMap[AnyRef]](famCount)
 
 
 
@@ -138,5 +143,5 @@ case class DeserializedResult(rowid: AnyRef, famCount: Int) {
     errorBuffer.append((family, qualifier, value, timestamp))
   }
 
-  def hasErrors = (errorBuffer != null)
+  def hasErrors: Boolean = (errorBuffer != null)
 }
